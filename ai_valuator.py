@@ -1475,9 +1475,12 @@ def _prepare_selection_prompt_detailed(
     min_rooms = user_filters.get("min_rooms", 1)
     max_rooms = user_filters.get("max_rooms", 4)
     
-    # Формируем список объявлений с полной информацией
+    # Формируем список объявлений с полной информацией (сокращенный формат)
     listings_text = []
-    for i, item in enumerate(inspected_listings, 1):
+    # Ограничиваем количество объявлений в промпте (максимум 15)
+    listings_to_process = inspected_listings[:15]
+    
+    for i, item in enumerate(listings_to_process, 1):
         listing = item["listing"]
         inspection = item.get("inspection", {})
         
@@ -1489,74 +1492,53 @@ def _prepare_selection_prompt_detailed(
         price_per_sqm = ""
         if listing.area > 0 and listing.price > 0:
             price_per_sqm_usd = listing.price / listing.area
-            price_per_sqm = f" (${price_per_sqm_usd:.0f}/м²)"
+            price_per_sqm = f" ${price_per_sqm_usd:.0f}/м²"
         
         # Год постройки
         year_info = ""
         if listing.year_built:
-            year_info = f"\n   - Год постройки: {listing.year_built}"
+            year_info = f", год: {listing.year_built}"
         elif inspection.get("detailed_info", {}).get("year_built"):
-            year_info = f"\n   - Год постройки: {inspection['detailed_info']['year_built']}"
+            year_info = f", год: {inspection['detailed_info']['year_built']}"
         
-        # Описание из инспекции
-        description = inspection.get("full_description", "")[:500] if inspection.get("full_description") else "Описание не найдено"
+        # Описание из инспекции (сокращаем до 200 символов)
+        description = inspection.get("full_description", "") if inspection.get("full_description") else ""
+        if description:
+            description = description[:200].strip()
+            if len(inspection.get("full_description", "")) > 200:
+                description += "..."
+        else:
+            description = "нет описания"
         
-        # Фото
+        # Фото (только количество)
         photos_count = len(inspection.get("all_photos", [])) if inspection.get("all_photos") else 0
-        photos_info = f"\n   - Фото: {photos_count} шт." if photos_count > 0 else ""
         
-        listing_info = f"""
-{i}. ID: {listing.id}
-   - Комнаты: {rooms_text}
-   - Площадь: {area_text}
-   - Цена: {price_text}{price_per_sqm}
-   - Адрес: {listing.address}{year_info}{photos_info}
-   - Этаж: {listing.floor if listing.floor else "не указан"}
-   - Источник: {listing.source}
-   - Ссылка: {listing.url}
-   - Описание: {description}
-"""
+        # Сокращаем адрес (берем только улицу, без города)
+        address_short = listing.address.replace(", Барановичи", "").replace("Барановичи, ", "").strip()
+        if len(address_short) > 50:
+            address_short = address_short[:50] + "..."
+        
+        # Компактный формат
+        listing_info = f"{i}. ID:{listing.id} | {rooms_text}, {area_text} | {price_text}{price_per_sqm}{year_info} | {address_short} | фото:{photos_count} | {description} | {listing.url}\n"
         listings_text.append(listing_info)
     
-    prompt = f"""Ты - эксперт по недвижимости в Барановичах, Беларусь. 
+    prompt = f"""Эксперт по недвижимости Барановичей. Выбери {max_results} лучших вариантов по цене-качество.
 
-ЗАДАЧА: Проанализируй все предложенные объявления, которые я уже проверил по ссылкам, и выбери {max_results} ЛУЧШИХ вариантов по критерию "цена-качество".
+Критерии: комнаты {min_rooms}-{max_rooms}, цена ${min_price:,}-${max_price:,}
 
-КРИТЕРИИ ПОЛЬЗОВАТЕЛЯ:
-- Комнаты: от {min_rooms} до {max_rooms}
-- Цена: от ${min_price:,} до ${max_price:,}
-- Город: Барановичи
+Приоритеты:
+1. Цена за м² (главное)
+2. Год постройки
+3. Расположение
+4. Состояние
 
-ЧТО УЧИТЫВАТЬ ПРИ ВЫБОРЕ (в порядке важности):
-1. Соотношение цена/качество (цена за м²) - главный критерий
-2. Год постройки (новые дома предпочтительнее, но не критично)
-3. Расположение (центр предпочтительнее, но не критично)
-4. Размер площади (больше - лучше, но в разумных пределах)
-5. Количество комнат (точное соответствие запросу)
-6. Состояние ремонта (из описания и фото если есть)
-7. Общая привлекательность предложения
-
-СПИСОК ОБЪЯВЛЕНИЙ (уже проанализированных по ссылкам):
+Объявления:
 {''.join(listings_text)}
 
-ВЕРНИ ОТВЕТ В ФОРМАТЕ JSON:
-{{
-    "selected": [
-        {{
-            "id": "listing_id",
-            "reason": "Детальное объяснение почему этот вариант хороший (2-3 предложения). Укажи конкретные преимущества: цена за м², год постройки, расположение, состояние и т.д."
-        }},
-        ...
-    ]
-}}
+Верни JSON:
+{{"selected": [{{"id": "listing_id", "reason": "краткое объяснение (2-3 предложения): цена/м², год, район, состояние"}}]}}
 
-ВАЖНО:
-- Верни ТОЛЬКО JSON, без дополнительного текста
-- Выбери от 3 до {max_results} лучших вариантов
-- Укажи ID в том же формате, как в списке выше
-- Для каждого варианта напиши ДЕТАЛЬНОЕ объяснение почему он хороший
-- Будь объективным и честным в оценке
-"""
+Выбери 3-{max_results} лучших. Только JSON."""
     
     return prompt
 
