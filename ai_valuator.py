@@ -1494,8 +1494,14 @@ async def select_best_listings(
         log_info("ai_select", f"Подготавливаю {len(listings)} объявлений для анализа Gemini...")
         
         # Формируем список для промпта (только базовые данные + ссылки)
+        # Исключаем объявления без цены (договорная, 0, None)
         listings_for_prompt = []
         for listing in listings[:15]:  # Максимум 15 объявлений
+            # Пропускаем объявления без цены
+            if not listing.price or listing.price <= 0:
+                log_info("ai_select", f"Пропускаю объявление {listing.id}: цена не указана или равна 0")
+                continue
+            
             listings_for_prompt.append({
                 "listing": listing,
                 "inspection": {}  # Пустая инспекция - Gemini сам посмотрит
