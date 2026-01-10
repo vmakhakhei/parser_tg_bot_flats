@@ -1559,8 +1559,8 @@ def _prepare_selection_prompt_detailed(
         listing_info = f"{i}.{listing.id}|{rooms_text},{area_text}{price_per_sqm}{year_info}|{listing.url}\n"
         listings_text.append(listing_info)
     
-    # Максимально короткий промпт
-    prompt = f"""Недвижимость Барановичи. Выбери {max_results} лучших по цене-качество.
+    # Максимально короткий промпт с явным требованием минимум 3 вариантов
+    prompt = f"""Недвижимость Барановичи. Выбери МИНИМУМ 3, максимум {max_results} лучших по цене-качество.
 
 Критерии: {min_rooms}-{max_rooms}к, ${min_price:,}-${max_price:,}
 Приоритет: цена/м², год, район.
@@ -1568,10 +1568,11 @@ def _prepare_selection_prompt_detailed(
 Список:
 {''.join(listings_text)}
 
+ВАЖНО: Выбери МИНИМУМ 3 варианта (если есть столько подходящих), максимум {max_results}.
 Проанализируй ссылки и выбери лучшие. JSON:
 {{"selected": [{{"id": "id", "reason": "кратко: цена/м², год, район"}}]}}
 
-Только JSON, 3-{max_results} вариантов."""
+Только JSON. ОБЯЗАТЕЛЬНО выбери минимум 3 варианта (если есть столько подходящих)."""
     
     return prompt
 
