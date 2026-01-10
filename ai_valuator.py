@@ -883,24 +883,36 @@ class AIValuator:
                         log_info("ai_gemini", f"  - Оценка: {result.get('value_score', 'N/A')}/10")
                     return result
                 elif resp.status == 404:
-                    # Если модель не найдена, пробуем использовать gemini-pro (старая модель, но работает)
+                    # Если модель не найдена, пробуем другие модели из списка fallback
                     error_text = await resp.text()
-                    log_warning("ai_gemini", f"Модель {GEMINI_MODEL} не найдена, пробую gemini-pro")
+                    log_warning("ai_gemini", f"Модель {GEMINI_MODEL} не найдена, пробую другие модели")
                     
-                    # Пробуем с gemini-pro (старая модель, но стабильная)
-                    fallback_url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent?key={GEMINI_API_KEY}"
-                    async with self.session.post(fallback_url, json=payload, timeout=timeout) as fallback_resp:
-                        if fallback_resp.status == 200:
-                            data = await fallback_resp.json()
-                            content = data["candidates"][0]["content"]["parts"][0]["text"]
-                            log_info("ai_gemini", f"Получен ответ от Gemini (fallback gemini-pro): {content[:100]}...")
-                            result = self._parse_ai_response(content)
-                            if result:
-                                log_info("ai_gemini", f"Успешная оценка (fallback): ${result.get('fair_price_usd', 0):,}")
-                            return result
-                        else:
-                            error_text_fallback = await fallback_resp.text()
-                            log_error("ai_gemini", f"Gemini API (fallback) вернул статус {fallback_resp.status}: {error_text_fallback[:200]}")
+                    # Пробуем модели из списка fallback
+                    for fallback_model in GEMINI_FALLBACK_MODELS:
+                        if fallback_model == GEMINI_MODEL:
+                            continue  # Пропускаем уже попробованную модель
+                        
+                        log_info("ai_gemini", f"Пробую модель: {fallback_model}")
+                        fallback_url = f"https://generativelanguage.googleapis.com/v1beta/models/{fallback_model}:generateContent?key={GEMINI_API_KEY}"
+                        
+                        try:
+                            async with self.session.post(fallback_url, json=payload, timeout=timeout) as fallback_resp:
+                                if fallback_resp.status == 200:
+                                    data = await fallback_resp.json()
+                                    content = data["candidates"][0]["content"]["parts"][0]["text"]
+                                    log_info("ai_gemini", f"✅ Успешно использована модель {fallback_model}: {content[:100]}...")
+                                    result = self._parse_ai_response(content)
+                                    if result:
+                                        log_info("ai_gemini", f"Успешная оценка ({fallback_model}): ${result.get('fair_price_usd', 0):,}")
+                                    return result
+                                elif fallback_resp.status != 404:
+                                    error_text_fallback = await fallback_resp.text()
+                                    log_warning("ai_gemini", f"Модель {fallback_model} вернула статус {fallback_resp.status}: {error_text_fallback[:100]}")
+                        except Exception as e:
+                            log_warning("ai_gemini", f"Ошибка при попытке использовать {fallback_model}: {e}")
+                            continue
+                    
+                    log_error("ai_gemini", f"Все модели не найдены. Последняя ошибка: {error_text[:200]}")
                 else:
                     error_text = await resp.text()
                     log_error("ai_gemini", f"Gemini API вернул статус {resp.status}: {error_text[:200]}")
