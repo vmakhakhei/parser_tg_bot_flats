@@ -31,8 +31,12 @@ except ImportError:
 # Получить API ключ: https://aistudio.google.com/app/apikey
 
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
-GEMINI_API_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent"
-GEMINI_VISION_API_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-pro-vision:generateContent"
+# Актуальные модели Gemini (2025-2026):
+# - gemini-1.5-flash (быстрая, поддерживает vision)
+# - gemini-1.5-pro (качественная, поддерживает vision)
+# - gemini-pro (устарела, может не работать)
+GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-1.5-flash")  # По умолчанию используем flash (быстрая и поддерживает vision)
+GEMINI_API_URL = f"https://generativelanguage.googleapis.com/v1beta/models/{GEMINI_MODEL}:generateContent"
 
 
 # ========== ВАРИАНТ 2: Groq API (АЛЬТЕРНАТИВА) ==========
