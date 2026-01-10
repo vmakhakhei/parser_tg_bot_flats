@@ -32,11 +32,12 @@ except ImportError:
 # ✅ Получить API ключ: https://aistudio.google.com/app/apikey
 
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
-# Бесплатные модели Gemini (все модели в бесплатном тарифе):
-# - gemini-1.5-flash (быстрая, поддерживает vision) - РЕКОМЕНДУЕТСЯ
-# - gemini-1.5-pro (качественная, поддерживает vision) - тоже бесплатная
-# Все модели Gemini API бесплатные до определенного лимита запросов
-GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-1.5-flash")  # По умолчанию используем flash (быстрая и бесплатная)
+# Актуальные модели Gemini API (бесплатные):
+# Для v1beta API нужно использовать правильные названия:
+# - gemini-1.5-flash-latest (быстрая, поддерживает vision) - РЕКОМЕНДУЕТСЯ
+# - gemini-1.5-pro-latest (качественная, поддерживает vision)
+# Или использовать v1 API с другими названиями
+GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-1.5-flash-latest")  # По умолчанию используем flash-latest
 GEMINI_API_URL = f"https://generativelanguage.googleapis.com/v1beta/models/{GEMINI_MODEL}:generateContent"
 
 
