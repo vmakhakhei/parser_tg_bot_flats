@@ -1094,13 +1094,31 @@ class AIValuator:
             }
         }
         
-        url = f"{GEMINI_API_URL}?key={GEMINI_API_KEY}"
-        log_info("ai_select", f"Отправляю POST запрос к Gemini API: {url[:100]}...")
+        # Используем актуальную модель (может быть изменена через fallback)
+        model = GEMINI_MODEL
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={GEMINI_API_KEY}"
+        log_info("ai_select", f"Отправляю POST запрос к Gemini API")
+        log_info("ai_select", f"Модель: {model}")
         log_info("ai_select", f"Размер промпта: {len(prompt)} символов, количество объявлений: {len(inspected_listings)}")
+        
+        # Если промпт слишком большой (>30000 символов), обрезаем его
+        if len(prompt) > 30000:
+            log_warning("ai_select", f"Промпт слишком большой ({len(prompt)} символов), обрезаю до 30000")
+            prompt = prompt[:30000] + "\n\n[Промпт обрезан из-за ограничений размера]"
+            # Обновляем payload с обрезанным промптом
+            payload = {
+                "contents": [{
+                    "parts": [{"text": prompt}]
+                }],
+                "generationConfig": {
+                    "temperature": 0.3,
+                    "maxOutputTokens": 2000
+                }
+            }
         
         try:
             timeout = aiohttp.ClientTimeout(total=120)  # Увеличил до 120 секунд для больших промптов
-            log_info("ai_select", "Ожидаю ответ от Gemini API...")
+            log_info("ai_select", "Ожидаю ответ от Gemini API (максимум 120 секунд)...")
             async with self.session.post(url, json=payload, timeout=timeout) as resp:
                 log_info("ai_select", f"Получен ответ от Gemini API. Статус: {resp.status}")
                 if resp.status == 200:
