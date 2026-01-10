@@ -427,24 +427,8 @@ async def check_new_listings_ai_mode(
                     except Exception:
                         pass
                 
-                # Отправляем объявления по одному (все выбранные ИИ варианты)
-                sent_count = 0
-                logger.info(f"Отправляю {len(best_with_reasons)} объявлений пользователю {user_id}")
-                for i, item in enumerate(best_with_reasons, 1):
-                    listing = item.get("listing")
-                    if not listing:
-                        logger.warning(f"Пропускаю отправку элемента {i}: нет listing")
-                        continue
-                    
-                    logger.info(f"Отправляю объявление {i}/{len(best_with_reasons)}: {listing.id}")
-                    if await send_listing_to_user(bot, user_id, listing):
-                        sent_count += 1
-                        logger.info(f"✅ Отправлено объявление {i}/{len(best_with_reasons)}")
-                    else:
-                        logger.warning(f"❌ Не удалось отправить объявление {i}/{len(best_with_reasons)}")
-                    await asyncio.sleep(2)
-                
-                logger.info(f"Всего отправлено {sent_count} из {len(best_with_reasons)} объявлений пользователю {user_id}")
+                # НЕ отправляем объявления отдельно - только одно сообщение с оценкой ИИ
+                logger.info(f"Отправлено сообщение с {len(best_with_reasons)} рекомендациями пользователю {user_id}")
                 
             else:
                 logger.warning(f"ИИ не выбрал ни одного варианта для пользователя {user_id}")
