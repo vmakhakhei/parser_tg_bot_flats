@@ -429,17 +429,31 @@ class AIValuator:
                     for img in soup.find_all('img', src=True):
                         img_src = img.get('src') or img.get('data-src') or img.get('data-lazy')
                         if img_src:
-                            # Пропускаем служебные изображения
-                            skip_patterns = ['logo', 'icon', 'sprite', 'placeholder', 'no-photo', 'blank']
-                            if not any(p in img_src.lower() for p in skip_patterns):
-                                if not img_src.startswith('http'):
-                                    if img_src.startswith('//'):
-                                        img_src = f"https:{img_src}"
-                                    else:
-                                        # Определяем базовый URL
-                                        base_url = '/'.join(listing.url.split('/')[:3])
-                                        img_src = f"{base_url}{img_src}"
-                                photo_urls.add(img_src)
+                            img_src_lower = img_src.lower()
+                            # Пропускаем служебные изображения (более строгая фильтрация)
+                            skip_patterns = [
+                                'logo', 'icon', 'sprite', 'placeholder', 'no-photo', 'blank',
+                                'footer', 'header', 'arrow', 'button', 'badge', 'pay', 'mastercard',
+                                'visa', 'belkart', 'svg', 'favicon', 'social', 'facebook', 'instagram',
+                                'telegram', 'viber', 'whatsapp', 'youtube', 'twitter'
+                            ]
+                            # Пропускаем если содержит служебные паттерны
+                            if any(p in img_src_lower for p in skip_patterns):
+                                continue
+                            # Пропускаем маленькие изображения (иконки обычно маленькие)
+                            if '120x100' in img_src_lower or 'thumb' in img_src_lower:
+                                # Но оставляем если это явно фото квартиры (содержит gallery, image, photo, realty, object)
+                                if not any(word in img_src_lower for word in ['gallery', 'image', 'photo', 'realty', 'object', 'list_thumbs', 'adim']):
+                                    continue
+                            
+                            if not img_src.startswith('http'):
+                                if img_src.startswith('//'):
+                                    img_src = f"https:{img_src}"
+                                else:
+                                    # Определяем базовый URL
+                                    base_url = '/'.join(listing.url.split('/')[:3])
+                                    img_src = f"{base_url}{img_src}"
+                            photo_urls.add(img_src)
                     
                     inspection_data["all_photos"] = list(photo_urls)[:10]  # Максимум 10 фото
                     
@@ -756,12 +770,12 @@ class AIValuator:
             # Добавляем инструкции в начало текста
             parts[0]["text"] = photo_instructions + parts[0]["text"]
         
-        # Используем Vision модель если есть фото, иначе обычную
+        # Используем одну модель для всего (gemini-1.5-flash/pro поддерживают vision)
+        url = f"{GEMINI_API_URL}?key={GEMINI_API_KEY}"
         if photos_added > 0:
-            url = f"{GEMINI_VISION_API_URL}?key={GEMINI_API_KEY}"
-            log_info("ai_gemini", f"Использую Gemini Vision для анализа {photos_added} фото")
+            log_info("ai_gemini", f"Использую {GEMINI_MODEL} для анализа {photos_added} фото")
         else:
-            url = f"{GEMINI_API_URL}?key={GEMINI_API_KEY}"
+            log_info("ai_gemini", f"Использую {GEMINI_MODEL} для текстового анализа")
         
         payload = {
             "contents": [{
