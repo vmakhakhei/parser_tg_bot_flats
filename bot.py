@@ -158,8 +158,8 @@ async def send_listing_to_user(bot: Bot, user_id: int, listing: Listing) -> bool
                 # Groq: 30 запросов/минуту = ~2 секунды между запросами
                 await asyncio.sleep(2)
                 
-                # Таймаут для ИИ-оценки (максимум 8 секунд)
-                ai_valuation = await asyncio.wait_for(valuate_listing(listing), timeout=8.0)
+                # Таймаут для ИИ-оценки (максимум 20 секунд - включает инспекцию страницы)
+                ai_valuation = await asyncio.wait_for(valuate_listing(listing), timeout=20.0)
                 if ai_valuation:
                     log_info("ai", f"ИИ-оценка получена для {listing.id}: ${ai_valuation.get('fair_price_usd', 0):,}")
             except asyncio.TimeoutError:
