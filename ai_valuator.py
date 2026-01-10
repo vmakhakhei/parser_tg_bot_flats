@@ -1514,6 +1514,28 @@ async def select_best_listings(
         
         log_info("ai_select", f"ИИ выбрал {len(selected_with_reasons)} из {len(listings)} объявлений")
         
+        # Проверяем, что выбрано минимум 3 варианта (если есть столько кандидатов)
+        min_required = min(3, max_results, len(listings))
+        if len(selected_with_reasons) < min_required and len(listings) >= min_required:
+            log_warning("ai_select", f"ИИ выбрал только {len(selected_with_reasons)} вариантов, требуется минимум {min_required}")
+            # Если есть больше кандидатов, добавляем лучшие из оставшихся
+            selected_ids = [item["listing"].id for item in selected_with_reasons]
+            remaining = [l["listing"] for l in listings_for_prompt if l["listing"].id not in selected_ids]
+            # Сортируем оставшиеся по цене за м² (лучшие первыми)
+            remaining_sorted = sorted(
+                remaining,
+                key=lambda l: l.price / l.area if l.area > 0 else float('inf')
+            )
+            # Добавляем недостающие варианты
+            needed = min_required - len(selected_with_reasons)
+            for listing in remaining_sorted[:needed]:
+                price_per_sqm = int(listing.price / listing.area) if listing.area > 0 else 0
+                selected_with_reasons.append({
+                    "listing": listing,
+                    "reason": f"Хорошая цена за м²: ${price_per_sqm}/м². Соответствует критериям поиска."
+                })
+            log_info("ai_select", f"Добавлено {needed} вариантов через fallback, всего: {len(selected_with_reasons)}")
+        
         return selected_with_reasons[:max_results]
         
     except Exception as e:
