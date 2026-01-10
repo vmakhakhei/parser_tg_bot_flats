@@ -883,10 +883,13 @@ def get_valuator() -> Optional[AIValuator]:
     
     if _valuator is None:
         # Определяем провайдер по наличию ключей
-        if GROQ_API_KEY:
-            _valuator = AIValuator("groq")
-        elif GEMINI_API_KEY:
+        # Приоритет: Gemini (если есть) для поддержки vision, иначе Groq
+        if GEMINI_API_KEY:
             _valuator = AIValuator("gemini")
+            log_info("ai", "Использую Gemini API (поддержка анализа фото)")
+        elif GROQ_API_KEY:
+            _valuator = AIValuator("groq")
+            log_info("ai", "Использую Groq API (без анализа фото)")
         elif HF_API_KEY:
             _valuator = AIValuator("huggingface")
         elif os.getenv("OLLAMA_URL"):
