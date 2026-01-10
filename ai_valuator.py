@@ -1536,8 +1536,8 @@ async def select_best_listings(
         
         log_info("ai_select", f"ИИ выбрал {len(selected_with_reasons)} из {len(listings)} объявлений")
         
-        # Проверяем, что выбрано минимум 3 варианта (если есть столько кандидатов)
-        min_required = min(3, max_results, len(listings))
+        # Проверяем, что выбрано минимум 5 вариантов (если есть столько кандидатов)
+        min_required = min(5, max_results, len(listings))
         if len(selected_with_reasons) < min_required and len(listings) >= min_required:
             log_warning("ai_select", f"ИИ выбрал только {len(selected_with_reasons)} вариантов, требуется минимум {min_required}")
             # Если есть больше кандидатов, добавляем лучшие из оставшихся

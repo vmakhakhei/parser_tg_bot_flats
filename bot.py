@@ -357,7 +357,7 @@ async def check_new_listings_ai_mode(
             best_with_reasons = await select_best_listings(
                 candidate_listings, 
                 user_filters,
-                max_results=5
+                max_results=5  # Запрашиваем 5 вариантов
             )
             
             if best_with_reasons and len(best_with_reasons) > 0:
