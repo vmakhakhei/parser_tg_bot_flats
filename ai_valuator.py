@@ -1269,6 +1269,9 @@ class AIValuator:
                     
                     if result_list:
                         log_info("ai_select", f"✅ Успешно распарсено {len(result_list)} вариантов с описаниями")
+                        # Проверяем, что распарсено достаточно вариантов
+                        if len(result_list) < 3:
+                            log_warning("ai_select", f"⚠️ ИИ вернул только {len(result_list)} вариантов, требуется минимум 3")
                         return result_list
                     else:
                         log_warning("ai_select", f"Не удалось найти ни одного валидного варианта в JSON")
