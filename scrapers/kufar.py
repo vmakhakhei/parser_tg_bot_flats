@@ -1,16 +1,17 @@
 """
-Парсер для Kufar.by
+Парсер для re.kufar.by (новый домен Kufar Недвижимость)
 """
+import re
 from typing import List, Optional
+from bs4 import BeautifulSoup
 from scrapers.base import BaseScraper, Listing
 
 
 class KufarScraper(BaseScraper):
-    """Парсер объявлений с Kufar.by"""
+    """Парсер объявлений с re.kufar.by"""
     
     SOURCE_NAME = "kufar"
-    BASE_URL = "https://api.kufar.by/search-api/v2/search/rendered-paginated"
-    LISTING_URL = "https://www.kufar.by/item/"
+    BASE_URL = "https://re.kufar.by"
     
     def _build_search_url(
         self,
@@ -20,27 +21,35 @@ class KufarScraper(BaseScraper):
         min_price: int = 0,
         max_price: int = 100000,
     ) -> str:
-        """Строит URL для поиска"""
-        params = {
-            "cat": "1010",  # Квартиры продажа
-            "cur": "USD",
-            "gtsy": "country-belarus~region-brestskaya~city-baranovichi",
-            "lang": "ru",
-            "size": "42",
-            "sort": "lst.d",
-        }
+        """Строит URL для поиска квартир"""
+        # Базовый URL для квартир в Барановичах
+        url = f"{self.BASE_URL}/l/baranovichi/kupit/kvartiru"
+        
+        # Параметры
+        params = []
         
         # Количество комнат
-        rooms_values = [str(r) for r in range(min_rooms, min(max_rooms + 1, 6))]
-        if rooms_values:
-            params["rms"] = ",".join(rooms_values)
+        rooms = []
+        for r in range(min_rooms, min(max_rooms + 1, 5)):
+            rooms.append(str(r))
+        if max_rooms >= 5:
+            rooms.append("5_and_more")
+        if rooms:
+            params.append(f"rooms={','.join(rooms)}")
         
-        # Цена
-        if min_price > 0 or max_price < 100000:
-            params["prc"] = f"r:{min_price},{max_price}"
-            
-        query_string = "&".join(f"{k}={v}" for k, v in params.items())
-        return f"{self.BASE_URL}?{query_string}"
+        # Цена (в долларах)
+        if min_price > 0:
+            params.append(f"price_usd_from={min_price}")
+        if max_price < 100000:
+            params.append(f"price_usd_to={max_price}")
+        
+        # Сортировка по дате
+        params.append("sort=date_desc")
+        
+        if params:
+            url += "?" + "&".join(params)
+        
+        return url
     
     async def fetch_listings(
         self,
@@ -52,90 +61,139 @@ class KufarScraper(BaseScraper):
     ) -> List[Listing]:
         """Получает список объявлений"""
         url = self._build_search_url(city, min_rooms, max_rooms, min_price, max_price)
-        data = await self._fetch_json(url)
         
-        if not data:
+        html = await self._fetch_html(url)
+        if not html:
             return []
         
+        return self._parse_html(html, min_rooms, max_rooms, min_price, max_price)
+    
+    def _parse_html(
+        self, 
+        html: str,
+        min_rooms: int,
+        max_rooms: int,
+        min_price: int,
+        max_price: int
+    ) -> List[Listing]:
+        """Парсит HTML страницу"""
+        soup = BeautifulSoup(html, 'lxml')
         listings = []
-        for ad in data.get("ads", []):
-            listing = self._parse_ad(ad)
-            if listing:
-                listings.append(listing)
-                
+        
+        # Ищем все ссылки на объявления
+        links = soup.find_all('a', href=re.compile(r'/vi/[^/]+/kupit/kvartiru/\d+'))
+        
+        seen_ids = set()
+        for link in links:
+            listing = self._parse_listing_link(link)
+            if listing and listing.id not in seen_ids:
+                if self._matches_filters(listing, min_rooms, max_rooms, min_price, max_price):
+                    listings.append(listing)
+                    seen_ids.add(listing.id)
+        
         return listings
     
-    def _parse_ad(self, ad: dict) -> Optional[Listing]:
-        """Парсит одно объявление"""
+    def _parse_listing_link(self, link) -> Optional[Listing]:
+        """Парсит ссылку на объявление"""
         try:
-            ad_id = str(ad.get("ad_id", ""))
-            if not ad_id:
+            url = link.get('href', '')
+            if not url:
                 return None
             
-            title = ad.get("subject", "Квартира")
+            if not url.startswith('http'):
+                url = f"{self.BASE_URL}{url}"
+            
+            # ID из URL
+            id_match = re.search(r'/(\d+)', url)
+            if not id_match:
+                return None
+            listing_id = f"kufar_{id_match.group(1)}"
+            
+            # Текст объявления
+            text = link.get_text(separator=' ', strip=True)
             
             # Цена
-            price_usd = ad.get("price_usd", "0")
-            try:
-                price = int(price_usd) // 100 if price_usd else 0
-            except (ValueError, TypeError):
-                price = 0
+            price = 0
+            price_match = re.search(r'([\d\s]+)\s*\$', text)
+            if price_match:
+                price = self._parse_price(price_match.group(1))
             
-            # Параметры
-            params = ad.get("ad_parameters", [])
+            # Комнаты и площадь
             rooms = 0
             area = 0.0
+            
+            # Ищем паттерн "X комн., XX м²"
+            rooms_area_match = re.search(r'(\d+)\s*комн[.,]\s*([\d.,]+)\s*м', text)
+            if rooms_area_match:
+                rooms = int(rooms_area_match.group(1))
+                area = float(rooms_area_match.group(2).replace(',', '.'))
+            else:
+                # Пробуем найти отдельно
+                rooms_match = re.search(r'(\d+)\s*комн', text)
+                if rooms_match:
+                    rooms = int(rooms_match.group(1))
+                area_match = re.search(r'([\d.,]+)\s*м[²2]?', text)
+                if area_match:
+                    area = float(area_match.group(1).replace(',', '.'))
+            
+            # Этаж
             floor = ""
-            address = ad.get("address", "Барановичи")
+            floor_match = re.search(r'этаж\s*(\d+)\s*из\s*(\d+)', text, re.I)
+            if floor_match:
+                floor = f"{floor_match.group(1)}/{floor_match.group(2)}"
             
-            for param in params:
-                param_name = param.get("p", "")
-                param_value = param.get("v", "")
-                param_label = param.get("vl", "")
-                
-                if param_name == "rooms":
-                    try:
-                        rooms = int(param_value) if param_value.isdigit() else int(param_label.split()[0])
-                    except (ValueError, IndexError):
-                        rooms = 1
-                elif param_name == "size":
-                    try:
-                        area = float(param_value)
-                    except ValueError:
-                        area = 0.0
-                elif param_name in ("floor_number", "floors_total"):
-                    floor += f"{param_label} "
+            # Адрес
+            address = "Барановичи"
+            # Обычно адрес идёт после площади
+            addr_match = re.search(r'(?:м²|м2)\s+(.+?)(?:Барановичи|Брест|$)', text)
+            if addr_match:
+                address = addr_match.group(1).strip()
+                if not address:
+                    address = "Барановичи"
             
-            # Изображения
-            images = ad.get("images", [])
-            photo_urls = []
-            for img in images[:3]:
-                if isinstance(img, dict):
-                    img_id = img.get("id", "")
-                    if img_id:
-                        photo_urls.append(f"https://yams.kufar.by/api/v1/kufar-ads/images/{img_id}.jpg?rule=gallery")
-                elif isinstance(img, str):
-                    photo_urls.append(img)
+            # Фото
+            photos = []
+            img = link.find('img', src=True)
+            if img:
+                img_src = img.get('src') or img.get('data-src')
+                if img_src and 'placeholder' not in img_src.lower():
+                    if img_src.startswith('//'):
+                        img_src = f"https:{img_src}"
+                    elif not img_src.startswith('http'):
+                        img_src = f"{self.BASE_URL}{img_src}"
+                    photos.append(img_src)
             
-            # URL объявления
-            link_name = ad.get("ad_link", "")
-            url = f"https://www.kufar.by{link_name}" if link_name else f"{self.LISTING_URL}{ad_id}"
+            title = f"{rooms}-комн., {area} м²" if rooms and area else "Квартира"
             
             return Listing(
-                id=f"kufar_{ad_id}",
+                id=listing_id,
                 source="Kufar.by",
                 title=title,
                 price=price,
-                price_formatted=f"${price:,}".replace(",", " "),
+                price_formatted=f"${price:,}".replace(",", " ") if price else "Цена не указана",
                 rooms=rooms,
                 area=area,
-                floor=floor.strip(),
-                address=address or "Барановичи",
-                photos=photo_urls,
+                floor=floor,
+                address=address,
+                photos=photos,
                 url=url,
             )
             
         except Exception as e:
             print(f"[Kufar] Ошибка парсинга: {e}")
             return None
-
+    
+    def _matches_filters(
+        self, 
+        listing: Listing, 
+        min_rooms: int,
+        max_rooms: int,
+        min_price: int,
+        max_price: int
+    ) -> bool:
+        """Проверяет соответствие фильтрам"""
+        if listing.rooms > 0 and (listing.rooms < min_rooms or listing.rooms > max_rooms):
+            return False
+        if listing.price > 0 and (listing.price < min_price or listing.price > max_price):
+            return False
+        return True

@@ -34,7 +34,8 @@ logger = logging.getLogger(__name__)
 router = Router()
 
 # Список источников по умолчанию
-DEFAULT_SOURCES = ["kufar", "realt", "domovita", "onliner", "gohome", "hata", "etagi"]
+# Временно оставляем только работающие парсеры
+DEFAULT_SOURCES = ["kufar", "hata"]
 
 
 def format_listing_message(listing: Listing) -> str:
