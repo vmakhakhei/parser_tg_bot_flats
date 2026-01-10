@@ -426,37 +426,97 @@ class AIValuator:
                         if meta_desc:
                             inspection_data["full_description"] = meta_desc.get('content', '')
                     
-                    # Извлекаем все фото со страницы
+                    # Извлекаем фото объявления (только из галереи/фото объявления)
                     photo_urls = set()
-                    # Ищем все img теги
-                    for img in soup.find_all('img', src=True):
-                        img_src = img.get('src') or img.get('data-src') or img.get('data-lazy')
-                        if img_src:
-                            img_src_lower = img_src.lower()
-                            # Пропускаем служебные изображения (более строгая фильтрация)
-                            skip_patterns = [
-                                'logo', 'icon', 'sprite', 'placeholder', 'no-photo', 'blank',
-                                'footer', 'header', 'arrow', 'button', 'badge', 'pay', 'mastercard',
-                                'visa', 'belkart', 'svg', 'favicon', 'social', 'facebook', 'instagram',
-                                'telegram', 'viber', 'whatsapp', 'youtube', 'twitter'
-                            ]
-                            # Пропускаем если содержит служебные паттерны
-                            if any(p in img_src_lower for p in skip_patterns):
+                    
+                    # Стратегия 1: Ищем контейнеры галереи/фото объявления
+                    gallery_selectors = [
+                        'div[class*="gallery"]', 'div[class*="photos"]', 'div[class*="images"]',
+                        'div[class*="slider"]', 'div[class*="carousel"]', 'div[class*="photo"]',
+                        'section[class*="gallery"]', 'section[class*="photos"]',
+                        '[data-gallery]', '[data-photos]', '[id*="gallery"]', '[id*="photos"]'
+                    ]
+                    
+                    gallery_container = None
+                    for selector in gallery_selectors:
+                        gallery_container = soup.select_one(selector)
+                        if gallery_container:
+                            log_info("ai_inspect", f"Найден контейнер галереи: {selector}")
+                            break
+                    
+                    # Стратегия 2: Если не нашли галерею, ищем по специфичным паттернам URL
+                    if gallery_container:
+                        # Ищем фото только в контейнере галереи
+                        img_tags = gallery_container.find_all('img', src=True)
+                    else:
+                        # Если галереи нет, ищем все img, но с очень строгой фильтрацией
+                        img_tags = soup.find_all('img', src=True)
+                    
+                    for img in img_tags:
+                        img_src = img.get('src') or img.get('data-src') or img.get('data-lazy') or img.get('data-original')
+                        if not img_src:
+                            continue
+                        
+                        img_src_lower = img_src.lower()
+                        
+                        # Строгая фильтрация служебных изображений
+                        skip_patterns = [
+                            'logo', 'icon', 'sprite', 'placeholder', 'no-photo', 'blank',
+                            'footer', 'header', 'arrow', 'button', 'badge', 'pay', 'mastercard',
+                            'visa', 'belkart', 'svg', 'favicon', 'social', 'facebook', 'instagram',
+                            'telegram', 'viber', 'whatsapp', 'youtube', 'twitter', 'rewar',  # reward/награда
+                            'static/frontend', 'static/img', 'static/images', 'cdn', 'assets'
+                        ]
+                        
+                        # Пропускаем если содержит служебные паттерны
+                        if any(p in img_src_lower for p in skip_patterns):
+                            continue
+                        
+                        # Для Kufar: только фото из gallery или list_thumbs (но не маленькие превью)
+                        if 'kufar.by' in img_src_lower:
+                            if 'gallery' in img_src_lower or 'list_thumbs_2x' in img_src_lower:
+                                # Пропускаем очень маленькие превью
+                                if '120x100' in img_src_lower or 'thumb' in img_src_lower:
+                                    if 'list_thumbs_2x' not in img_src_lower:  # list_thumbs_2x - это нормальные фото
+                                        continue
+                            elif 'content.kufar.by' in img_src_lower:
+                                # Пропускаем статический контент (логотипы, иконки)
                                 continue
-                            # Пропускаем маленькие изображения (иконки обычно маленькие)
-                            if '120x100' in img_src_lower or 'thumb' in img_src_lower:
-                                # Но оставляем если это явно фото квартиры (содержит gallery, image, photo, realty, object)
-                                if not any(word in img_src_lower for word in ['gallery', 'image', 'photo', 'realty', 'object', 'list_thumbs', 'adim']):
+                            else:
+                                # Пропускаем другие изображения с kufar.by
+                                continue
+                        
+                        # Для Hata: только фото из /img/ или pic.hata.by
+                        if 'hata.by' in img_src_lower:
+                            if '/img/' not in img_src_lower and 'pic.hata.by' not in img_src_lower:
+                                continue
+                            # Пропускаем маленькие превью
+                            if '120x100' in img_src_lower or '/100x' in img_src_lower:
+                                continue
+                        
+                        # Для Etagi: только фото объявлений
+                        if 'etagi.com' in img_src_lower:
+                            if 'realty' not in img_src_lower and 'object' not in img_src_lower:
+                                continue
+                        
+                        # Пропускаем очень маленькие изображения (меньше 200px)
+                        if re.search(r'/\d+x\d+/', img_src_lower):
+                            size_match = re.search(r'/(\d+)x(\d+)/', img_src_lower)
+                            if size_match:
+                                width = int(size_match.group(1))
+                                height = int(size_match.group(2))
+                                if width < 200 or height < 200:
                                     continue
-                            
-                            if not img_src.startswith('http'):
-                                if img_src.startswith('//'):
-                                    img_src = f"https:{img_src}"
-                                else:
-                                    # Определяем базовый URL
-                                    base_url = '/'.join(listing.url.split('/')[:3])
-                                    img_src = f"{base_url}{img_src}"
-                            photo_urls.add(img_src)
+                        
+                        # Нормализуем URL
+                        if not img_src.startswith('http'):
+                            if img_src.startswith('//'):
+                                img_src = f"https:{img_src}"
+                            else:
+                                base_url = '/'.join(listing.url.split('/')[:3])
+                                img_src = f"{base_url}{img_src}"
+                        
+                        photo_urls.add(img_src)
                     
                     inspection_data["all_photos"] = list(photo_urls)[:10]  # Максимум 10 фото
                     
