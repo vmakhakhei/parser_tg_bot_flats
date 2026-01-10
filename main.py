@@ -64,7 +64,7 @@ async def main():
         if valuator:
             logger.info(f"🤖 ИИ-оценщик настроен: {valuator.provider.upper()}")
         else:
-            logger.info("⚠️ ИИ-оценщик не настроен (GROQ_API_KEY не указан)")
+            logger.info("⚠️ ИИ-оценщик не настроен (GEMINI_API_KEY не указан)")
     except Exception as e:
         logger.warning(f"⚠️ ИИ-оценщик недоступен: {e}")
     
