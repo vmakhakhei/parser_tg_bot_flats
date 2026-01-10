@@ -1202,18 +1202,31 @@ class AIValuator:
         try:
             # Пробуем найти JSON объект с "selected" массивом
             # Ищем начало JSON (может быть с markdown code blocks)
-            json_start_patterns = [
-                r'```json\s*(\{.*?\})\s*```',  # JSON в markdown блоке
-                r'```\s*(\{.*?\})\s*```',      # JSON в обычном блоке
-                r'(\{[^{}]*"selected"[^{}]*\[.*?\][^{}]*\})',  # JSON с массивом selected
-            ]
-            
             json_str = None
-            for pattern in json_start_patterns:
-                json_match = re.search(pattern, content, re.DOTALL)
-                if json_match:
-                    json_str = json_match.group(1)
-                    break
+            
+            # Сначала пробуем найти JSON в markdown блоке (```json ... ```)
+            # Используем более точный подход - находим начало и конец блока
+            json_markdown_start = content.find('```json')
+            if json_markdown_start != -1:
+                # Находим начало JSON объекта после ```json
+                json_start = content.find('{', json_markdown_start)
+                if json_start != -1:
+                    # Находим конец markdown блока
+                    json_markdown_end = content.find('```', json_start)
+                    if json_markdown_end != -1:
+                        json_str = content[json_start:json_markdown_end].strip()
+                        log_info("ai_select", f"Найден JSON в markdown блоке: {len(json_str)} символов")
+            
+            # Если не нашли в markdown блоке, пробуем обычный блок
+            if not json_str:
+                json_block_start = content.find('```')
+                if json_block_start != -1:
+                    json_start = content.find('{', json_block_start)
+                    if json_start != -1:
+                        json_block_end = content.find('```', json_start)
+                        if json_block_end != -1:
+                            json_str = content[json_start:json_block_end].strip()
+                            log_info("ai_select", f"Найден JSON в обычном блоке: {len(json_str)} символов")
             
             # Если не нашли через паттерны, пытаемся найти любой JSON объект
             if not json_str:
