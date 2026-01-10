@@ -16,9 +16,12 @@ from database import (
     init_database, 
     get_filters, 
     update_filters, 
-    is_listing_sent, 
+    is_listing_sent,
+    is_duplicate_content,
     mark_listing_sent,
-    get_sent_listings_count
+    get_sent_listings_count,
+    get_duplicates_stats,
+    get_recent_listings
 )
 from scrapers.aggregator import ListingsAggregator
 from scrapers.base import Listing
@@ -150,18 +153,44 @@ async def check_new_listings(bot: Bot):
     logger.info(f"Всего найдено объявлений: {len(listings)}")
     
     new_count = 0
+    skipped_by_id = 0
+    skipped_by_content = 0
+    
     for listing in listings:
-        # Проверяем, не отправляли ли уже
-        if not await is_listing_sent(listing.id):
-            if await send_listing_to_channel(bot, listing):
-                new_count += 1
-                # Задержка между сообщениями чтобы не получить бан
-                await asyncio.sleep(3)
+        # 1. Проверяем по ID (точное совпадение)
+        if await is_listing_sent(listing.id):
+            skipped_by_id += 1
+            continue
+        
+        # 2. Проверяем по контенту (дубликаты с разных сайтов)
+        dup_check = await is_duplicate_content(
+            rooms=listing.rooms,
+            area=listing.area,
+            address=listing.address,
+            price=listing.price
+        )
+        
+        if dup_check["is_duplicate"]:
+            skipped_by_content += 1
+            log_info("dedup", 
+                f"Дубликат: {listing.source} ID={listing.id} "
+                f"похож на {dup_check['original_source']} ID={dup_check['original_id']}"
+            )
+            continue
+        
+        # Отправляем новое объявление
+        if await send_listing_to_channel(bot, listing):
+            new_count += 1
+            # Задержка между сообщениями чтобы не получить бан
+            await asyncio.sleep(3)
     
     if new_count > 0:
         logger.info(f"✅ Отправлено новых объявлений: {new_count}")
     else:
         logger.info("Новых объявлений нет")
+    
+    if skipped_by_id > 0 or skipped_by_content > 0:
+        logger.info(f"⏭️ Пропущено: {skipped_by_id} по ID, {skipped_by_content} дубликатов по контенту")
     
     logger.info("=" * 50)
 
@@ -210,7 +239,9 @@ async def cmd_help(message: Message):
         "• /check - проверить объявления сейчас\n\n"
         "📊 <b>Информация:</b>\n"
         "• /stats - статистика\n"
-        "• /sources - список источников\n\n"
+        "• /sources - список источников\n"
+        "• /duplicates - статистика дубликатов\n"
+        "• /recent - последние 10 объявлений\n\n"
         "🔧 <b>Отладка:</b>\n"
         "• /errors - последние ошибки\n"
         "• /logs - все логи\n"
@@ -586,16 +617,71 @@ async def cmd_stats(message: Message):
     filters = await get_filters()
     status = "✅ Активен" if filters.get("is_active", True) else "❌ Отключен"
     error_stats = error_logger.get_stats()
+    dup_stats = await get_duplicates_stats()
     
     await message.answer(
         f"📊 <b>Статистика</b>\n\n"
         f"📨 Отправлено объявлений: {count}\n"
         f"📡 Статус мониторинга: {status}\n"
         f"🌐 Источников: {len(DEFAULT_SOURCES)}\n\n"
+        f"🔍 <b>Дедупликация:</b>\n"
+        f"  • Уникальных объявлений: {dup_stats.get('unique_content', 0)}\n"
+        f"  • Групп дубликатов: {dup_stats.get('duplicate_groups', 0)}\n\n"
         f"⚠️ <b>Ошибки:</b> {error_stats['total_errors']}\n"
         f"⚡ <b>Предупреждения:</b> {error_stats['total_warnings']}",
         parse_mode=ParseMode.HTML
     )
+
+
+@router.message(Command("duplicates"))
+async def cmd_duplicates(message: Message):
+    """Показывает статистику по дубликатам"""
+    stats = await get_duplicates_stats()
+    
+    lines = ["🔍 <b>Статистика дубликатов</b>", ""]
+    lines.append(f"📨 Всего отправлено: {stats.get('total_sent', 0)}")
+    lines.append(f"🆔 Уникальных по контенту: {stats.get('unique_content', 0)}")
+    lines.append(f"👯 Групп дубликатов: {stats.get('duplicate_groups', 0)}")
+    lines.append("")
+    
+    # По источникам
+    if stats.get("by_source"):
+        lines.append("<b>По источникам:</b>")
+        for source, count in stats["by_source"].items():
+            lines.append(f"  • {source or 'неизвестно'}: {count}")
+        lines.append("")
+    
+    # Детали дубликатов
+    if stats.get("duplicate_details"):
+        lines.append("<b>Примеры дубликатов:</b>")
+        for dup in stats["duplicate_details"][:5]:
+            lines.append(f"  • Хеш {dup['hash'][:8]}...: {dup['count']} шт ({dup['sources']})")
+    
+    await message.answer("\n".join(lines), parse_mode=ParseMode.HTML)
+
+
+@router.message(Command("recent"))
+async def cmd_recent(message: Message):
+    """Показывает последние отправленные объявления"""
+    listings = await get_recent_listings(10)
+    
+    if not listings:
+        await message.answer("📭 Еще нет отправленных объявлений.")
+        return
+    
+    lines = ["📋 <b>Последние 10 отправленных объявлений:</b>", ""]
+    
+    for i, l in enumerate(listings, 1):
+        source = l.get("source", "?")
+        rooms = l.get("rooms", "?")
+        area = l.get("area", "?")
+        price = l.get("price", 0)
+        sent = l.get("sent_at", "")[:16] if l.get("sent_at") else "?"
+        
+        lines.append(f"{i}. [{source}] {rooms}к, {area}м², {price:,}".replace(",", " "))
+        lines.append(f"   🕐 {sent}")
+    
+    await message.answer("\n".join(lines), parse_mode=ParseMode.HTML)
 
 
 @router.message(Command("errors"))
