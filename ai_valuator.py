@@ -250,12 +250,62 @@ class AIValuator:
 }}"""
         return prompt
     
+    async def _download_image_base64(self, image_url: str) -> Optional[str]:
+        """Загружает изображение и конвертирует в base64"""
+        try:
+            async with self.session.get(image_url, timeout=aiohttp.ClientTimeout(total=5)) as resp:
+                if resp.status == 200:
+                    import base64
+                    image_data = await resp.read()
+                    base64_image = base64.b64encode(image_data).decode('utf-8')
+                    # Определяем тип изображения
+                    content_type = resp.headers.get('Content-Type', 'image/jpeg')
+                    return f"data:{content_type};base64,{base64_image}"
+        except Exception as e:
+            log_warning("ai_photo", f"Ошибка загрузки фото {image_url}: {e}")
+        return None
+    
     async def valuate_groq(self, listing: Listing) -> Optional[Dict[str, Any]]:
-        """Оценка через Groq API"""
+        """Оценка через Groq API с поддержкой анализа фото"""
         if not GROQ_API_KEY:
             return None
         
         prompt = self._prepare_prompt(listing)
+        
+        # Подготавливаем сообщение с фото (если есть)
+        user_content = []
+        
+        # Добавляем фото для анализа (максимум 3 первых фото)
+        photos_added = 0
+        if listing.photos:
+            for photo_url in listing.photos[:3]:  # Максимум 3 фото
+                if photos_added >= 3:
+                    break
+                base64_image = await self._download_image_base64(photo_url)
+                if base64_image:
+                    user_content.append({
+                        "type": "image_url",
+                        "image_url": {"url": base64_image}
+                    })
+                    photos_added += 1
+        
+        # Добавляем текстовый промпт
+        photo_prompt = ""
+        if photos_added > 0:
+            photo_prompt = f"\n\nВНИМАНИЕ: К сообщению прикреплены {photos_added} фото(графий) квартиры. Проанализируй их и оцени:\n"
+            photo_prompt += "- Состояние ремонта (отличное/хорошее/среднее/требует ремонта/плохое)\n"
+            photo_prompt += "- Качество отделки (если видно)\n"
+            photo_prompt += "- Общее состояние квартиры\n"
+            photo_prompt += "- Что видно на фото (мебель, техника, состояние стен/пола/потолка)\n"
+            photo_prompt += "Используй эту информацию для более точной оценки стоимости.\n"
+        
+        user_content.append({
+            "type": "text",
+            "text": prompt + photo_prompt
+        })
+        
+        # Используем vision модель если есть фото, иначе обычную
+        model_to_use = GROQ_VISION_MODEL if photos_added > 0 else GROQ_MODEL
         
         payload = {
             "messages": [
@@ -264,6 +314,7 @@ class AIValuator:
                     "content": """Ты профессиональный оценщик недвижимости с 10+ летним опытом работы на рынке Барановичей, Беларусь.
 Твоя задача - помочь пользователю принять правильное решение о покупке квартиры.
 Ты даешь детальные, полезные оценки с советами и рекомендациями.
+Если есть фото - внимательно анализируй их для оценки состояния ремонта и качества квартиры.
 Всегда отвечай ТОЛЬКО валидным JSON без дополнительного текста.
 Формат ответа: {
     "fair_price_usd": число,
@@ -274,9 +325,9 @@ class AIValuator:
     "value_score": число от 1 до 10
 }"""
                 },
-                {"role": "user", "content": prompt}
+                {"role": "user", "content": user_content if photos_added > 0 else prompt + photo_prompt}
             ],
-            "model": GROQ_MODEL,
+            "model": model_to_use,
             "temperature": 0.2,  # Снижена для более точных оценок
             "max_tokens": 600  # Увеличено для детальных ответов
         }
@@ -415,10 +466,17 @@ class AIValuator:
                 json_str = json_match.group(0)
                 result = json.loads(json_str)
                 
-                # Валидация результата
+                # Валидация результата (новые поля опциональны)
                 if "fair_price_usd" in result and isinstance(result["fair_price_usd"], (int, float)):
                     if "is_overpriced" in result and isinstance(result["is_overpriced"], bool):
                         if "assessment" in result and isinstance(result["assessment"], str):
+                            # Новые поля опциональны, но если есть - проверяем
+                            if "renovation_state" in result and not isinstance(result["renovation_state"], str):
+                                result["renovation_state"] = ""
+                            if "recommendations" in result and not isinstance(result["recommendations"], str):
+                                result["recommendations"] = ""
+                            if "value_score" in result and not isinstance(result["value_score"], (int, float)):
+                                result["value_score"] = 0
                             return result
                 
                 log_warning("ai_parser", f"Неполный JSON в ответе: {result}")
