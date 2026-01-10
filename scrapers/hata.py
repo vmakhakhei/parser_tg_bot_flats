@@ -80,14 +80,18 @@ class HataScraper(BaseScraper):
                 continue
             seen_ids.add(listing_id)
             
-            # Ищем заголовок вида "X-комнатная квартира на ул. YYY, Барановичи"
+            # Ищем заголовок вида "X-комнатная квартира на ул. YYY, Город"
             link_text = link.get_text(strip=True)
             if not link_text or 'квартир' not in link_text.lower():
                 continue
             
-            # Проверяем что это объявление в Барановичах
-            if 'барановичи' not in link_text.lower():
-                log_warning("hata", f"Пропускаем объявление не из Барановичей: {link_text[:50]}")
+            # Проверяем что объявление НЕ из другого города (Брест, Минск и т.д.)
+            # Объявления из Барановичей или без указания города - принимаем
+            other_cities = ['брест', 'минск', 'гродно', 'витебск', 'могилев', 'гомель']
+            is_other_city = any(city in link_text.lower() for city in other_cities) and 'барановичи' not in link_text.lower()
+            
+            if is_other_city:
+                log_warning("hata", f"Пропускаем объявление из другого города: {link_text[:50]}")
                 continue
             
             # Парсим детали из заголовка и окружающего текста

@@ -42,6 +42,7 @@ class KufarScraper(BaseScraper):
         """Получает список объявлений через API"""
         
         # Базовые параметры запроса (работающий формат из браузера)
+        # size=30 берем из пагинации сайта
         url = (
             f"{self.API_URL}"
             f"?cat=1010"  # Категория: квартиры
@@ -49,6 +50,7 @@ class KufarScraper(BaseScraper):
             f"&gtsy=country-belarus~province-brestskaja_oblast~locality-baranovichi"
             f"&typ=sell"  # Продажа
             f"&sort=lst.d"  # Сортировка по дате (новые первые)
+            f"&size=30"  # Количество объявлений на странице
         )
         
         log_info("kufar", f"Запрос API: {url}")
@@ -196,17 +198,16 @@ class KufarScraper(BaseScraper):
                         address += f", {house}"
                     address += ", Барановичи"
             
-            # Фото
+            # Фото - пока отключены из-за проблем с URL
+            # Kufar использует CDN с токенами, поэтому напрямую ссылки не работают
+            # TODO: исследовать правильный формат URL для фото
             photos = []
-            images = ad.get("images", [])
-            for img in images[:3]:
-                path = img.get("path", "")
-                if path:
-                    # Kufar использует rms.kufar.by для хранения фото
-                    # Формат: https://rms.kufar.by/v1/adim1/XXXXX.jpg
-                    media_storage = img.get("media_storage", "rms")
-                    photo_url = f"https://{media_storage}.kufar.by/v1/{path}"
-                    photos.append(photo_url)
+            # images = ad.get("images", [])
+            # for img in images[:3]:
+            #     path = img.get("path", "")
+            #     if path:
+            #         photo_url = f"https://rms.kufar.by/v1/{path}"
+            #         photos.append(photo_url)
             
             # Формируем заголовок
             title = f"{rooms}-комн., {area} м²" if rooms and area else "Квартира"
