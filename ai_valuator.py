@@ -1079,19 +1079,30 @@ class AIValuator:
         return None
     
     async def _select_best_gemini_detailed(self, prompt: str, inspected_listings: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-        """Выбирает лучшие варианты через Gemini API с детальным анализом"""
+        """Выбирает лучшие варианты через Gemini API - Gemini сам просматривает ссылки"""
         if not GEMINI_API_KEY:
             log_error("ai_select", "GEMINI_API_KEY не установлен")
             return []
         
+        # Используем Gemini с функцией для просмотра веб-страниц (если доступно)
+        # Или просто отправляем промпт с ссылками - Gemini может анализировать URL из текста
         payload = {
             "contents": [{
                 "parts": [{"text": prompt}]
             }],
             "generationConfig": {
-                "temperature": 0.3,
-                "maxOutputTokens": 2000  # Больше токенов для детальных описаний
-            }
+                "temperature": 0.2,
+                "maxOutputTokens": 1500
+            },
+            # Пробуем включить функцию просмотра веб-страниц (если поддерживается)
+            "tools": [{
+                "googleSearchRetrieval": {
+                    "dynamicRetrievalConfig": {
+                        "mode": "MODE_DYNAMIC",
+                        "dynamicThreshold": 0.3
+                    }
+                }
+            }]
         }
         
         # Используем актуальную модель (может быть изменена через fallback)
