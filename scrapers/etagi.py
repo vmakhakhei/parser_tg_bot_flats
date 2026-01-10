@@ -42,31 +42,24 @@ class EtagiScraper(BaseScraper):
     ) -> List[Listing]:
         """Получает список объявлений через API"""
         
-        # Формируем запрос к API
-        import urllib.parse
-        import json
+        # Используем точный формат запроса с сайта (protName=flatsOnMap)
+        # Декодированный фильтр: ["and",[["in|=","f.city_id",[3192]],["=","class","flats"],["=","status","active"],...]]
+        filter_str = '["and",[["in|=","f.city_id",[3192]],["=","class","flats"],["=","status","active"],[">=","f.la","0"],["<","f.la","80"],[">=","f.lo","0"],["<=","f.lo","180"],["inner","map_ne",null],["inner","map_sw",null],["inner","map_zm",null],["in","status",["active","sold"]]]]'
         
-        # Фильтр для получения квартир (без пробелов!)
-        filter_data = [
-            "and",
-            [
-                ["in|=", "f.city_id", [self.CITY_ID]],
-                ["=", "class", "flats"],
-                ["in", "status", ["active"]]
-            ]
-        ]
+        import urllib.parse
         
         params = {
-            "protName": "flats",
-            "filter": json.dumps(filter_data, separators=(',', ':')),  # Без пробелов
+            "protName": "flatsOnMap",
+            "filter": filter_str,
             "orderId": "default",
-            "limit": "50",
+            "limit": "all",
             "as": "f",
             "lang": "ru",
+            "caseFilters": "{}",
         }
         
         url = f"{self.API_URL}?{urllib.parse.urlencode(params)}"
-        log_info("etagi", f"Запрос API: {url[:100]}...")
+        log_info("etagi", f"Запрос API...")
         
         json_data = await self._fetch_json(url)
         if not json_data:
