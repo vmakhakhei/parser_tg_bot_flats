@@ -398,3 +398,37 @@ async def get_active_users() -> List[int]:
         rows = await cursor.fetchall()
         return [row[0] for row in rows]
 
+
+async def save_ai_selected_listings(user_id: int, selected_listings: List[Dict[str, Any]]):
+    """Сохраняет выбранные ИИ варианты для пользователя"""
+    async with aiosqlite.connect(DATABASE_PATH) as db:
+        # Удаляем старые записи для этого пользователя (оставляем только последние)
+        await db.execute("DELETE FROM ai_selected_listings WHERE user_id = ?", (user_id,))
+        
+        # Сохраняем новые выбранные варианты
+        for item in selected_listings:
+            listing = item.get("listing")
+            reason = item.get("reason", "")
+            if listing:
+                await db.execute("""
+                    INSERT OR REPLACE INTO ai_selected_listings (user_id, listing_id, reason, selected_at)
+                    VALUES (?, ?, ?, ?)
+                """, (user_id, listing.id, reason, datetime.now().isoformat()))
+        
+        await db.commit()
+
+
+async def get_ai_selected_listings(user_id: int) -> List[Dict[str, Any]]:
+    """Получает последние выбранные ИИ варианты для пользователя"""
+    async with aiosqlite.connect(DATABASE_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        cursor = await db.execute("""
+            SELECT listing_id, reason, selected_at 
+            FROM ai_selected_listings 
+            WHERE user_id = ? 
+            ORDER BY selected_at DESC 
+            LIMIT 10
+        """, (user_id,))
+        rows = await cursor.fetchall()
+        return [dict(row) for row in rows]
+
