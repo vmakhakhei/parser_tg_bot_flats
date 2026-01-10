@@ -57,6 +57,17 @@ async def main():
     await init_database()
     logger.info("✅ База данных инициализирована")
     
+    # Проверка ИИ-оценщика
+    try:
+        from ai_valuator import get_valuator
+        valuator = get_valuator()
+        if valuator:
+            logger.info(f"🤖 ИИ-оценщик настроен: {valuator.provider.upper()}")
+        else:
+            logger.info("⚠️ ИИ-оценщик не настроен (GROQ_API_KEY не указан)")
+    except Exception as e:
+        logger.warning(f"⚠️ ИИ-оценщик недоступен: {e}")
+    
     # Создание бота
     bot, dp = await create_bot()
     logger.info("✅ Бот создан")
