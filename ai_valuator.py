@@ -33,18 +33,20 @@ except ImportError:
 
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
 # Актуальные модели Gemini API (бесплатные):
-# Правильные названия для v1beta API:
-# Попробуем разные варианты названий моделей
-GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-1.5-flash")  # По умолчанию пробуем flash
+# Правильные названия для v1beta API (проверено через документацию):
+# Используем формат с суффиксом -latest или без него
+GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-1.5-flash-latest")  # По умолчанию пробуем flash-latest
 # Используем v1beta API
 GEMINI_API_URL = f"https://generativelanguage.googleapis.com/v1beta/models/{GEMINI_MODEL}:generateContent"
 
 # Список моделей для fallback (пробуем по очереди)
 GEMINI_FALLBACK_MODELS = [
+    "gemini-1.5-flash-latest",
+    "gemini-1.5-pro-latest",
     "gemini-1.5-flash",
-    "gemini-1.5-pro", 
+    "gemini-1.5-pro",
     "gemini-pro",
-    "gemini-1.0-pro"
+    "gemini-1.0-pro-latest"
 ]
 
 
