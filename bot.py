@@ -227,13 +227,15 @@ def _matches_user_filters(listing: Listing, filters: Dict[str, Any]) -> bool:
     if listing.price_usd:
         price = listing.price_usd
     elif listing.price_byn and not listing.price_usd:
-        # Конвертируем BYN в USD примерно
+        # Конвертируем BYN в USD примерно (курс ~2.95)
         price = int(listing.price_byn / 2.95)
     
+    # Проверяем цену только если она указана
     if price > 0:
         min_price = filters.get("min_price", 0)
-        max_price = filters.get("max_price", 100000)
+        max_price = filters.get("max_price", 1000000)  # Используем значение из фильтров или максимум
         if price < min_price or price > max_price:
+            log_info("filter", f"Не прошёл фильтр: {listing.rooms}к, ${price} (диапазон: ${min_price}-${max_price})")
             return False
     
     return True
@@ -413,13 +415,16 @@ async def cb_filters_done(callback: CallbackQuery):
     """Завершение настройки фильтров и отправка результатов"""
     user_id = callback.from_user.id
     
+    # Сразу отвечаем на callback чтобы избежать timeout
+    await callback.answer("Ищу объявления...")
+    
     user_filters = await get_user_filters(user_id)
     if not user_filters:
         # Устанавливаем дефолтные фильтры если их нет
         await set_user_filters(user_id)
         user_filters = await get_user_filters(user_id)
     
-    await callback.message.edit_text(
+    status_msg = await callback.message.answer(
         "🔍 <b>Ищу подходящие объявления...</b>\n\n"
         "Это может занять несколько секунд.",
         parse_mode=ParseMode.HTML
@@ -437,14 +442,15 @@ async def cb_filters_done(callback: CallbackQuery):
     )
     
     # Фильтруем по фильтрам пользователя
-    filtered_listings = [
-        l for l in listings 
-        if _matches_user_filters(l, user_filters) and not await is_listing_sent_to_user(user_id, l.id)
-    ]
+    filtered_listings = []
+    for l in listings:
+        if _matches_user_filters(l, user_filters):
+            if not await is_listing_sent_to_user(user_id, l.id):
+                filtered_listings.append(l)
     
     # Отправляем результаты
     if filtered_listings:
-        await callback.message.answer(
+        await status_msg.edit_text(
             f"✅ <b>Найдено {len(filtered_listings)} объявлений</b>\n\n"
             f"Отправляю результаты...",
             parse_mode=ParseMode.HTML
@@ -456,24 +462,22 @@ async def cb_filters_done(callback: CallbackQuery):
                 sent_count += 1
                 await asyncio.sleep(2)
         
-        await callback.message.answer(
+        await status_msg.edit_text(
             f"✅ <b>Готово!</b>\n\n"
             f"Отправлено {sent_count} объявлений.\n\n"
             f"Я буду автоматически присылать новые объявления каждые 10 минут, которые подходят под ваши фильтры.\n\n"
-            f"Используйте /filters чтобы изменить настройки.",
+            f"Используйте /start чтобы изменить настройки.",
             parse_mode=ParseMode.HTML
         )
     else:
-        await callback.message.answer(
+        await status_msg.edit_text(
             "😔 <b>Объявлений не найдено</b>\n\n"
             "Попробуйте изменить фильтры:\n"
             "• Расширьте диапазон цен\n"
             "• Измените количество комнат\n\n"
-            "Используйте /filters для изменения настроек.",
+            "Используйте /start для изменения настроек.",
             parse_mode=ParseMode.HTML
         )
-    
-    await callback.answer()
 
 
 @router.callback_query(F.data == "check_now")
@@ -481,12 +485,15 @@ async def cb_check_now(callback: CallbackQuery):
     """Принудительная проверка объявлений для пользователя"""
     user_id = callback.from_user.id
     
+    # Сразу отвечаем на callback
+    await callback.answer("Проверяю...")
+    
     user_filters = await get_user_filters(user_id)
     if not user_filters:
-        await callback.answer("Сначала настройте фильтры через /start", show_alert=True)
+        await callback.message.answer("Сначала настройте фильтры через /start")
         return
     
-    await callback.message.edit_text(
+    status_msg = await callback.message.answer(
         "🔍 <b>Проверяю новые объявления...</b>",
         parse_mode=ParseMode.HTML
     )
@@ -513,22 +520,27 @@ async def cb_check_now(callback: CallbackQuery):
                     new_listings.append(listing)
     
     if new_listings:
-        await callback.message.answer(
-            f"✅ <b>Найдено {len(new_listings)} новых объявлений</b>",
+        await status_msg.edit_text(
+            f"✅ <b>Найдено {len(new_listings)} новых объявлений</b>\n\nОтправляю...",
             parse_mode=ParseMode.HTML
         )
         
+        sent_count = 0
         for listing in new_listings[:20]:
-            await send_listing_to_user(callback.bot, user_id, listing)
-            await asyncio.sleep(2)
+            if await send_listing_to_user(callback.bot, user_id, listing):
+                sent_count += 1
+                await asyncio.sleep(2)
+        
+        await status_msg.edit_text(
+            f"✅ <b>Отправлено {sent_count} новых объявлений</b>",
+            parse_mode=ParseMode.HTML
+        )
     else:
-        await callback.message.answer(
+        await status_msg.edit_text(
             "📭 <b>Новых объявлений нет</b>\n\n"
             "Все подходящие объявления уже были отправлены ранее.",
             parse_mode=ParseMode.HTML
         )
-    
-    await callback.answer()
 
 
 @router.callback_query(F.data == "show_stats")

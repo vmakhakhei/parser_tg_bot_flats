@@ -155,14 +155,15 @@ class EtagiScraper(BaseScraper):
             # Конвертация BYN -> USD (курс ~2.95)
             price_usd = int(price_byn / 2.95) if price_byn else 0
             
-            # Фото - ищем img в контейнере
+            # Фото - временно отключено (требуют авторизацию или неверный формат)
             photos = []
-            for img in container.find_all('img', src=True)[:3]:
-                img_src = img.get('src', '')
-                if img_src and not any(x in img_src.lower() for x in ['sprite', 'icon', 'logo', 'placeholder']):
-                    if not img_src.startswith('http'):
-                        img_src = f"{self.BASE_URL}{img_src}"
-                    photos.append(img_src)
+            # TODO: Исправить парсинг фото Etagi
+            # for img in container.find_all('img', src=True)[:3]:
+            #     img_src = img.get('src', '')
+            #     if img_src and not any(x in img_src.lower() for x in ['sprite', 'icon', 'logo', 'placeholder']):
+            #         if not img_src.startswith('http'):
+            #             img_src = f"{self.BASE_URL}{img_src}"
+            #         photos.append(img_src)
             
             # Формируем заголовок
             title = f"{rooms}-комн., {area} м²" if rooms and area else "Квартира"
