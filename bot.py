@@ -340,6 +340,16 @@ async def check_new_listings_ai_mode(
     
     logger.info(f"Найдено {len(candidate_listings)} кандидатов для ИИ-анализа")
     
+    # Получаем предыдущие выбранные ИИ варианты для сравнения
+    previous_selected = await get_ai_selected_listings(user_id)
+    has_previous_selections = len(previous_selected) > 0
+    
+    # Если есть предыдущие выборы ИИ, оцениваем новые объявления и сравниваем
+    if has_previous_selections and AI_VALUATOR_AVAILABLE and valuate_listing:
+        logger.info(f"Найдено {len(previous_selected)} предыдущих выборов ИИ, оцениваю новые объявления...")
+        await evaluate_and_compare_new_listings(bot, user_id, candidate_listings, previous_selected, user_filters)
+        return
+    
     # Отправляем уведомление пользователю о начале анализа (сохраняем для редактирования)
     status_msg = None
     try:
