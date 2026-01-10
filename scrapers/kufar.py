@@ -41,33 +41,17 @@ class KufarScraper(BaseScraper):
     ) -> List[Listing]:
         """Получает список объявлений через API"""
         
-        # Строим параметры запроса
-        params = {
-            "cat": "1010",  # Категория: квартиры
-            "cur": "USD",
-            "gtsy": "country-belarus~province-brestskaja_oblast~locality-baranovichi",
-            "typ": "sell",  # Продажа
-            "size": "50",  # Количество объявлений
-            "sort": "lst.d",  # Сортировка по дате
-        }
+        # Базовые параметры запроса (работающий формат из браузера)
+        url = (
+            f"{self.API_URL}"
+            f"?cat=1010"  # Категория: квартиры
+            f"&cur=USD"
+            f"&gtsy=country-belarus~province-brestskaja_oblast~locality-baranovichi"
+            f"&typ=sell"  # Продажа
+            f"&sort=lst.d"  # Сортировка по дате (новые первые)
+        )
         
-        # Фильтр по комнатам
-        rooms_filter = []
-        for r in range(min_rooms, min(max_rooms + 1, 5)):
-            rooms_filter.append(str(r))
-        if max_rooms >= 5:
-            rooms_filter.append("5_and_more")
-        if rooms_filter:
-            params["rooms"] = ",".join(rooms_filter)
-        
-        # Фильтр по цене
-        if min_price > 0:
-            params["price_usd_from"] = str(min_price)
-        if max_price < 100000:
-            params["price_usd_to"] = str(max_price)
-        
-        # Формируем URL
-        url = self.API_URL + "?" + "&".join(f"{k}={v}" for k, v in params.items())
+        log_info("kufar", f"Запрос API: {url}")
         
         # Получаем JSON
         json_data = await self._fetch_json(url)
@@ -165,7 +149,10 @@ class KufarScraper(BaseScraper):
             # Этаж
             floor = ""
             floor_val = params.get("floor", "")
-            floors_val = params.get("floors", "")
+            floors_val = params.get("re_number_floors", "")
+            # floor может быть списком [1] или числом
+            if isinstance(floor_val, list) and floor_val:
+                floor_val = floor_val[0]
             if floor_val and floors_val:
                 floor = f"{floor_val}/{floors_val}"
             elif floor_val:
@@ -213,20 +200,13 @@ class KufarScraper(BaseScraper):
             photos = []
             images = ad.get("images", [])
             for img in images[:3]:
-                img_id = img.get("id") or img.get("path")
-                if img_id:
-                    # Kufar использует yams-storage для фото
-                    # Формат: https://yams-storage.kufar.by/v1/photos/XXXX/images/XX-detail.jpg
-                    if isinstance(img_id, str) and img_id.startswith("http"):
-                        photos.append(img_id)
-                    else:
-                        # Собираем URL из path
-                        path = img.get("path", "")
-                        if path:
-                            photo_url = f"https://yams-storage.kufar.by/v1/{path}"
-                            # Заменяем на большой размер
-                            photo_url = photo_url.replace("-small", "-gallery").replace("-preview", "-gallery")
-                            photos.append(photo_url)
+                path = img.get("path", "")
+                if path:
+                    # Kufar использует rms.kufar.by для хранения фото
+                    # Формат: https://rms.kufar.by/v1/adim1/XXXXX.jpg
+                    media_storage = img.get("media_storage", "rms")
+                    photo_url = f"https://{media_storage}.kufar.by/v1/{path}"
+                    photos.append(photo_url)
             
             # Формируем заголовок
             title = f"{rooms}-комн., {area} м²" if rooms and area else "Квартира"

@@ -40,7 +40,6 @@ class HataScraper(BaseScraper):
     ) -> List[Listing]:
         """Получает список объявлений"""
         
-        # Используем витрину для получения фото
         url = f"{self.BASE_URL}/sale-flat/"
         
         html = await self._fetch_html(url)
@@ -60,87 +59,84 @@ class HataScraper(BaseScraper):
         """Парсит HTML страницу витрины"""
         soup = BeautifulSoup(html, 'lxml')
         listings = []
+        seen_ids = set()
         
-        # На витрине объявления в блоках, которые содержат ссылку на /object/XXXXXX/
-        # Ищем все блоки с объявлениями (не рекламу новостроек!)
-        for link in soup.find_all('a', href=re.compile(r'/object/\d+/')):
-            # Пропускаем если это ссылка внутри рекламного блока
-            parent = link.find_parent()
-            if parent:
-                # Поднимаемся выше чтобы найти контейнер объявления
-                container = None
-                for _ in range(10):
-                    if parent.name == 'div' and parent.find('a', href=re.compile(r'/object/\d+/')):
-                        container = parent
-                    parent = parent.find_parent()
-                    if not parent:
-                        break
-                
-                if container:
-                    listing = self._parse_listing_container(container)
-                    if listing:
-                        if self._matches_filters(listing, min_rooms, max_rooms, min_price, max_price):
-                            # Проверяем что это Барановичи
-                            if 'барановичи' in listing.address.lower():
-                                # Проверяем что не дубликат
-                                if not any(l.id == listing.id for l in listings):
-                                    listings.append(listing)
+        # Ищем все ссылки на объявления формата /object/XXXXXX/
+        object_links = soup.find_all('a', href=re.compile(r'baranovichi\.hata\.by/object/\d+/'))
+        
+        for link in object_links:
+            href = link.get('href', '')
+            
+            # Извлекаем ID объявления
+            id_match = re.search(r'/object/(\d+)/', href)
+            if not id_match:
+                continue
+            
+            object_id = id_match.group(1)
+            listing_id = f"hata_{object_id}"
+            
+            # Пропускаем дубликаты
+            if listing_id in seen_ids:
+                continue
+            seen_ids.add(listing_id)
+            
+            # Ищем заголовок вида "X-комнатная квартира на ул. YYY, Барановичи"
+            link_text = link.get_text(strip=True)
+            if not link_text or 'квартир' not in link_text.lower():
+                continue
+            
+            # Проверяем что это объявление в Барановичах
+            if 'барановичи' not in link_text.lower():
+                log_warning("hata", f"Пропускаем объявление не из Барановичей: {link_text[:50]}")
+                continue
+            
+            # Парсим детали из заголовка и окружающего текста
+            listing = self._parse_listing_from_link(link, listing_id, href)
+            if listing:
+                if self._matches_filters(listing, min_rooms, max_rooms, min_price, max_price):
+                    listings.append(listing)
         
         log_info("hata", f"Найдено: {len(listings)} объявлений")
         return listings
     
-    def _parse_listing_container(self, container) -> Optional[Listing]:
-        """Парсит контейнер объявления"""
+    def _parse_listing_from_link(self, link, listing_id: str, url: str) -> Optional[Listing]:
+        """Парсит объявление из ссылки и окружающего контекста"""
         try:
-            # Находим ссылку на объявление
-            link = container.find('a', href=re.compile(r'/object/\d+/'))
-            if not link:
-                return None
+            title = link.get_text(strip=True)
             
-            url = link.get('href', '')
-            if not url.startswith('http'):
-                url = f"{self.BASE_URL}{url}"
+            # Поднимаемся к контейнеру объявления
+            container = link
+            for _ in range(15):
+                parent = container.find_parent()
+                if not parent:
+                    break
+                container = parent
+                # Проверяем что контейнер содержит цену и площадь
+                text = container.get_text()
+                if '$' in text and 'м' in text:
+                    break
             
-            # ID из URL
-            id_match = re.search(r'/object/(\d+)/', url)
-            if not id_match:
-                return None
-            listing_id = f"hata_{id_match.group(1)}"
-            
-            # Собираем весь текст контейнера
             text = container.get_text(separator=' ', strip=True)
             
-            # Проверяем что это не реклама новостройки
-            if any(x in text.lower() for x in ['акция', 'новостройк', 'жк ', 'жилой комплекс']):
+            # Пропускаем рекламу
+            if any(x in text.lower() for x in ['акция', 'новостройк', 'жк ', 'жилой комплекс', 'gastello', 'residence']):
                 return None
             
-            # Название/заголовок из ссылки
-            title_link = container.find('a', href=re.compile(r'/object/\d+/'), string=re.compile(r'квартир', re.I))
-            title = ""
-            if title_link:
-                title = title_link.get_text(strip=True)
-            
-            # Комнаты из заголовка или текста
+            # Комнаты
             rooms = 0
-            rooms_match = re.search(r'(\d+)\s*-?\s*комн', text, re.I)
+            rooms_match = re.search(r'(\d+)\s*-?\s*комн', title, re.I)
             if rooms_match:
                 rooms = int(rooms_match.group(1))
             
-            # Площадь - ищем формат "XX.X /YY/Z.Z м²" или просто "XX м²"
-            area = 0.0
-            # Сначала ищем формат с общей/жилой/кухней
-            area_match = re.search(r'(\d+[.,]?\d*)\s*/\d+[.,]?\d*/\d+[.,]?\d*\s*м', text)
-            if area_match:
-                area = float(area_match.group(1).replace(',', '.'))
-            else:
-                # Простой формат
-                area_match = re.search(r'(\d+[.,]?\d*)\s*м[²2]', text)
-                if area_match:
-                    area = float(area_match.group(1).replace(',', '.'))
+            # Адрес из заголовка: "X-комнатная квартира на ул. YYY ZZ, Барановичи"
+            address = "Барановичи"
+            addr_match = re.search(r'на\s+(ул\.\s*[^,]+(?:\s*\d+[^,]*)?),?\s*Барановичи', title, re.I)
+            if addr_match:
+                address = f"{addr_match.group(1)}, Барановичи"
             
-            # Цена - ищем формат "XX XXX $" 
+            # Цена - ищем формат "XX XXX $"
             price = 0
-            price_match = re.search(r'([\d\s]+)\s*\$', text)
+            price_match = re.search(r'(\d[\d\s]*\d)\s*\$', text)
             if price_match:
                 price_str = price_match.group(1).replace(' ', '').replace('\xa0', '')
                 try:
@@ -148,73 +144,65 @@ class HataScraper(BaseScraper):
                 except:
                     pass
             
-            # Адрес - ищем строку с "Барановичи" или "ул."
-            address = "Барановичи"
-            # Ищем полный адрес
-            addr_match = re.search(r'г\.\s*Барановичи[^,]*,?\s*ул\.\s*[^,]+(?:\s*д\.\s*\d+)?(?:\s*к\.\s*\w+)?', text)
-            if addr_match:
-                address = addr_match.group(0).strip()
+            # Площадь - ищем формат "XX.X /YY.Y/Z.Z м²"
+            area = 0.0
+            area_match = re.search(r'(\d+(?:[.,]\d+)?)\s*/\d+(?:[.,]\d+)?/\d+(?:[.,]\d+)?\s*м', text)
+            if area_match:
+                area = float(area_match.group(1).replace(',', '.'))
             else:
-                # Ищем только улицу
-                street_match = re.search(r'ул\.\s*([^,\d]+)\s*(?:д\.)?\s*(\d+)?', text)
-                if street_match:
-                    street = street_match.group(1).strip()
-                    num = street_match.group(2) or ""
-                    address = f"Барановичи, ул. {street} {num}".strip()
+                # Простой формат "XX м²"
+                area_match = re.search(r'(\d+(?:[.,]\d+)?)\s*м[²2]', text)
+                if area_match:
+                    area = float(area_match.group(1).replace(',', '.'))
             
-            # Этаж
+            # Этаж - ищем формат "X этаж (Y этажей)"
             floor = ""
-            floor_match = re.search(r'этаж\s*(\d+)\s*/\s*(\d+)|(\d+)\s*этаж\s*\(?(\d+)', text, re.I)
+            floor_match = re.search(r'(\d+)\s*этаж\s*\((\d+)\s*этаж', text)
             if floor_match:
-                if floor_match.group(1):
-                    floor = f"{floor_match.group(1)}/{floor_match.group(2)} этаж"
-                else:
-                    floor = f"{floor_match.group(3)}/{floor_match.group(4)} этаж"
-            else:
-                # Другой формат: "(этаж 2 / 4)"
-                floor_match2 = re.search(r'\(этаж\s*(\d+)\s*/\s*(\d+)\)', text, re.I)
-                if floor_match2:
-                    floor = f"{floor_match2.group(1)}/{floor_match2.group(2)} этаж"
+                floor = f"{floor_match.group(1)}/{floor_match.group(2)}"
             
             # Год постройки
-            year = ""
-            year_match = re.search(r'(\d{4})\s*(?:год|г\.?\s*п)', text)
-            if year_match:
-                year = year_match.group(1)
+            year_match = re.search(r'(\d{4})\s*год', text)
+            year = year_match.group(1) if year_match else ""
+            if year:
+                floor = f"{floor}, {year}" if floor else year
             
             # Фото - ищем img в контейнере
             photos = []
-            for img in container.find_all('img', src=True)[:5]:
+            for img in container.find_all('img', src=True)[:10]:
                 img_src = img.get('src') or img.get('data-src') or img.get('data-lazy')
-                if img_src:
-                    # Пропускаем служебные картинки
-                    skip_patterns = ['sprite', 'icon', 'logo', 'no-photo', 'placeholder', 
-                                   'spacer', 'blank', 'pixel', 'tracking', '.svg']
-                    if any(p in img_src.lower() for p in skip_patterns):
-                        continue
-                    
-                    # Проверяем что это картинка объекта (обычно содержит размер или object)
-                    if not img_src.startswith('http'):
+                if not img_src:
+                    continue
+                
+                # Пропускаем служебные картинки
+                skip_patterns = ['sprite', 'icon', 'logo', 'no-photo', 'placeholder', 
+                               'spacer', 'blank', 'pixel', 'tracking', '.svg', '#']
+                if any(p in img_src.lower() for p in skip_patterns):
+                    continue
+                
+                # Нормализуем URL
+                if not img_src.startswith('http'):
+                    if img_src.startswith('//'):
+                        img_src = f"https:{img_src}"
+                    else:
                         img_src = f"https://baranovichi.hata.by{img_src}"
-                    
-                    # Hata.by использует формат /img/XXXXX/YYYxZZZ/
-                    if '/img/' in img_src or 'hata.by' in img_src:
-                        # Заменяем превью на большое фото
-                        img_src = re.sub(r'/\d+x\d+/', '/800x600/', img_src)
+                
+                # Hata.by использует формат /img/XXXXX/YYYxZZZ/
+                if '/img/' in img_src or 'hata.by' in img_src:
+                    # Заменяем превью на большое фото
+                    img_src = re.sub(r'/\d+x\d+/', '/800x600/', img_src)
+                    if img_src not in photos:
                         photos.append(img_src)
                         if len(photos) >= 3:
                             break
             
-            # Формируем заголовок
-            if not title:
-                title = f"{rooms}-комн. квартира" if rooms else "Квартира"
-                if area:
-                    title += f", {area} м²"
+            # Формируем финальный заголовок
+            display_title = title if title else f"{rooms}-комн. квартира, {area} м²"
             
             return Listing(
                 id=listing_id,
                 source="Hata.by",
-                title=title,
+                title=display_title,
                 price=price,
                 price_formatted=f"${price:,}".replace(",", " ") if price else "Цена не указана",
                 rooms=rooms,
