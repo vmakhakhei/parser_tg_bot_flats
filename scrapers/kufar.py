@@ -3,8 +3,25 @@
 """
 import re
 import json
+import sys
+import os
 from typing import List, Optional
+
+# Добавляем родительскую директорию в path для импорта
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 from scrapers.base import BaseScraper, Listing
+
+# Импортируем error_logger если доступен
+try:
+    from error_logger import log_error, log_warning, log_info
+except ImportError:
+    def log_error(source, message, exception=None):
+        print(f"[ERROR] [{source}] {message}: {exception}")
+    def log_warning(source, message):
+        print(f"[WARN] [{source}] {message}")
+    def log_info(source, message):
+        print(f"[INFO] [{source}] {message}")
 
 
 class KufarScraper(BaseScraper):
@@ -77,10 +94,10 @@ class KufarScraper(BaseScraper):
                     if response.status == 200:
                         return await response.json()
                     else:
-                        print(f"[kufar] API ошибка: {response.status}")
+                        log_warning("kufar", f"API ответил кодом {response.status}")
                         return None
         except Exception as e:
-            print(f"[kufar] Ошибка запроса: {e}")
+            log_error("kufar", f"Ошибка API запроса", e)
             return None
     
     def _parse_api_response(
@@ -103,7 +120,7 @@ class KufarScraper(BaseScraper):
                 if self._matches_filters(listing, min_rooms, max_rooms, min_price, max_price):
                     listings.append(listing)
         
-        print(f"[kufar] Найдено: {len(listings)} объявлений")
+        log_info("kufar", f"Найдено: {len(listings)} объявлений")
         return listings
     
     def _parse_ad(self, ad: dict) -> Optional[Listing]:
@@ -232,7 +249,7 @@ class KufarScraper(BaseScraper):
             )
             
         except Exception as e:
-            print(f"[Kufar] Ошибка парсинга объявления: {e}")
+            log_error("kufar", f"Ошибка парсинга объявления", e)
             return None
     
     def _matches_filters(

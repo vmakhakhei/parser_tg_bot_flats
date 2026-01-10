@@ -22,6 +22,7 @@ from database import (
 )
 from scrapers.aggregator import ListingsAggregator
 from scrapers.base import Listing
+from error_logger import error_logger, log_error, log_warning, log_info
 
 # Логирование
 logging.basicConfig(
@@ -101,7 +102,7 @@ async def send_listing_to_channel(bot: Bot, listing: Listing) -> bool:
         return True
         
     except Exception as e:
-        logger.error(f"Ошибка отправки объявления {listing.id}: {e}")
+        error_logger.log_error("bot", f"Ошибка отправки объявления {listing.id}", e)
         return False
 
 
@@ -164,7 +165,11 @@ async def cmd_start(message: Message):
         "/stop_monitoring - Выключить мониторинг\n"
         "/check - Проверить новые объявления сейчас\n"
         "/sources - Список источников\n"
-        "/stats - Статистика\n"
+        "/stats - Статистика\n\n"
+        "🔧 <b>Отладка:</b>\n"
+        "/errors - Показать последние ошибки\n"
+        "/logs - Все логи (ошибки + предупреждения)\n"
+        "/clearerrors - Очистить логи ошибок\n"
         "/help - Помощь",
         parse_mode=ParseMode.HTML
     )
@@ -341,14 +346,113 @@ async def cmd_stats(message: Message):
     count = await get_sent_listings_count()
     filters = await get_filters()
     status = "✅ Активен" if filters.get("is_active", True) else "❌ Отключен"
+    error_stats = error_logger.get_stats()
     
     await message.answer(
         f"📊 <b>Статистика</b>\n\n"
         f"📨 Отправлено объявлений: {count}\n"
         f"📡 Статус мониторинга: {status}\n"
-        f"🌐 Источников: {len(DEFAULT_SOURCES)}",
+        f"🌐 Источников: {len(DEFAULT_SOURCES)}\n\n"
+        f"⚠️ <b>Ошибки:</b> {error_stats['total_errors']}\n"
+        f"⚡ <b>Предупреждения:</b> {error_stats['total_warnings']}",
         parse_mode=ParseMode.HTML
     )
+
+
+@router.message(Command("errors"))
+async def cmd_errors(message: Message):
+    """Показывает последние ошибки"""
+    errors = error_logger.get_errors(limit=15)
+    
+    if not errors:
+        await message.answer("✅ Ошибок нет! Все работает отлично.")
+        return
+    
+    # Формируем сообщение
+    text = "🚨 <b>Последние ошибки:</b>\n\n"
+    
+    for i, err in enumerate(reversed(errors), 1):
+        timestamp = err.get("timestamp", "")
+        source = err.get("source", "unknown")
+        msg = err.get("message", "")
+        exc = err.get("exception", "")
+        
+        text += f"<b>{i}.</b> [{source}] {timestamp}\n"
+        text += f"   📝 {msg[:100]}\n"
+        if exc:
+            text += f"   ⚠️ <code>{exc[:150]}</code>\n"
+        text += "\n"
+    
+    # Telegram ограничивает длину сообщения
+    if len(text) > 4000:
+        text = text[:4000] + "\n\n... (сокращено)"
+    
+    await message.answer(text, parse_mode=ParseMode.HTML)
+
+
+@router.message(Command("warnings"))
+async def cmd_warnings(message: Message):
+    """Показывает последние предупреждения"""
+    warnings = error_logger.get_warnings(limit=10)
+    
+    if not warnings:
+        await message.answer("✅ Предупреждений нет!")
+        return
+    
+    text = "⚡ <b>Последние предупреждения:</b>\n\n"
+    
+    for i, warn in enumerate(reversed(warnings), 1):
+        timestamp = warn.get("timestamp", "")
+        source = warn.get("source", "unknown")
+        msg = warn.get("message", "")
+        
+        text += f"<b>{i}.</b> [{source}] {timestamp}\n"
+        text += f"   📝 {msg[:100]}\n\n"
+    
+    await message.answer(text, parse_mode=ParseMode.HTML)
+
+
+@router.message(Command("clearerrors"))
+async def cmd_clear_errors(message: Message):
+    """Очищает все логи ошибок"""
+    error_logger.clear()
+    await message.answer("🗑 Все логи ошибок очищены!")
+
+
+@router.message(Command("logs"))
+async def cmd_logs(message: Message):
+    """Показывает все последние логи"""
+    logs = error_logger.get_all_logs(limit=20)
+    stats = error_logger.get_stats()
+    
+    if not logs:
+        await message.answer("📋 Логов пока нет.")
+        return
+    
+    text = f"📋 <b>Последние логи</b>\n"
+    text += f"Ошибок: {stats['total_errors']} | Предупреждений: {stats['total_warnings']}\n\n"
+    
+    # По источникам
+    if stats['errors_by_source']:
+        text += "<b>Ошибки по источникам:</b>\n"
+        for source, count in stats['errors_by_source'].items():
+            text += f"  • {source}: {count}\n"
+        text += "\n"
+    
+    text += "<b>Последние записи:</b>\n\n"
+    
+    for log in logs[:15]:
+        timestamp = log.get("timestamp", "")[-8:]  # Только время
+        source = log.get("source", "?")
+        msg = log.get("message", "")[:60]
+        log_type = "🔴" if log.get("type") == "error" else "🟡"
+        
+        text += f"{log_type} <code>{timestamp}</code> [{source}]\n   {msg}\n"
+    
+    if len(text) > 4000:
+        text = text[:4000] + "\n..."
+    
+    await message.answer(text, parse_mode=ParseMode.HTML)
 
 
 async def create_bot() -> tuple[Bot, Dispatcher]:

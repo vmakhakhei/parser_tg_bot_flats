@@ -2,9 +2,26 @@
 Парсер для Hata.by (baranovichi.hata.by)
 """
 import re
+import sys
+import os
 from typing import List, Optional
 from bs4 import BeautifulSoup
+
+# Добавляем родительскую директорию в path для импорта
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 from scrapers.base import BaseScraper, Listing
+
+# Импортируем error_logger если доступен
+try:
+    from error_logger import log_error, log_warning, log_info
+except ImportError:
+    def log_error(source, message, exception=None):
+        print(f"[ERROR] [{source}] {message}: {exception}")
+    def log_warning(source, message):
+        print(f"[WARN] [{source}] {message}")
+    def log_info(source, message):
+        print(f"[INFO] [{source}] {message}")
 
 
 class HataScraper(BaseScraper):
@@ -69,7 +86,7 @@ class HataScraper(BaseScraper):
                                 if not any(l.id == listing.id for l in listings):
                                     listings.append(listing)
         
-        print(f"[hata] Найдено: {len(listings)} объявлений")
+        log_info("hata", f"Найдено: {len(listings)} объявлений")
         return listings
     
     def _parse_listing_container(self, container) -> Optional[Listing]:
@@ -209,7 +226,7 @@ class HataScraper(BaseScraper):
             )
             
         except Exception as e:
-            print(f"[Hata] Ошибка парсинга: {e}")
+            log_error("hata", f"Ошибка парсинга объявления", e)
             return None
     
     def _matches_filters(

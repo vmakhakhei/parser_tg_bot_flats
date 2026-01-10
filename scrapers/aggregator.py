@@ -2,7 +2,13 @@
 Агрегатор всех парсеров - собирает объявления со всех источников
 """
 import asyncio
+import sys
+import os
 from typing import List, Dict, Any, Optional
+
+# Добавляем родительскую директорию в path для импорта
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 from scrapers.base import Listing
 from scrapers.kufar import KufarScraper
 from scrapers.realt import RealtByScraper
@@ -11,6 +17,18 @@ from scrapers.onliner import OnlinerRealtScraper
 from scrapers.gohome import GoHomeScraper
 from scrapers.hata import HataScraper
 from scrapers.etagi import EtagiScraper
+
+# Импортируем error_logger если доступен
+try:
+    from error_logger import log_error, log_warning, log_info
+except ImportError:
+    # Fallback если модуль недоступен
+    def log_error(source, message, exception=None):
+        print(f"[ERROR] [{source}] {message}: {exception}")
+    def log_warning(source, message):
+        print(f"[WARN] [{source}] {message}")
+    def log_info(source, message):
+        print(f"[INFO] [{source}] {message}")
 
 
 class ListingsAggregator:
@@ -75,10 +93,10 @@ class ListingsAggregator:
         # Обрабатываем результаты
         for source_name, result in zip(source_names, results):
             if isinstance(result, Exception):
-                print(f"[{source_name}] Ошибка: {result}")
+                log_error(source_name, f"Ошибка парсинга", result)
             elif isinstance(result, list):
                 all_listings.extend(result)
-                print(f"[{source_name}] Найдено: {len(result)} объявлений")
+                log_info(source_name, f"Найдено: {len(result)} объявлений")
         
         # Удаляем дубликаты по ID
         unique_listings = self._remove_duplicates(all_listings)
@@ -109,7 +127,7 @@ class ListingsAggregator:
                 )
                 return listings
         except Exception as e:
-            print(f"[{scraper.SOURCE_NAME}] Ошибка получения данных: {e}")
+            log_error(scraper.SOURCE_NAME, f"Ошибка получения данных", e)
             return []
     
     def _remove_duplicates(self, listings: List[Listing]) -> List[Listing]:
