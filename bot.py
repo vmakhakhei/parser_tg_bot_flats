@@ -38,10 +38,10 @@ logger = logging.getLogger(__name__)
 router = Router()
 
 # Список источников по умолчанию (работающие парсеры)
-# kufar - Kufar.by API
-# hata - Hata.by HTML парсинг
-# etagi - Etagi.com HTML парсинг
-DEFAULT_SOURCES = ["kufar", "hata", "etagi"]
+# kufar - Kufar.by API (30 объявлений)
+# hata - Hata.by HTML парсинг (3-5 объявлений)
+# etagi - Etagi.com (временно отключен - API требует авторизацию)
+DEFAULT_SOURCES = ["kufar", "hata"]
 
 
 def format_listing_message(listing: Listing) -> str:
@@ -258,7 +258,7 @@ async def cmd_sources(message: Message):
     sources = [
         ("Kufar.by", "kufar", "крупнейшая доска объявлений Беларуси"),
         ("Hata.by", "hata", "региональные объявления"),
-        ("Etagi.com", "etagi", "агентство недвижимости"),
+        ("Etagi.com", "etagi", "агентство (API требует авторизацию)"),
         ("Realt.by", "realt", "портал недвижимости (SPA - не поддерживается)"),
         ("Domovita.by", "domovita", "недвижимость (нет данных для Барановичей)"),
         ("Onliner.by", "onliner", "популярный портал (не поддерживается)"),
