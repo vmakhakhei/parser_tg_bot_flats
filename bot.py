@@ -86,14 +86,41 @@ def format_listing_message(listing: Listing, ai_valuation: Optional[Dict[str, An
         fair_price = ai_valuation.get("fair_price_usd", 0)
         is_overpriced = ai_valuation.get("is_overpriced", False)
         assessment = ai_valuation.get("assessment", "")
+        renovation_state = ai_valuation.get("renovation_state", "")
+        recommendations = ai_valuation.get("recommendations", "")
+        value_score = ai_valuation.get("value_score", 0)
         
         if fair_price > 0:
             price_status = "🔴 Завышена" if is_overpriced else "🟢 Справедлива"
-            price_emoji = "🔴" if is_overpriced else "🟢"
             lines.append("")
             lines.append(f"🤖 <b>ИИ-оценка:</b> ${fair_price:,} {price_status}".replace(",", " "))
+            
+            # Оценка соотношения цена/качество
+            if value_score > 0:
+                score_emoji = "⭐" * min(value_score, 5)  # До 5 звезд
+                lines.append(f"⭐ <b>Оценка:</b> {value_score}/10 {score_emoji}")
+            
+            # Состояние ремонта
+            if renovation_state:
+                renovation_emoji = {
+                    "отличное": "✨",
+                    "хорошее": "✅",
+                    "среднее": "⚪",
+                    "требует ремонта": "⚠️",
+                    "плохое": "❌"
+                }.get(renovation_state.lower(), "📋")
+                lines.append(f"{renovation_emoji} <b>Ремонт:</b> {renovation_state}")
+            
+            # Детальная оценка
             if assessment:
                 lines.append(f"💡 <i>{assessment}</i>")
+            
+            # Рекомендации
+            if recommendations:
+                lines.append("")
+                lines.append(f"📋 <b>Рекомендации:</b>")
+                lines.append(f"<i>{recommendations}</i>")
+            
             lines.append("")
     
     # Цена за м² (вычисляется автоматически в Listing.__post_init__)
