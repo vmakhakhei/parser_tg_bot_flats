@@ -1,0 +1,22 @@
+# Переименуйте этот файл в .env и заполните значения
+
+# Telegram Bot Token (получить у @BotFather)
+BOT_TOKEN=your_bot_token_here
+
+# ID канала для отправки объявлений (например: -1001234567890)
+# Чтобы узнать ID канала, добавьте бота @getidsbot в канал
+CHANNEL_ID=-1001234567890
+
+# Интервал проверки новых объявлений (в минутах)
+CHECK_INTERVAL=10
+
+# Настройки фильтров по умолчанию
+DEFAULT_CITY=барановичи
+DEFAULT_MIN_ROOMS=1
+DEFAULT_MAX_ROOMS=4
+DEFAULT_MIN_PRICE=0
+DEFAULT_MAX_PRICE=100000
+
+# Количество фотографий в сообщении (1-3)
+MAX_PHOTOS=3
+
