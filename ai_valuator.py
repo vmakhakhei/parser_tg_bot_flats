@@ -1200,40 +1200,100 @@ class AIValuator:
     def _parse_selection_response_detailed(self, content: str, inspected_listings: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         """Парсит детальный ответ ИИ с описаниями"""
         try:
-            # Ищем JSON в ответе
-            json_match = re.search(r'\{[^{}]*"selected"[^{}]*\}', content, re.DOTALL)
-            if json_match:
-                json_str = json_match.group(0)
-                result = json.loads(json_str)
-                selected = result.get("selected", [])
+            # Пробуем найти JSON объект с "selected" массивом
+            # Ищем начало JSON (может быть с markdown code blocks)
+            json_start_patterns = [
+                r'```json\s*(\{.*?\})\s*```',  # JSON в markdown блоке
+                r'```\s*(\{.*?\})\s*```',      # JSON в обычном блоке
+                r'(\{[^{}]*"selected"[^{}]*\[.*?\][^{}]*\})',  # JSON с массивом selected
+            ]
+            
+            json_str = None
+            for pattern in json_start_patterns:
+                json_match = re.search(pattern, content, re.DOTALL)
+                if json_match:
+                    json_str = json_match.group(1)
+                    break
+            
+            # Если не нашли через паттерны, пытаемся найти любой JSON объект
+            if not json_str:
+                # Ищем JSON объект, который содержит "selected"
+                brace_count = 0
+                start_idx = content.find('{"selected"')
+                if start_idx == -1:
+                    start_idx = content.find('{"selected"')
                 
-                # Формируем результат
-                result_list = []
-                for item in selected:
-                    listing_id = item.get("id", "")
-                    reason = item.get("reason", "Хорошее соотношение цена-качество")
+                if start_idx != -1:
+                    json_str = ""
+                    for i in range(start_idx, len(content)):
+                        char = content[i]
+                        json_str += char
+                        if char == '{':
+                            brace_count += 1
+                        elif char == '}':
+                            brace_count -= 1
+                            if brace_count == 0:
+                                break
+            
+            if json_str:
+                try:
+                    result = json.loads(json_str)
+                    selected = result.get("selected", [])
                     
-                    # Находим соответствующее объявление
-                    for inspected in inspected_listings:
-                        if inspected["listing"].id == listing_id:
-                            result_list.append({
-                                "listing": inspected["listing"],
-                                "reason": reason
-                            })
-                            break
-                
-                if result_list:
-                    log_info("ai_select", f"Найдено {len(result_list)} вариантов с описаниями")
-                    return result_list
+                    log_info("ai_select", f"Найдено {len(selected)} элементов в JSON ответе")
+                    
+                    # Формируем результат
+                    result_list = []
+                    for item in selected:
+                        listing_id = item.get("id", "")
+                        reason = item.get("reason", "Хорошее соотношение цена-качество")
+                        
+                        if not listing_id:
+                            log_warning("ai_select", f"Пропускаю элемент без ID: {item}")
+                            continue
+                        
+                        # Находим соответствующее объявление
+                        found = False
+                        for inspected in inspected_listings:
+                            if inspected["listing"].id == listing_id:
+                                result_list.append({
+                                    "listing": inspected["listing"],
+                                    "reason": reason
+                                })
+                                found = True
+                                log_info("ai_select", f"✅ Найден вариант: {listing_id} - {reason[:50]}...")
+                                break
+                        
+                        if not found:
+                            log_warning("ai_select", f"Не найден listing для ID: {listing_id}")
+                    
+                    if result_list:
+                        log_info("ai_select", f"✅ Успешно распарсено {len(result_list)} вариантов с описаниями")
+                        return result_list
+                    else:
+                        log_warning("ai_select", f"Не удалось найти ни одного валидного варианта в JSON")
+                except json.JSONDecodeError as e:
+                    log_error("ai_select", f"Ошибка парсинга JSON: {e}, JSON: {json_str[:200]}")
             
             # Fallback: пытаемся найти ID в тексте
+            log_info("ai_select", "Пробую fallback парсинг по ID в тексте")
             all_ids = [item["listing"].id for item in inspected_listings]
             found_items = []
             for listing_id in all_ids:
                 if listing_id in content:
                     # Ищем описание рядом с ID
-                    reason_match = re.search(f'{re.escape(listing_id)}[^"]*"reason":\\s*"([^"]+)"', content)
-                    reason = reason_match.group(1) if reason_match else "Хорошее соотношение цена-качество"
+                    reason_patterns = [
+                        f'{re.escape(listing_id)}[^"]*"reason":\\s*"([^"]+)"',
+                        f'{re.escape(listing_id)}.*?reason[^:]*:\\s*"([^"]+)"',
+                        f'{re.escape(listing_id)}.*?причина[^:]*:\\s*"([^"]+)"',
+                    ]
+                    
+                    reason = "Хорошее соотношение цена-качество"
+                    for pattern in reason_patterns:
+                        reason_match = re.search(pattern, content, re.IGNORECASE | re.DOTALL)
+                        if reason_match:
+                            reason = reason_match.group(1)
+                            break
                     
                     for inspected in inspected_listings:
                         if inspected["listing"].id == listing_id:
@@ -1241,10 +1301,11 @@ class AIValuator:
                                 "listing": inspected["listing"],
                                 "reason": reason
                             })
+                            log_info("ai_select", f"✅ Fallback: найден вариант {listing_id}")
                             break
             
             if found_items:
-                log_info("ai_select", f"Найдено через fallback: {len(found_items)}")
+                log_info("ai_select", f"✅ Найдено через fallback: {len(found_items)} вариантов")
                 return found_items[:5]
             
         except json.JSONDecodeError as e:
