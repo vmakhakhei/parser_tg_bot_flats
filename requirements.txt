@@ -1,6 +1,5 @@
 # Telegram Bot
-python-telegram-bot==20.7
-aiogram==3.3.0
+aiogram==3.4.1
 
 # Web Scraping
 aiohttp==3.9.1
@@ -16,9 +15,5 @@ python-dotenv==1.0.0
 # Scheduling
 apscheduler==3.10.4
 
-# Image Processing
-Pillow==10.1.0
-
 # Utilities
 fake-useragent==1.4.0
-

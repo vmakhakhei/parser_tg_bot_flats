@@ -10,7 +10,6 @@ from aiogram.types import Message, InputMediaPhoto, CallbackQuery
 from aiogram.filters import Command, CommandStart
 from aiogram.enums import ParseMode
 from aiogram.utils.keyboard import InlineKeyboardBuilder
-from aiogram.client.default import DefaultBotProperties
 
 from config import BOT_TOKEN, CHANNEL_ID, MAX_PHOTOS
 from database import (
@@ -356,10 +355,7 @@ async def create_bot() -> tuple[Bot, Dispatcher]:
     if not BOT_TOKEN:
         raise ValueError("BOT_TOKEN не установлен! Проверьте файл .env")
     
-    bot = Bot(
-        token=BOT_TOKEN,
-        default=DefaultBotProperties(parse_mode=ParseMode.HTML)
-    )
+    bot = Bot(token=BOT_TOKEN, parse_mode=ParseMode.HTML)
     
     dp = Dispatcher()
     dp.include_router(router)
