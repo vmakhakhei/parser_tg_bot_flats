@@ -438,7 +438,7 @@ async def cmd_filters(message: Message):
     builder = InlineKeyboardBuilder()
     builder.button(text="🚪 Комнаты", callback_data="filter_rooms")
     builder.button(text="💰 Цена", callback_data="filter_price")
-    builder.button(text="🔄 Сбросить", callback_data="filter_reset")
+    builder.button(text="🔄 Сброс", callback_data="filter_reset")
     builder.adjust(2, 1)
     
     await message.answer(
@@ -706,11 +706,11 @@ async def cb_user_filter_price(callback: CallbackQuery):
     current_max = user_filters.get("max_price", 100000) if user_filters else 100000
     
     builder = InlineKeyboardBuilder()
-    builder.button(text="💰 Цена ОТ", callback_data="user_price_min")
-    builder.button(text="💰 Цена ДО", callback_data="user_price_max")
+    builder.button(text="💰 От", callback_data="user_price_min")
+    builder.button(text="💰 До", callback_data="user_price_max")
     builder.row()
     builder.button(text="✅ Готово", callback_data="setup_filters")
-    builder.button(text="🔄 Сбросить", callback_data="user_price_reset")
+    builder.button(text="🔄 Сброс", callback_data="user_price_reset")
     
     await callback.message.edit_text(
         f"💰 <b>Настройка цены (USD)</b>\n\n"
@@ -820,11 +820,11 @@ async def process_min_price_input(message: Message, state: FSMContext):
         current_max = user_filters.get("max_price", 100000)
         
         builder = InlineKeyboardBuilder()
-        builder.button(text="💰 Цена ОТ", callback_data="user_price_min")
-        builder.button(text="💰 Цена ДО", callback_data="user_price_max")
+        builder.button(text="💰 От", callback_data="user_price_min")
+        builder.button(text="💰 До", callback_data="user_price_max")
         builder.row()
         builder.button(text="✅ Готово", callback_data="setup_filters")
-        builder.button(text="🔄 Сбросить", callback_data="user_price_reset")
+        builder.button(text="🔄 Сброс", callback_data="user_price_reset")
         
         await message.answer(
             f"💰 <b>Настройка цены (USD)</b>\n\n"
@@ -898,11 +898,11 @@ async def process_max_price_input(message: Message, state: FSMContext):
         current_max = user_filters.get("max_price", 100000)
         
         builder = InlineKeyboardBuilder()
-        builder.button(text="💰 Цена ОТ", callback_data="user_price_min")
-        builder.button(text="💰 Цена ДО", callback_data="user_price_max")
+        builder.button(text="💰 От", callback_data="user_price_min")
+        builder.button(text="💰 До", callback_data="user_price_max")
         builder.row()
         builder.button(text="✅ Готово", callback_data="setup_filters")
-        builder.button(text="🔄 Сбросить", callback_data="user_price_reset")
+        builder.button(text="🔄 Сброс", callback_data="user_price_reset")
         
         await message.answer(
             f"💰 <b>Настройка цены (USD)</b>\n\n"
@@ -1045,7 +1045,7 @@ async def cb_filter_back(callback: CallbackQuery):
     builder = InlineKeyboardBuilder()
     builder.button(text="🚪 Комнаты", callback_data="filter_rooms")
     builder.button(text="💰 Цена", callback_data="filter_price")
-    builder.button(text="🔄 Сбросить", callback_data="filter_reset")
+    builder.button(text="🔄 Сброс", callback_data="filter_reset")
     builder.adjust(2, 1)
     
     await callback.message.edit_text(
