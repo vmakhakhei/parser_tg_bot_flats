@@ -1084,8 +1084,9 @@ class AIValuator:
             log_error("ai_select", "GEMINI_API_KEY не установлен")
             return []
         
-        # Используем Gemini с функцией для просмотра веб-страниц (если доступно)
-        # Или просто отправляем промпт с ссылками - Gemini может анализировать URL из текста
+        # Отправляем промпт с ссылками - Gemini может анализировать URL из текста
+        # Примечание: Gemini API не поддерживает прямой просмотр веб-страниц через URL,
+        # но мы отправляем ссылки в тексте и просим Gemini их проанализировать
         payload = {
             "contents": [{
                 "parts": [{"text": prompt}]
@@ -1093,16 +1094,7 @@ class AIValuator:
             "generationConfig": {
                 "temperature": 0.2,
                 "maxOutputTokens": 1500
-            },
-            # Пробуем включить функцию просмотра веб-страниц (если поддерживается)
-            "tools": [{
-                "googleSearchRetrieval": {
-                    "dynamicRetrievalConfig": {
-                        "mode": "MODE_DYNAMIC",
-                        "dynamicThreshold": 0.3
-                    }
-                }
-            }]
+            }
         }
         
         # Используем актуальную модель (может быть изменена через fallback)
@@ -1414,56 +1406,31 @@ async def select_best_listings(
     await valuator.start_session()
     
     try:
-        # Инспектируем каждое объявление (получаем полную информацию)
-        log_info("ai_select", f"Начинаю инспекцию {len(listings)} объявлений...")
-        inspected_listings = []
+        # НЕ инспектируем страницы - отправляем Gemini только ссылки
+        # Gemini сам проанализирует страницы через googleSearchRetrieval или по ссылкам
+        log_info("ai_select", f"Подготавливаю {len(listings)} объявлений для анализа Gemini...")
         
-        for i, listing in enumerate(listings, 1):
-            log_info("ai_select", f"Инспектирую {i}/{len(listings)}: {listing.url}")
-            try:
-                # Добавляем таймаут для каждой инспекции (максимум 15 секунд)
-                inspection = await asyncio.wait_for(
-                    valuator._inspect_listing_page(listing),
-                    timeout=15.0
-                )
-                inspected_listings.append({
-                    "listing": listing,
-                    "inspection": inspection
-                })
-                log_info("ai_select", f"✅ Инспекция {i}/{len(listings)} завершена")
-            except asyncio.TimeoutError:
-                log_warning("ai_select", f"Таймаут инспекции {i}/{len(listings)}: {listing.url}")
-                # Добавляем объявление без инспекции (с пустыми данными)
-                inspected_listings.append({
-                    "listing": listing,
-                    "inspection": {}
-                })
-            except Exception as e:
-                log_error("ai_select", f"Ошибка инспекции {i}/{len(listings)}: {listing.url}", e)
-                # Добавляем объявление без инспекции (с пустыми данными)
-                inspected_listings.append({
-                    "listing": listing,
-                    "inspection": {}
-                })
-            # Небольшая задержка между запросами
-            await asyncio.sleep(0.5)
+        # Формируем список для промпта (только базовые данные + ссылки)
+        listings_for_prompt = []
+        for listing in listings[:15]:  # Максимум 15 объявлений
+            listings_for_prompt.append({
+                "listing": listing,
+                "inspection": {}  # Пустая инспекция - Gemini сам посмотрит
+            })
         
-        log_info("ai_select", f"✅ Инспекция завершена. Инспектировано {len(inspected_listings)} объявлений")
-        
-        # Формируем промпт с полной информацией об инспектированных объявлениях
-        log_info("ai_select", "Формирую промпт для ИИ...")
-        prompt = _prepare_selection_prompt_detailed(inspected_listings, user_filters, max_results)
+        log_info("ai_select", f"Формирую минимальный промпт с ссылками...")
+        prompt = _prepare_selection_prompt_detailed(listings_for_prompt, user_filters, max_results)
         log_info("ai_select", f"Промпт сформирован. Длина: {len(prompt)} символов")
         
         # Отправляем запрос в ИИ
         log_info("ai_select", f"Отправляю запрос в {valuator.provider.upper()} API...")
         if valuator.provider == "gemini":
-            selected_with_reasons = await valuator._select_best_gemini_detailed(prompt, inspected_listings)
+            selected_with_reasons = await valuator._select_best_gemini_detailed(prompt, listings_for_prompt)
         elif valuator.provider == "groq":
-            selected_with_reasons = await valuator._select_best_groq_detailed(prompt, inspected_listings)
+            selected_with_reasons = await valuator._select_best_groq_detailed(prompt, listings_for_prompt)
         else:
             log_warning("ai_select", f"Провайдер {valuator.provider} не поддерживает детальный выбор")
-            return [{"listing": l["listing"], "reason": "Провайдер не поддерживает"} for l in inspected_listings[:max_results]]
+            return [{"listing": l["listing"], "reason": "Провайдер не поддерживает"} for l in listings_for_prompt[:max_results]]
         
         log_info("ai_select", f"ИИ выбрал {len(selected_with_reasons)} из {len(listings)} объявлений")
         
