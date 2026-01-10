@@ -91,16 +91,26 @@ class AIValuator:
     
     def _prepare_prompt(self, listing: Listing) -> str:
         """Подготавливает промпт для ИИ"""
-        # Определяем цену за м²
-        price_per_sqm = listing.price_per_sqm_usd if listing.price_per_sqm_usd else (
-            int(listing.price_per_sqm_byn / 2.95) if listing.price_per_sqm_byn else 0
-        )
-        price_per_sqm_text = f"{price_per_sqm} USD/м²" if price_per_sqm > 0 else "не указана"
-        
         # Определяем текущую цену в USD
         current_price_usd = listing.price_usd if listing.price_usd else (
-            int(listing.price_byn / 2.95) if listing.price_byn else 0
+            int(listing.price_byn / 2.95) if listing.price_byn else (
+                int(listing.price / 2.95) if listing.currency == "BYN" else listing.price
+            )
         )
+        
+        # Определяем цену за м² в USD
+        price_per_sqm_usd = 0
+        if listing.price_per_sqm > 0:
+            # Если цена за м² указана в основной валюте
+            if listing.currency == "USD":
+                price_per_sqm_usd = listing.price_per_sqm
+            elif listing.currency == "BYN":
+                price_per_sqm_usd = int(listing.price_per_sqm / 2.95)
+        elif listing.area > 0 and current_price_usd > 0:
+            # Вычисляем цену за м² из общей цены
+            price_per_sqm_usd = int(current_price_usd / listing.area)
+        
+        price_per_sqm_text = f"{price_per_sqm_usd} USD/м²" if price_per_sqm_usd > 0 else "не указана"
         
         prompt = f"""Ты эксперт по оценке недвижимости в Барановичах, Беларусь.
 
