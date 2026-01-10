@@ -31,7 +31,9 @@ from database import (
     is_listing_sent_to_user,
     mark_listing_sent_to_user,
     get_active_users,
-    set_user_ai_mode
+    set_user_ai_mode,
+    save_ai_selected_listings,
+    get_ai_selected_listings
 )
 from scrapers.aggregator import ListingsAggregator
 from scrapers.base import Listing

@@ -89,6 +89,22 @@ async def init_database():
             CREATE INDEX IF NOT EXISTS idx_user_sent ON user_sent_listings(user_id, listing_id)
         """)
         
+        # Таблица выбранных ИИ вариантов для пользователя (для сравнения с новыми)
+        await db.execute("""
+            CREATE TABLE IF NOT EXISTS ai_selected_listings (
+                user_id INTEGER,
+                listing_id TEXT,
+                reason TEXT,
+                selected_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                PRIMARY KEY (user_id, listing_id)
+            )
+        """)
+        
+        # Индекс для быстрого поиска
+        await db.execute("""
+            CREATE INDEX IF NOT EXISTS idx_ai_selected ON ai_selected_listings(user_id, selected_at)
+        """)
+        
         # Старая таблица filters (для обратной совместимости, можно удалить позже)
         await db.execute("""
             CREATE TABLE IF NOT EXISTS filters (
