@@ -524,36 +524,16 @@ class AIValuator:
         
         prompt = self._prepare_prompt(listing, inspection)
         
-        # Подготавливаем сообщение с фото (если есть)
-        user_content = []
-        
-        # Добавляем фото для анализа (максимум 5 фото для детального анализа)
-        photos_added = 0
-        photos_to_analyze = listing.photos[:5] if listing.photos else []
-        
-        for photo_url in photos_to_analyze:
-            if photos_added >= 5:
-                break
-            base64_image = await self._download_image_base64(photo_url)
-            if base64_image:
-                user_content.append({
-                    "type": "image_url",
-                    "image_url": {"url": base64_image}
-                })
-                photos_added += 1
-                log_info("ai_photo", f"Добавлено фото для анализа: {photo_url[:50]}...")
+        # Информация о фото (Groq не поддерживает vision в текущем формате)
+        photos_count = len(listing.photos) if listing.photos else 0
         
         # Добавляем текстовый промпт с информацией об инспекции
         photo_prompt = ""
-        if photos_added > 0:
-            photo_prompt = f"\n\nВНИМАНИЕ: К сообщению прикреплены {photos_added} фото(графий) квартиры с сайта объявления. "
-            photo_prompt += "Ты должен ВНИМАТЕЛЬНО проанализировать каждое фото и дать КОНКРЕТНУЮ оценку:\n"
-            photo_prompt += "1. Состояние ремонта: отличное/хорошее/среднее/требует ремонта/плохое (опиши ЧТО видно на фото)\n"
-            photo_prompt += "2. Качество отделки: опиши состояние стен, пола, потолка, дверей, окон\n"
-            photo_prompt += "3. Мебель и техника: что есть, в каком состоянии\n"
-            photo_prompt += "4. Общее впечатление: чистота, ухоженность, готовность к проживанию\n"
-            photo_prompt += "5. Потенциальные проблемы: что нужно проверить/отремонтировать\n"
-            photo_prompt += "Используй эту ВИЗУАЛЬНУЮ информацию для точной оценки стоимости.\n"
+        if photos_count > 0:
+            photo_prompt = f"\n\nИНФОРМАЦИЯ О ФОТОГРАФИЯХ:\n"
+            photo_prompt += f"На объявлении размещено {photos_count} фотографий квартиры. "
+            photo_prompt += "Используй описание выше для оценки состояния ремонта и качества квартиры. "
+            photo_prompt += "Если в описании упоминается состояние ремонта, мебель, техника - учитывай это при оценке.\n"
         
         # Информация об инспекции
         inspection_info = ""
