@@ -394,8 +394,8 @@ async def check_new_listings_ai_mode(
                     results_text += f"<b>{i}. {rooms_text}, {area_text}{year_info}</b>\n"
                     results_text += f"💰 {listing.price_formatted}{price_per_sqm}\n"
                     results_text += f"📍 {listing.address}\n"
-                    results_text += f"⭐ <b>Почему этот вариант хорош:</b>\n<i>{reason}</i>\n"
                     results_text += f"🔗 <a href=\"{listing.url}\">Открыть объявление</a>\n\n"
+                    results_text += f"<b>📋 Детальное обоснование выбора:</b>\n{reason}\n\n"
                     results_text += "━━━━━━━━━━━━━━━━━━━━\n\n"
                 
                 # Редактируем статус-сообщение вместо отправки нового (чтобы избежать дублирования)
