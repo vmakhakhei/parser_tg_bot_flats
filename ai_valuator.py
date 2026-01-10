@@ -1081,6 +1081,7 @@ class AIValuator:
     async def _select_best_gemini_detailed(self, prompt: str, inspected_listings: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         """Выбирает лучшие варианты через Gemini API с детальным анализом"""
         if not GEMINI_API_KEY:
+            log_error("ai_select", "GEMINI_API_KEY не установлен")
             return []
         
         payload = {
@@ -1094,10 +1095,14 @@ class AIValuator:
         }
         
         url = f"{GEMINI_API_URL}?key={GEMINI_API_KEY}"
+        log_info("ai_select", f"Отправляю POST запрос к Gemini API: {url[:100]}...")
+        log_info("ai_select", f"Размер промпта: {len(prompt)} символов, количество объявлений: {len(inspected_listings)}")
         
         try:
-            timeout = aiohttp.ClientTimeout(total=60)  # Больше времени для детального анализа
+            timeout = aiohttp.ClientTimeout(total=120)  # Увеличил до 120 секунд для больших промптов
+            log_info("ai_select", "Ожидаю ответ от Gemini API...")
             async with self.session.post(url, json=payload, timeout=timeout) as resp:
+                log_info("ai_select", f"Получен ответ от Gemini API. Статус: {resp.status}")
                 if resp.status == 200:
                     data = await resp.json()
                     content = data["candidates"][0]["content"]["parts"][0]["text"]
@@ -1394,10 +1399,15 @@ async def select_best_listings(
             # Небольшая задержка между запросами
             await asyncio.sleep(0.5)
         
+        log_info("ai_select", f"✅ Инспекция завершена. Инспектировано {len(inspected_listings)} объявлений")
+        
         # Формируем промпт с полной информацией об инспектированных объявлениях
+        log_info("ai_select", "Формирую промпт для ИИ...")
         prompt = _prepare_selection_prompt_detailed(inspected_listings, user_filters, max_results)
+        log_info("ai_select", f"Промпт сформирован. Длина: {len(prompt)} символов")
         
         # Отправляем запрос в ИИ
+        log_info("ai_select", f"Отправляю запрос в {valuator.provider.upper()} API...")
         if valuator.provider == "gemini":
             selected_with_reasons = await valuator._select_best_gemini_detailed(prompt, inspected_listings)
         elif valuator.provider == "groq":
