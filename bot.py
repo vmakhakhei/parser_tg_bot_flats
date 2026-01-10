@@ -353,18 +353,38 @@ async def check_new_listings_ai_mode(
     # Отправляем все объявления в ИИ для выбора лучших
     if AI_VALUATOR_AVAILABLE and select_best_listings:
         try:
-            best_listings = await select_best_listings(
+            best_with_reasons = await select_best_listings(
                 candidate_listings, 
                 user_filters,
                 max_results=5
             )
             
-            if best_listings:
-                logger.info(f"ИИ выбрал {len(best_listings)} лучших вариантов для пользователя {user_id}")
+            if best_with_reasons:
+                logger.info(f"ИИ выбрал {len(best_with_reasons)} лучших вариантов для пользователя {user_id}")
                 
-                # Отправляем выбранные объявления пользователю
+                # Отправляем выбранные объявления пользователю с описаниями
                 sent_count = 0
-                for listing in best_listings:
+                for item in best_with_reasons:
+                    listing = item.get("listing")
+                    reason = item.get("reason", "Хорошее соотношение цена-качество")
+                    
+                    if not listing:
+                        continue
+                    
+                    # Отправляем сообщение с описанием почему вариант хороший
+                    try:
+                        await bot.send_message(
+                            user_id,
+                            f"⭐ <b>Рекомендация ИИ</b>\n\n"
+                            f"{reason}\n\n"
+                            f"Просматриваю объявление...",
+                            parse_mode=ParseMode.HTML
+                        )
+                        await asyncio.sleep(1)
+                    except Exception:
+                        pass
+                    
+                    # Отправляем само объявление
                     if await send_listing_to_user(bot, user_id, listing):
                         sent_count += 1
                         await asyncio.sleep(2)
@@ -374,7 +394,7 @@ async def check_new_listings_ai_mode(
                     await bot.send_message(
                         user_id,
                         f"✅ <b>ИИ выбрал {sent_count} лучших вариантов</b>\n\n"
-                        f"Из {len(candidate_listings)} объявлений отобраны лучшие по соотношению цена-качество.",
+                        f"Из {len(candidate_listings)} объявлений проанализированы все по ссылкам и отобраны лучшие по соотношению цена-качество.",
                         parse_mode=ParseMode.HTML
                     )
                 except Exception:

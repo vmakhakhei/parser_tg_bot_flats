@@ -542,10 +542,56 @@ class AIValuator:
                     
                     # Извлекаем детальную информацию
                     # Ищем таблицы с параметрами
-                    for table in soup.find_all(['table', 'dl', 'ul']):
+                    for table in soup.find_all(['table', 'dl', 'ul', 'div']):
                         text = table.get_text()
-                        if any(keyword in text.lower() for keyword in ['площадь', 'этаж', 'год', 'комнат']):
+                        if any(keyword in text.lower() for keyword in ['площадь', 'этаж', 'год', 'комнат', 'постройки', 'строительства']):
                             inspection_data["detailed_info"]["params_table"] = text[:500]
+                    
+                    # Извлекаем год постройки
+                    year_built = None
+                    # Ищем в тексте страницы паттерны типа "год постройки: 1985", "1985 г.", "построен в 1985"
+                    year_patterns = [
+                        r'год\s+постройки[:\s]+(\d{4})',
+                        r'построен\s+в\s+(\d{4})',
+                        r'(\d{4})\s+г\.',
+                        r'год[:\s]+(\d{4})',
+                        r'(\d{4})\s+год'
+                    ]
+                    
+                    page_text = soup.get_text()
+                    for pattern in year_patterns:
+                        match = re.search(pattern, page_text, re.IGNORECASE)
+                        if match:
+                            year_str = match.group(1)
+                            try:
+                                year = int(year_str)
+                                # Проверяем что год разумный (1900-2025)
+                                if 1900 <= year <= 2025:
+                                    year_built = str(year)
+                                    break
+                            except:
+                                pass
+                    
+                    # Если не нашли через паттерны, ищем в параметрах объявления
+                    if not year_built:
+                        # Для Kufar: ищем в параметрах
+                        param_elements = soup.find_all(['div', 'span', 'td'], class_=re.compile(r'param|property|characteristic', re.I))
+                        for elem in param_elements:
+                            text = elem.get_text()
+                            if 'год' in text.lower() or 'постройки' in text.lower():
+                                year_match = re.search(r'(\d{4})', text)
+                                if year_match:
+                                    try:
+                                        year = int(year_match.group(1))
+                                        if 1900 <= year <= 2025:
+                                            year_built = str(year)
+                                            break
+                                    except:
+                                        pass
+                    
+                    if year_built:
+                        inspection_data["detailed_info"]["year_built"] = year_built
+                        log_info("ai_inspect", f"Найден год постройки: {year_built}")
                     
                     # Анализируем адрес для определения центра и района
                     address_text = listing.address.lower()
@@ -1032,6 +1078,139 @@ class AIValuator:
         
         return None
     
+    async def _select_best_gemini_detailed(self, prompt: str, inspected_listings: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """Выбирает лучшие варианты через Gemini API с детальным анализом"""
+        if not GEMINI_API_KEY:
+            return []
+        
+        payload = {
+            "contents": [{
+                "parts": [{"text": prompt}]
+            }],
+            "generationConfig": {
+                "temperature": 0.3,
+                "maxOutputTokens": 2000  # Больше токенов для детальных описаний
+            }
+        }
+        
+        url = f"{GEMINI_API_URL}?key={GEMINI_API_KEY}"
+        
+        try:
+            timeout = aiohttp.ClientTimeout(total=60)  # Больше времени для детального анализа
+            async with self.session.post(url, json=payload, timeout=timeout) as resp:
+                if resp.status == 200:
+                    data = await resp.json()
+                    content = data["candidates"][0]["content"]["parts"][0]["text"]
+                    log_info("ai_select", f"Ответ от Gemini: {content[:300]}...")
+                    
+                    # Парсим JSON из ответа
+                    selected_with_reasons = self._parse_selection_response_detailed(content, inspected_listings)
+                    return selected_with_reasons
+                else:
+                    error_text = await resp.text()
+                    log_error("ai_select", f"Gemini API вернул статус {resp.status}: {error_text[:200]}")
+        except Exception as e:
+            log_error("ai_select", f"Ошибка запроса к Gemini API", e)
+        
+        return []
+    
+    async def _select_best_groq_detailed(self, prompt: str, inspected_listings: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """Выбирает лучшие варианты через Groq API с детальным анализом"""
+        if not GROQ_API_KEY:
+            return []
+        
+        headers = {
+            "Authorization": f"Bearer {GROQ_API_KEY}",
+            "Content-Type": "application/json"
+        }
+        
+        payload = {
+            "messages": [
+                {"role": "system", "content": "Ты эксперт по недвижимости. Отвечай только JSON."},
+                {"role": "user", "content": prompt}
+            ],
+            "model": GROQ_MODEL,
+            "temperature": 0.3,
+            "max_tokens": 2000  # Больше токенов для детальных описаний
+        }
+        
+        try:
+            timeout = aiohttp.ClientTimeout(total=60)
+            async with self.session.post(GROQ_API_URL, json=payload, headers=headers, timeout=timeout) as resp:
+                if resp.status == 200:
+                    data = await resp.json()
+                    content = data["choices"][0]["message"]["content"]
+                    log_info("ai_select", f"Ответ от Groq: {content[:300]}...")
+                    
+                    selected_with_reasons = self._parse_selection_response_detailed(content, inspected_listings)
+                    return selected_with_reasons
+                else:
+                    error_text = await resp.text()
+                    log_error("ai_select", f"Groq API вернул статус {resp.status}: {error_text[:200]}")
+        except Exception as e:
+            log_error("ai_select", f"Ошибка запроса к Groq API", e)
+        
+        return []
+    
+    def _parse_selection_response_detailed(self, content: str, inspected_listings: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """Парсит детальный ответ ИИ с описаниями"""
+        try:
+            # Ищем JSON в ответе
+            json_match = re.search(r'\{[^{}]*"selected"[^{}]*\}', content, re.DOTALL)
+            if json_match:
+                json_str = json_match.group(0)
+                result = json.loads(json_str)
+                selected = result.get("selected", [])
+                
+                # Формируем результат
+                result_list = []
+                for item in selected:
+                    listing_id = item.get("id", "")
+                    reason = item.get("reason", "Хорошее соотношение цена-качество")
+                    
+                    # Находим соответствующее объявление
+                    for inspected in inspected_listings:
+                        if inspected["listing"].id == listing_id:
+                            result_list.append({
+                                "listing": inspected["listing"],
+                                "reason": reason
+                            })
+                            break
+                
+                if result_list:
+                    log_info("ai_select", f"Найдено {len(result_list)} вариантов с описаниями")
+                    return result_list
+            
+            # Fallback: пытаемся найти ID в тексте
+            all_ids = [item["listing"].id for item in inspected_listings]
+            found_items = []
+            for listing_id in all_ids:
+                if listing_id in content:
+                    # Ищем описание рядом с ID
+                    reason_match = re.search(f'{re.escape(listing_id)}[^"]*"reason":\\s*"([^"]+)"', content)
+                    reason = reason_match.group(1) if reason_match else "Хорошее соотношение цена-качество"
+                    
+                    for inspected in inspected_listings:
+                        if inspected["listing"].id == listing_id:
+                            found_items.append({
+                                "listing": inspected["listing"],
+                                "reason": reason
+                            })
+                            break
+            
+            if found_items:
+                log_info("ai_select", f"Найдено через fallback: {len(found_items)}")
+                return found_items[:5]
+            
+        except json.JSONDecodeError as e:
+            log_error("ai_select", f"Ошибка парсинга JSON: {content[:200]}", e)
+        except Exception as e:
+            log_error("ai_select", f"Ошибка парсинга ответа", e)
+        
+        # Если ничего не найдено, возвращаем первые несколько
+        log_warning("ai_select", "Не удалось распарсить ответ, возвращаю первые 3")
+        return [{"listing": item["listing"], "reason": "Автоматический выбор"} for item in inspected_listings[:3]]
+    
     async def _select_best_gemini(self, prompt: str, listings: List[Listing]) -> List[str]:
         """Выбирает лучшие варианты через Gemini API"""
         if not GEMINI_API_KEY:
@@ -1185,10 +1364,10 @@ async def select_best_listings(
     listings: List[Listing], 
     user_filters: Dict[str, Any],
     max_results: int = 5
-) -> List[Listing]:
+) -> List[Dict[str, Any]]:
     """
-    ИИ выбирает лучшие варианты из списка объявлений по критериям цена-качество.
-    Возвращает список лучших объявлений (обычно 3-5 штук).
+    ИИ анализирует объявления по ссылкам и выбирает лучшие варианты.
+    Возвращает список словарей с listing и описанием почему вариант хороший.
     """
     if not listings:
         return []
@@ -1196,33 +1375,142 @@ async def select_best_listings(
     valuator = get_valuator()
     if not valuator:
         log_warning("ai_select", "ИИ-оценщик недоступен, возвращаю все объявления")
-        return listings[:max_results]
+        return [{"listing": l, "reason": "ИИ недоступен"} for l in listings[:max_results]]
     
     await valuator.start_session()
     
     try:
-        # Формируем промпт с описанием всех объявлений
-        prompt = _prepare_selection_prompt(listings, user_filters, max_results)
+        # Инспектируем каждое объявление (получаем полную информацию)
+        log_info("ai_select", f"Начинаю инспекцию {len(listings)} объявлений...")
+        inspected_listings = []
         
-        # Отправляем запрос в ИИ (без фото для массового анализа)
+        for i, listing in enumerate(listings, 1):
+            log_info("ai_select", f"Инспектирую {i}/{len(listings)}: {listing.url}")
+            inspection = await valuator._inspect_listing_page(listing)
+            inspected_listings.append({
+                "listing": listing,
+                "inspection": inspection
+            })
+            # Небольшая задержка между запросами
+            await asyncio.sleep(0.5)
+        
+        # Формируем промпт с полной информацией об инспектированных объявлениях
+        prompt = _prepare_selection_prompt_detailed(inspected_listings, user_filters, max_results)
+        
+        # Отправляем запрос в ИИ
         if valuator.provider == "gemini":
-            selected_ids = await valuator._select_best_gemini(prompt, listings)
+            selected_with_reasons = await valuator._select_best_gemini_detailed(prompt, inspected_listings)
         elif valuator.provider == "groq":
-            selected_ids = await valuator._select_best_groq(prompt, listings)
+            selected_with_reasons = await valuator._select_best_groq_detailed(prompt, inspected_listings)
         else:
-            log_warning("ai_select", f"Провайдер {valuator.provider} не поддерживает массовый выбор")
-            return listings[:max_results]
+            log_warning("ai_select", f"Провайдер {valuator.provider} не поддерживает детальный выбор")
+            return [{"listing": l["listing"], "reason": "Провайдер не поддерживает"} for l in inspected_listings[:max_results]]
         
-        # Фильтруем объявления по выбранным ID
-        selected_listings = [l for l in listings if l.id in selected_ids]
+        log_info("ai_select", f"ИИ выбрал {len(selected_with_reasons)} из {len(listings)} объявлений")
         
-        log_info("ai_select", f"ИИ выбрал {len(selected_listings)} из {len(listings)} объявлений")
-        
-        return selected_listings[:max_results]
+        return selected_with_reasons[:max_results]
         
     except Exception as e:
         log_error("ai_select", f"Ошибка при выборе лучших вариантов", e)
-        return listings[:max_results]
+        return [{"listing": l, "reason": "Ошибка анализа"} for l in listings[:max_results]]
+
+
+def _prepare_selection_prompt_detailed(
+    inspected_listings: List[Dict[str, Any]], 
+    user_filters: Dict[str, Any], 
+    max_results: int
+) -> str:
+    """Подготавливает детальный промпт для выбора лучших вариантов с анализом по ссылкам"""
+    
+    min_price = user_filters.get("min_price", 0)
+    max_price = user_filters.get("max_price", 100000)
+    min_rooms = user_filters.get("min_rooms", 1)
+    max_rooms = user_filters.get("max_rooms", 4)
+    
+    # Формируем список объявлений с полной информацией
+    listings_text = []
+    for i, item in enumerate(inspected_listings, 1):
+        listing = item["listing"]
+        inspection = item.get("inspection", {})
+        
+        rooms_text = f"{listing.rooms}-комн." if listing.rooms > 0 else "?"
+        area_text = f"{listing.area} м²" if listing.area > 0 else "?"
+        price_text = listing.price_formatted
+        
+        # Рассчитываем цену за м² если возможно
+        price_per_sqm = ""
+        if listing.area > 0 and listing.price > 0:
+            price_per_sqm_usd = listing.price / listing.area
+            price_per_sqm = f" (${price_per_sqm_usd:.0f}/м²)"
+        
+        # Год постройки
+        year_info = ""
+        if listing.year_built:
+            year_info = f"\n   - Год постройки: {listing.year_built}"
+        elif inspection.get("detailed_info", {}).get("year_built"):
+            year_info = f"\n   - Год постройки: {inspection['detailed_info']['year_built']}"
+        
+        # Описание из инспекции
+        description = inspection.get("full_description", "")[:500] if inspection.get("full_description") else "Описание не найдено"
+        
+        # Фото
+        photos_count = len(inspection.get("all_photos", [])) if inspection.get("all_photos") else 0
+        photos_info = f"\n   - Фото: {photos_count} шт." if photos_count > 0 else ""
+        
+        listing_info = f"""
+{i}. ID: {listing.id}
+   - Комнаты: {rooms_text}
+   - Площадь: {area_text}
+   - Цена: {price_text}{price_per_sqm}
+   - Адрес: {listing.address}{year_info}{photos_info}
+   - Этаж: {listing.floor if listing.floor else "не указан"}
+   - Источник: {listing.source}
+   - Ссылка: {listing.url}
+   - Описание: {description}
+"""
+        listings_text.append(listing_info)
+    
+    prompt = f"""Ты - эксперт по недвижимости в Барановичах, Беларусь. 
+
+ЗАДАЧА: Проанализируй все предложенные объявления, которые я уже проверил по ссылкам, и выбери {max_results} ЛУЧШИХ вариантов по критерию "цена-качество".
+
+КРИТЕРИИ ПОЛЬЗОВАТЕЛЯ:
+- Комнаты: от {min_rooms} до {max_rooms}
+- Цена: от ${min_price:,} до ${max_price:,}
+- Город: Барановичи
+
+ЧТО УЧИТЫВАТЬ ПРИ ВЫБОРЕ (в порядке важности):
+1. Соотношение цена/качество (цена за м²) - главный критерий
+2. Год постройки (новые дома предпочтительнее, но не критично)
+3. Расположение (центр предпочтительнее, но не критично)
+4. Размер площади (больше - лучше, но в разумных пределах)
+5. Количество комнат (точное соответствие запросу)
+6. Состояние ремонта (из описания и фото если есть)
+7. Общая привлекательность предложения
+
+СПИСОК ОБЪЯВЛЕНИЙ (уже проанализированных по ссылкам):
+{''.join(listings_text)}
+
+ВЕРНИ ОТВЕТ В ФОРМАТЕ JSON:
+{{
+    "selected": [
+        {{
+            "id": "listing_id",
+            "reason": "Детальное объяснение почему этот вариант хороший (2-3 предложения). Укажи конкретные преимущества: цена за м², год постройки, расположение, состояние и т.д."
+        }},
+        ...
+    ]
+}}
+
+ВАЖНО:
+- Верни ТОЛЬКО JSON, без дополнительного текста
+- Выбери от 3 до {max_results} лучших вариантов
+- Укажи ID в том же формате, как в списке выше
+- Для каждого варианта напиши ДЕТАЛЬНОЕ объяснение почему он хороший
+- Будь объективным и честным в оценке
+"""
+    
+    return prompt
 
 
 def _prepare_selection_prompt(listings: List[Listing], user_filters: Dict[str, Any], max_results: int) -> str:

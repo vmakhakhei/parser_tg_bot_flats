@@ -160,6 +160,21 @@ class KufarScraper(BaseScraper):
             elif floor_val:
                 floor = str(floor_val)
             
+            # Год постройки
+            year_built = ""
+            year_val = params.get("year", "") or params.get("re_year", "")
+            if year_val:
+                try:
+                    year_built = str(int(year_val))
+                except:
+                    # Пробуем из текстового значения
+                    year_text = params.get("year_text", "") or params.get("re_year_text", "")
+                    if year_text:
+                        # Извлекаем год из текста (например "1985" или "1985 г.")
+                        year_match = re.search(r'(\d{4})', str(year_text))
+                        if year_match:
+                            year_built = year_match.group(1)
+            
             # Цена
             price = 0
             price_usd = 0
@@ -257,6 +272,7 @@ class KufarScraper(BaseScraper):
                 currency=currency,
                 price_usd=price_usd,
                 price_byn=price_byn,
+                year_built=year_built,
             )
             
         except Exception as e:
