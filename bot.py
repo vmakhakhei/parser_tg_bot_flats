@@ -443,26 +443,42 @@ async def check_new_listings_ai_mode(
                     pass
         except Exception as e:
             log_error("ai_mode", f"Ошибка ИИ-анализа для пользователя {user_id}", e)
-            # Fallback: отправляем первые 3 объявления
-            logger.info(f"Fallback: отправляю первые 3 объявления пользователю {user_id}")
+            # В ИИ-режиме НЕ отправляем объявления отдельно, только сообщение об ошибке
             try:
-                await bot.send_message(
-                    user_id,
-                    f"⚠️ <b>Ошибка ИИ-анализа</b>\n\n"
-                    f"Отправляю первые {min(3, len(candidate_listings))} объявления.",
-                    parse_mode=ParseMode.HTML
-                )
+                if status_msg:
+                    await status_msg.edit_text(
+                        f"⚠️ <b>Ошибка ИИ-анализа</b>\n\n"
+                        f"Произошла ошибка при анализе объявлений. Попробуйте повторить позже.",
+                        parse_mode=ParseMode.HTML
+                    )
+                else:
+                    await bot.send_message(
+                        user_id,
+                        f"⚠️ <b>Ошибка ИИ-анализа</b>\n\n"
+                        f"Произошла ошибка при анализе объявлений. Попробуйте повторить позже.",
+                        parse_mode=ParseMode.HTML
+                    )
             except Exception:
                 pass
-            for listing in candidate_listings[:3]:
-                await send_listing_to_user(bot, user_id, listing)
-                await asyncio.sleep(2)
     else:
-        logger.warning("ИИ-оценщик недоступен, отправляю все объявления")
-        # Fallback: отправляем все объявления
-        for listing in candidate_listings[:10]:
-            await send_listing_to_user(bot, user_id, listing)
-            await asyncio.sleep(2)
+        logger.warning("ИИ-оценщик недоступен")
+        # В ИИ-режиме НЕ отправляем объявления отдельно, только сообщение
+        try:
+            if status_msg:
+                await status_msg.edit_text(
+                    f"⚠️ <b>ИИ-оценщик недоступен</b>\n\n"
+                    f"ИИ-режим временно недоступен. Переключитесь на обычный режим в настройках.",
+                    parse_mode=ParseMode.HTML
+                )
+            else:
+                await bot.send_message(
+                    user_id,
+                    f"⚠️ <b>ИИ-оценщик недоступен</b>\n\n"
+                    f"ИИ-режим временно недоступен. Переключитесь на обычный режим в настройках.",
+                    parse_mode=ParseMode.HTML
+                )
+        except Exception:
+            pass
 
 
 def _matches_user_filters(listing: Listing, filters: Dict[str, Any]) -> bool:
