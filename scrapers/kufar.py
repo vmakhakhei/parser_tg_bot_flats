@@ -162,15 +162,32 @@ class KufarScraper(BaseScraper):
             
             # Цена
             price = 0
-            price_usd = ad.get("price_usd", "")
-            if price_usd:
+            price_usd = 0
+            price_byn = 0
+            currency = "USD"
+            
+            # Цена в USD (в центах)
+            raw_price_usd = ad.get("price_usd", "")
+            if raw_price_usd:
                 try:
-                    # Цена в копейках/центах
-                    price = int(price_usd) // 100
+                    price_usd = int(raw_price_usd) // 100
+                    price = price_usd
                 except:
                     pass
             
-            # Если нет цены в USD, пробуем другие варианты
+            # Цена в BYN (в копейках)
+            raw_price_byn = ad.get("price_byn", "")
+            if raw_price_byn:
+                try:
+                    price_byn = int(raw_price_byn) // 100
+                    # Если нет USD цены, используем BYN
+                    if not price_usd:
+                        price = price_byn
+                        currency = "BYN"
+                except:
+                    pass
+            
+            # Если нет цены, пробуем другие варианты
             if not price:
                 for param in ad.get("ad_parameters", []):
                     if "price" in param.get("p", "").lower():
@@ -212,21 +229,34 @@ class KufarScraper(BaseScraper):
             # Формируем заголовок
             title = f"{rooms}-комн., {area} м²" if rooms and area else "Квартира"
             
-            # Description для дебага
-            subject = ad.get("subject", "")
+            # Форматирование цены в зависимости от валюты
+            if currency == "USD":
+                price_formatted = f"${price:,}".replace(",", " ") if price else "Цена не указана"
+            else:
+                price_formatted = f"{price:,} BYN".replace(",", " ") if price else "Цена не указана"
+            
+            # Добавляем цену в другой валюте если есть
+            if price_usd and price_byn:
+                if currency == "USD":
+                    price_formatted += f" ({price_byn:,} BYN)".replace(",", " ")
+                else:
+                    price_formatted += f" (${price_usd:,})".replace(",", " ")
             
             return Listing(
                 id=listing_id,
                 source="Kufar.by",
                 title=title,
                 price=price,
-                price_formatted=f"${price:,}".replace(",", " ") if price else "Цена не указана",
+                price_formatted=price_formatted,
                 rooms=rooms if rooms else 0,
                 area=area if area else 0.0,
                 floor=floor,
                 address=address,
                 photos=photos,
                 url=ad_link,
+                currency=currency,
+                price_usd=price_usd,
+                price_byn=price_byn,
             )
             
         except Exception as e:

@@ -16,7 +16,7 @@ class Listing:
     id: str
     source: str  # Источник (kufar, realt, domovita, etc.)
     title: str
-    price: int
+    price: int  # Цена в основной валюте
     price_formatted: str
     rooms: int
     area: float
@@ -25,6 +25,19 @@ class Listing:
     photos: List[str] = field(default_factory=list)
     floor: str = ""
     description: str = ""
+    currency: str = "USD"  # Валюта: USD, BYN
+    price_byn: int = 0  # Цена в BYN (если есть)
+    price_usd: int = 0  # Цена в USD (если есть)
+    price_per_sqm: int = 0  # Цена за м² (в основной валюте)
+    price_per_sqm_formatted: str = ""  # Форматированная цена за м²
+    year_built: str = ""  # Год постройки
+    
+    def __post_init__(self):
+        """Вычисляем цену за м² если не указана"""
+        if self.price_per_sqm == 0 and self.price > 0 and self.area > 0:
+            self.price_per_sqm = int(self.price / self.area)
+            symbol = "$" if self.currency == "USD" else "BYN"
+            self.price_per_sqm_formatted = f"{self.price_per_sqm:,} {symbol}/м²".replace(",", " ")
     
     def to_dict(self) -> Dict[str, Any]:
         """Конвертация в словарь"""
@@ -41,6 +54,11 @@ class Listing:
             "photos": self.photos,
             "floor": self.floor,
             "description": self.description,
+            "currency": self.currency,
+            "price_byn": self.price_byn,
+            "price_usd": self.price_usd,
+            "price_per_sqm": self.price_per_sqm,
+            "year_built": self.year_built,
         }
     
     @staticmethod

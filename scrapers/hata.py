@@ -138,13 +138,36 @@ class HataScraper(BaseScraper):
             if addr_match:
                 address = f"{addr_match.group(1)}, Барановичи"
             
-            # Цена - ищем формат "XX XXX $"
+            # Цена - ищем в разных форматах
             price = 0
-            price_match = re.search(r'(\d[\d\s]*\d)\s*\$', text)
-            if price_match:
-                price_str = price_match.group(1).replace(' ', '').replace('\xa0', '')
+            price_usd = 0
+            price_byn = 0
+            currency = "USD"
+            
+            # Сначала ищем в долларах "XX XXX $" или "$XX XXX"
+            price_usd_match = re.search(r'(\d[\d\s]*\d)\s*\$', text)
+            if not price_usd_match:
+                price_usd_match = re.search(r'\$\s*(\d[\d\s]*\d)', text)
+            
+            if price_usd_match:
+                price_str = price_usd_match.group(1).replace(' ', '').replace('\xa0', '')
                 try:
-                    price = int(price_str)
+                    price_usd = int(price_str)
+                    price = price_usd
+                    currency = "USD"
+                except:
+                    pass
+            
+            # Ищем в рублях "XX XXX BYN" или "XX XXX р." или "XX XXX руб"
+            price_byn_match = re.search(r'(\d[\d\s]*\d)\s*(?:BYN|р\.?|руб)', text, re.I)
+            if price_byn_match:
+                price_str = price_byn_match.group(1).replace(' ', '').replace('\xa0', '')
+                try:
+                    price_byn = int(price_str)
+                    # Если нет USD цены, используем BYN
+                    if not price_usd:
+                        price = price_byn
+                        currency = "BYN"
                 except:
                     pass
             
@@ -166,10 +189,10 @@ class HataScraper(BaseScraper):
                 floor = f"{floor_match.group(1)}/{floor_match.group(2)}"
             
             # Год постройки
+            year_built = ""
             year_match = re.search(r'(\d{4})\s*год', text)
-            year = year_match.group(1) if year_match else ""
-            if year:
-                floor = f"{floor}, {year}" if floor else year
+            if year_match:
+                year_built = year_match.group(1)
             
             # Фото - ищем img в контейнере
             photos = []
@@ -200,6 +223,19 @@ class HataScraper(BaseScraper):
                         if len(photos) >= 3:
                             break
             
+            # Форматирование цены в зависимости от валюты
+            if currency == "USD":
+                price_formatted = f"${price:,}".replace(",", " ") if price else "Цена не указана"
+            else:
+                price_formatted = f"{price:,} BYN".replace(",", " ") if price else "Цена не указана"
+            
+            # Добавляем цену в другой валюте если есть обе
+            if price_usd and price_byn:
+                if currency == "USD":
+                    price_formatted += f" ({price_byn:,} BYN)".replace(",", " ")
+                else:
+                    price_formatted += f" (${price_usd:,})".replace(",", " ")
+            
             # Формируем финальный заголовок
             display_title = title if title else f"{rooms}-комн. квартира, {area} м²"
             
@@ -208,13 +244,17 @@ class HataScraper(BaseScraper):
                 source="Hata.by",
                 title=display_title,
                 price=price,
-                price_formatted=f"${price:,}".replace(",", " ") if price else "Цена не указана",
+                price_formatted=price_formatted,
                 rooms=rooms,
                 area=area,
                 floor=floor,
                 address=address,
                 photos=photos,
                 url=url,
+                currency=currency,
+                price_usd=price_usd,
+                price_byn=price_byn,
+                year_built=year_built,
             )
             
         except Exception as e:

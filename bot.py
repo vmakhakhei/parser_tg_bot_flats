@@ -48,17 +48,34 @@ def format_listing_message(listing: Listing) -> str:
     title_parts = [p for p in [rooms_text, area_text] if p]
     title = " • ".join(title_parts) if title_parts else listing.title
     
-    message = f"""🏠 <b>{title}</b>
-
-💰 <b>Цена:</b> {listing.price_formatted}
-🚪 <b>Комнат:</b> {listing.rooms}
-📐 <b>Площадь:</b> {listing.area} м²
-📍 <b>Адрес:</b> {listing.address}
-🌐 <b>Источник:</b> {listing.source}
-
-🔗 <a href="{listing.url}">Открыть объявление</a>
-"""
-    return message
+    # Строим сообщение
+    lines = [f"🏠 <b>{title}</b>", ""]
+    
+    # Цена
+    lines.append(f"💰 <b>Цена:</b> {listing.price_formatted}")
+    
+    # Цена за м² (вычисляется автоматически в Listing.__post_init__)
+    if listing.price_per_sqm_formatted:
+        lines.append(f"📊 <b>Цена/м²:</b> {listing.price_per_sqm_formatted}")
+    
+    # Основная информация
+    lines.append(f"🚪 <b>Комнат:</b> {listing.rooms}")
+    lines.append(f"📐 <b>Площадь:</b> {listing.area} м²")
+    
+    # Этаж
+    if listing.floor:
+        lines.append(f"🏢 <b>Этаж:</b> {listing.floor}")
+    
+    # Год постройки
+    if listing.year_built:
+        lines.append(f"📅 <b>Год:</b> {listing.year_built}")
+    
+    lines.append(f"📍 <b>Адрес:</b> {listing.address}")
+    lines.append(f"🌐 <b>Источник:</b> {listing.source}")
+    lines.append("")
+    lines.append(f"🔗 <a href=\"{listing.url}\">Открыть объявление</a>")
+    
+    return "\n".join(lines)
 
 
 async def send_listing_to_channel(bot: Bot, listing: Listing) -> bool:
