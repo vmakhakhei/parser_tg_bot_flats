@@ -24,32 +24,7 @@ except ImportError:
     def log_info(source, msg):
         print(f"[INFO] [{source}] {msg}")
 
-# ========== ВАРИАНТ 1: Groq API (РЕКОМЕНДУЕТСЯ) ==========
-# Бесплатно: 30 запросов/минуту, очень быстро
-# Регистрация: https://console.groq.com/
-# Получить API ключ: https://console.groq.com/keys
-
-GROQ_API_KEY = os.getenv("GROQ_API_KEY", "")
-GROQ_API_URL = "https://api.groq.com/openai/v1/chat/completions"
-# Актуальные модели Groq (2026):
-# - llama-3.1-8b-instant (быстрая, стабильная)
-# - mixtral-8x7b-32768 (стабильная, хорошее качество)
-# - llama-3.3-70b-versatile (если доступна)
-GROQ_MODEL = os.getenv("GROQ_MODEL", "llama-3.1-8b-instant")  # По умолчанию используем стабильную модель
-GROQ_VISION_MODEL = None  # Vision модель временно отключена (устарела)
-GROQ_FALLBACK_MODEL = "mixtral-8x7b-32768"  # Резервная модель
-
-
-# ========== ВАРИАНТ 2: Hugging Face Inference API ==========
-# Бесплатно: ограниченное количество запросов
-# Регистрация: https://huggingface.co/
-# Получить токен: https://huggingface.co/settings/tokens
-
-HF_API_KEY = os.getenv("HF_API_KEY", "")
-HF_API_URL = "https://api-inference.huggingface.co/models/meta-llama/Meta-Llama-3-8B-Instruct"
-
-
-# ========== ВАРИАНТ 3: Google Gemini API (С ПОДДЕРЖКОЙ VISION) ==========
+# ========== ВАРИАНТ 1: Google Gemini API (РЕКОМЕНДУЕТСЯ - ОСНОВНОЙ) ==========
 # Бесплатно: 60 запросов/минуту
 # Поддерживает анализ изображений через Gemini Pro Vision
 # Регистрация: https://aistudio.google.com/app/apikey
@@ -58,6 +33,28 @@ HF_API_URL = "https://api-inference.huggingface.co/models/meta-llama/Meta-Llama-
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
 GEMINI_API_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent"
 GEMINI_VISION_API_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-pro-vision:generateContent"
+
+
+# ========== ВАРИАНТ 2: Groq API (АЛЬТЕРНАТИВА) ==========
+# Бесплатно: 30 запросов/минуту, очень быстро
+# НЕ поддерживает анализ изображений
+# Регистрация: https://console.groq.com/
+# Получить API ключ: https://console.groq.com/keys
+
+GROQ_API_KEY = os.getenv("GROQ_API_KEY", "")
+GROQ_API_URL = "https://api.groq.com/openai/v1/chat/completions"
+GROQ_MODEL = os.getenv("GROQ_MODEL", "llama-3.1-8b-instant")
+GROQ_VISION_MODEL = None  # Vision модель недоступна
+GROQ_FALLBACK_MODEL = "mixtral-8x7b-32768"
+
+
+# ========== ВАРИАНТ 3: Hugging Face Inference API ==========
+# Бесплатно: ограниченное количество запросов
+# Регистрация: https://huggingface.co/
+# Получить токен: https://huggingface.co/settings/tokens
+
+HF_API_KEY = os.getenv("HF_API_KEY", "")
+HF_API_URL = "https://api-inference.huggingface.co/models/meta-llama/Meta-Llama-3-8B-Instruct"
 
 
 # ========== ВАРИАНТ 4: Ollama (локально) ==========
