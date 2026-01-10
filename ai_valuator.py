@@ -1392,12 +1392,23 @@ async def select_best_listings(
         for i, listing in enumerate(listings, 1):
             log_info("ai_select", f"Инспектирую {i}/{len(listings)}: {listing.url}")
             try:
-                inspection = await valuator._inspect_listing_page(listing)
+                # Добавляем таймаут для каждой инспекции (максимум 15 секунд)
+                inspection = await asyncio.wait_for(
+                    valuator._inspect_listing_page(listing),
+                    timeout=15.0
+                )
                 inspected_listings.append({
                     "listing": listing,
                     "inspection": inspection
                 })
                 log_info("ai_select", f"✅ Инспекция {i}/{len(listings)} завершена")
+            except asyncio.TimeoutError:
+                log_warning("ai_select", f"Таймаут инспекции {i}/{len(listings)}: {listing.url}")
+                # Добавляем объявление без инспекции (с пустыми данными)
+                inspected_listings.append({
+                    "listing": listing,
+                    "inspection": {}
+                })
             except Exception as e:
                 log_error("ai_select", f"Ошибка инспекции {i}/{len(listings)}: {listing.url}", e)
                 # Добавляем объявление без инспекции (с пустыми данными)
