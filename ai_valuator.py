@@ -909,12 +909,18 @@ class AIValuator:
                         log_info("ai_gemini", f"  - Оценка: {result.get('value_score', 'N/A')}/10")
                     return result
                 elif resp.status == 404:
-                    # Если модель не найдена, пробуем другие модели из списка fallback
+                    # Если модель не найдена, получаем список доступных моделей и пробуем их
                     error_text = await resp.text()
-                    log_warning("ai_gemini", f"Модель {GEMINI_MODEL} не найдена, пробую другие модели")
+                    log_warning("ai_gemini", f"Модель {GEMINI_MODEL} не найдена, получаю список доступных моделей")
                     
-                    # Пробуем модели из списка fallback
-                    for fallback_model in GEMINI_FALLBACK_MODELS:
+                    # Получаем список доступных моделей через API
+                    available_models = await self._get_available_gemini_models()
+                    models_to_try = available_models if available_models else GEMINI_FALLBACK_MODELS
+                    
+                    log_info("ai_gemini", f"Буду пробовать модели: {models_to_try}")
+                    
+                    # Пробуем модели из списка
+                    for fallback_model in models_to_try:
                         if fallback_model == GEMINI_MODEL:
                             continue  # Пропускаем уже попробованную модель
                         
@@ -938,7 +944,8 @@ class AIValuator:
                             log_warning("ai_gemini", f"Ошибка при попытке использовать {fallback_model}: {e}")
                             continue
                     
-                    log_error("ai_gemini", f"Все модели не найдены. Последняя ошибка: {error_text[:200]}")
+                    log_error("ai_gemini", f"Все модели не найдены. Попробованы: {models_to_try}")
+                    log_error("ai_gemini", f"Последняя ошибка: {error_text[:200]}")
                 else:
                     error_text = await resp.text()
                     log_error("ai_gemini", f"Gemini API вернул статус {resp.status}: {error_text[:200]}")
