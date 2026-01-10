@@ -7,7 +7,8 @@ import asyncio
 import aiohttp
 import json
 import re
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, List
+from bs4 import BeautifulSoup
 from scrapers.base import Listing
 
 # Добавляем путь для импорта error_logger
@@ -95,7 +96,7 @@ class AIValuator:
     async def __aexit__(self, exc_type, exc_val, exc_tb):
         await self.close_session()
     
-    def _prepare_prompt(self, listing: Listing) -> str:
+    def _prepare_prompt(self, listing: Listing, inspection: Optional[Dict[str, Any]] = None) -> str:
         """Подготавливает промпт для ИИ"""
         # Определяем текущую цену в USD
         current_price_usd = listing.price_usd if listing.price_usd else (
@@ -201,12 +202,28 @@ class AIValuator:
             if features:
                 description_analysis = f"\n- Особенности: {', '.join(features)}"
         
-        # Определяем район по адресу
-        address_lower = listing.address.lower()
+        # Определяем район по адресу (используем данные инспекции если есть)
+        address_to_check = listing.address.lower()
+        if inspection and inspection.get("address_details"):
+            address_to_check = inspection["address_details"].lower()
+        if inspection and inspection.get("is_center"):
+            # Если инспекция определила центр, используем это
+            address_to_check = "центр " + address_to_check
+        
+        address_lower = address_to_check
         district = "не определен"
         district_prices = {}
         
-        if any(word in address_lower for word in ['советская', 'брестская', 'центр', 'центральная']):
+        if inspection and inspection.get("is_center"):
+            district = "Центр"
+            district_prices = {
+                "1-комн": (24000, 28500, 650, 840),
+                "2-комн": (29000, 43500, 650, 840),
+                "3-комн": (35000, 50000, 650, 840),
+                "тип": "Сталинки, кирпичные дома 60-70х",
+                "характеристики": "Престижный район, развитая инфраструктура, старый фонд"
+            }
+        elif any(word in address_lower for word in ['советская', 'брестская', 'центр', 'центральная', 'ленина', 'мир', 'кирова', 'комсомольская', 'пионерская', 'горького', 'пушкина', 'машерова']):
             district = "Центр"
             district_prices = {
                 "1-комн": (24000, 28500, 650, 840),
@@ -347,11 +364,12 @@ class AIValuator:
    - Что влияет на стоимость (район, ремонт, этаж, год постройки)
    - Сравнение с рынком района
 5. Оцени состояние ремонта: "отличное", "хорошее", "среднее", "требует ремонта", "плохое"
-6. Дай рекомендации для покупателя:
-   - Что проверить перед покупкой (документы, коммуникации, состояние)
-   - Стоит ли покупать по этой цене
-   - На что обратить внимание при осмотре
-7. Оцени соотношение цена/качество (1-10): учитывай район, состояние, год постройки
+6. Дай КОНКРЕТНЫЕ рекомендации для покупателя (не общие фразы, а специфичные для этой квартиры):
+   - Что КОНКРЕТНО проверить перед покупкой (например: "проверить состояние сантехники в ванной", "уточнить год замены электропроводки", "проверить документы в БТИ")
+   - Стоит ли покупать по этой цене и почему (с учетом района, состояния, рынка)
+   - На что КОНКРЕТНО обратить внимание при осмотре (например: "обратить внимание на состояние окон", "проверить наличие плесени в углах", "уточнить соседей")
+   - Конкретные вопросы для продавца (например: "спросить о коммунальных платежах", "уточнить причину продажи")
+7. Оцени соотношение цена/качество (1-10): учитывай район, состояние, год постройки, визуальную оценку фото
 
 ВАЖНО: Ответь ТОЛЬКО валидным JSON без дополнительного текста до или после:
 {{
@@ -359,10 +377,112 @@ class AIValuator:
     "is_overpriced": true/false,
     "assessment": "детальная оценка на русском (2-3 предложения с учетом района и рынка)",
     "renovation_state": "отличное/хорошее/среднее/требует ремонта/плохое",
-    "recommendations": "полезные советы для покупателя (что проверить, на что обратить внимание, стоит ли покупать)",
+    "recommendations": "КОНКРЕТНЫЕ советы для покупателя (что проверить, какие вопросы задать продавцу, на что обратить внимание при осмотре, стоит ли покупать по этой цене)",
     "value_score": число от 1 до 10 (10 = отличное соотношение цена/качество для данного района)
 }}"""
         return prompt
+    
+    async def _inspect_listing_page(self, listing: Listing) -> Dict[str, Any]:
+        """Инспектирует страницу объявления для получения детальной информации"""
+        inspection_data = {
+            "full_description": "",
+            "all_photos": [],
+            "detailed_info": {},
+            "address_details": "",
+            "is_center": False
+        }
+        
+        try:
+            log_info("ai_inspect", f"Инспектирую страницу: {listing.url}")
+            
+            # Загружаем HTML страницы
+            async with self.session.get(listing.url, timeout=aiohttp.ClientTimeout(total=10)) as resp:
+                if resp.status == 200:
+                    html = await resp.text()
+                    soup = BeautifulSoup(html, 'lxml')
+                    
+                    # Извлекаем полное описание
+                    description_selectors = [
+                        'div.description', 'div[class*="description"]', 
+                        'div[class*="text"]', 'div.content', 'p.description',
+                        'div[itemprop="description"]', 'meta[property="og:description"]'
+                    ]
+                    for selector in description_selectors:
+                        desc_elem = soup.select_one(selector)
+                        if desc_elem:
+                            inspection_data["full_description"] = desc_elem.get_text(strip=True)
+                            if len(inspection_data["full_description"]) > 100:
+                                break
+                    
+                    # Если не нашли через селекторы, ищем в мета-тегах
+                    if not inspection_data["full_description"]:
+                        meta_desc = soup.find('meta', property='og:description')
+                        if meta_desc:
+                            inspection_data["full_description"] = meta_desc.get('content', '')
+                    
+                    # Извлекаем все фото со страницы
+                    photo_urls = set()
+                    # Ищем все img теги
+                    for img in soup.find_all('img', src=True):
+                        img_src = img.get('src') or img.get('data-src') or img.get('data-lazy')
+                        if img_src:
+                            # Пропускаем служебные изображения
+                            skip_patterns = ['logo', 'icon', 'sprite', 'placeholder', 'no-photo', 'blank']
+                            if not any(p in img_src.lower() for p in skip_patterns):
+                                if not img_src.startswith('http'):
+                                    if img_src.startswith('//'):
+                                        img_src = f"https:{img_src}"
+                                    else:
+                                        # Определяем базовый URL
+                                        base_url = '/'.join(listing.url.split('/')[:3])
+                                        img_src = f"{base_url}{img_src}"
+                                photo_urls.add(img_src)
+                    
+                    inspection_data["all_photos"] = list(photo_urls)[:10]  # Максимум 10 фото
+                    
+                    # Извлекаем детальную информацию
+                    # Ищем таблицы с параметрами
+                    for table in soup.find_all(['table', 'dl', 'ul']):
+                        text = table.get_text()
+                        if any(keyword in text.lower() for keyword in ['площадь', 'этаж', 'год', 'комнат']):
+                            inspection_data["detailed_info"]["params_table"] = text[:500]
+                    
+                    # Анализируем адрес для определения центра и района
+                    address_text = listing.address.lower()
+                    
+                    # Ключевые слова для центра Барановичей
+                    center_keywords = [
+                        'советская', 'брестская', 'центральная', 'ленина', 'мир', 'кирова',
+                        'комсомольская', 'пионерская', 'горького', 'пушкина', 'машерова'
+                    ]
+                    inspection_data["is_center"] = any(keyword in address_text for keyword in center_keywords)
+                    
+                    # Извлекаем дополнительные детали адреса из страницы
+                    address_selectors = [
+                        'div[class*="address"]', 'div[class*="location"]', 'div[class*="street"]',
+                        'span[class*="address"]', 'p[class*="address"]', '[itemprop="address"]'
+                    ]
+                    for selector in address_selectors:
+                        addr_elem = soup.select_one(selector)
+                        if addr_elem:
+                            addr_text = addr_elem.get_text(strip=True)
+                            if len(addr_text) > len(listing.address):
+                                inspection_data["address_details"] = addr_text
+                                # Обновляем is_center на основе детального адреса
+                                if not inspection_data["is_center"]:
+                                    inspection_data["is_center"] = any(keyword in addr_text.lower() for keyword in center_keywords)
+                                break
+                    
+                    # Если не нашли через селекторы, используем исходный адрес
+                    if not inspection_data["address_details"]:
+                        inspection_data["address_details"] = listing.address
+                    
+                    log_info("ai_inspect", f"Найдено: {len(inspection_data['all_photos'])} фото, описание: {len(inspection_data['full_description'])} символов")
+                    
+        except Exception as e:
+            log_warning("ai_inspect", f"Ошибка инспекции страницы {listing.url}: {e}")
+        
+        return inspection_data
     
     async def _download_image_base64(self, image_url: str) -> Optional[str]:
         """Загружает изображение и конвертирует в base64"""
@@ -380,46 +500,77 @@ class AIValuator:
         return None
     
     async def valuate_groq(self, listing: Listing) -> Optional[Dict[str, Any]]:
-        """Оценка через Groq API с поддержкой анализа фото"""
+        """Оценка через Groq API с поддержкой инспекции страницы и анализа фото"""
         if not GROQ_API_KEY:
             return None
         
-        prompt = self._prepare_prompt(listing)
+        # ИНСПЕКЦИЯ СТРАНИЦЫ ОБЪЯВЛЕНИЯ
+        log_info("ai_inspect", f"Начинаю инспекцию объявления: {listing.url}")
+        inspection = await self._inspect_listing_page(listing)
+        
+        # Используем полное описание если есть
+        full_description = inspection.get("full_description", "")
+        if full_description and len(full_description) > len(listing.description):
+            listing.description = full_description
+        
+        # Используем все фото со страницы если их больше
+        all_photos = inspection.get("all_photos", [])
+        if len(all_photos) > len(listing.photos):
+            listing.photos = all_photos[:10]  # Максимум 10 фото
+        
+        # Обновляем информацию о центре
+        is_center = inspection.get("is_center", False)
+        address_details = inspection.get("address_details", "")
+        
+        prompt = self._prepare_prompt(listing, inspection)
         
         # Подготавливаем сообщение с фото (если есть)
         user_content = []
         
-        # Добавляем фото для анализа (максимум 3 первых фото)
+        # Добавляем фото для анализа (максимум 5 фото для детального анализа)
         photos_added = 0
-        if listing.photos:
-            for photo_url in listing.photos[:3]:  # Максимум 3 фото
-                if photos_added >= 3:
-                    break
-                base64_image = await self._download_image_base64(photo_url)
-                if base64_image:
-                    user_content.append({
-                        "type": "image_url",
-                        "image_url": {"url": base64_image}
-                    })
-                    photos_added += 1
+        photos_to_analyze = listing.photos[:5] if listing.photos else []
         
-        # Добавляем текстовый промпт
+        for photo_url in photos_to_analyze:
+            if photos_added >= 5:
+                break
+            base64_image = await self._download_image_base64(photo_url)
+            if base64_image:
+                user_content.append({
+                    "type": "image_url",
+                    "image_url": {"url": base64_image}
+                })
+                photos_added += 1
+                log_info("ai_photo", f"Добавлено фото для анализа: {photo_url[:50]}...")
+        
+        # Добавляем текстовый промпт с информацией об инспекции
         photo_prompt = ""
         if photos_added > 0:
-            photo_prompt = f"\n\nВНИМАНИЕ: К сообщению прикреплены {photos_added} фото(графий) квартиры. Проанализируй их и оцени:\n"
-            photo_prompt += "- Состояние ремонта (отличное/хорошее/среднее/требует ремонта/плохое)\n"
-            photo_prompt += "- Качество отделки (если видно)\n"
-            photo_prompt += "- Общее состояние квартиры\n"
-            photo_prompt += "- Что видно на фото (мебель, техника, состояние стен/пола/потолка)\n"
-            photo_prompt += "Используй эту информацию для более точной оценки стоимости.\n"
+            photo_prompt = f"\n\nВНИМАНИЕ: К сообщению прикреплены {photos_added} фото(графий) квартиры с сайта объявления. "
+            photo_prompt += "Ты должен ВНИМАТЕЛЬНО проанализировать каждое фото и дать КОНКРЕТНУЮ оценку:\n"
+            photo_prompt += "1. Состояние ремонта: отличное/хорошее/среднее/требует ремонта/плохое (опиши ЧТО видно на фото)\n"
+            photo_prompt += "2. Качество отделки: опиши состояние стен, пола, потолка, дверей, окон\n"
+            photo_prompt += "3. Мебель и техника: что есть, в каком состоянии\n"
+            photo_prompt += "4. Общее впечатление: чистота, ухоженность, готовность к проживанию\n"
+            photo_prompt += "5. Потенциальные проблемы: что нужно проверить/отремонтировать\n"
+            photo_prompt += "Используй эту ВИЗУАЛЬНУЮ информацию для точной оценки стоимости.\n"
+        
+        # Информация об инспекции
+        inspection_info = ""
+        if inspection.get("full_description"):
+            inspection_info += f"\n\nПОЛНОЕ ОПИСАНИЕ С САЙТА:\n{inspection['full_description'][:800]}\n"
+        if address_details:
+            inspection_info += f"\nДЕТАЛИ АДРЕСА: {address_details}\n"
+        if is_center:
+            inspection_info += "\nРАСПОЛОЖЕНИЕ: Центральный район города (престижный, развитая инфраструктура)\n"
         
         user_content.append({
             "type": "text",
-            "text": prompt + photo_prompt
+            "text": prompt + photo_prompt + inspection_info
         })
         
-        # Используем vision модель если есть фото и она доступна, иначе обычную
-        model_to_use = GROQ_VISION_MODEL if (photos_added > 0 and GROQ_VISION_MODEL) else GROQ_MODEL
+        # Используем обычную модель (vision временно отключена)
+        model_to_use = GROQ_MODEL
         
         payload = {
             "messages": [
@@ -427,15 +578,22 @@ class AIValuator:
                     "role": "system", 
                     "content": """Ты профессиональный оценщик недвижимости с 10+ летним опытом работы на рынке Барановичей, Беларусь.
 Твоя задача - помочь пользователю принять правильное решение о покупке квартиры.
-Ты даешь детальные, полезные оценки с советами и рекомендациями.
-Если есть фото - внимательно анализируй их для оценки состояния ремонта и качества квартиры.
+Ты даешь КОНКРЕТНЫЕ, детальные оценки с практическими советами.
+
+ВАЖНО:
+- Если есть фото - ВНИМАТЕЛЬНО анализируй каждое фото и описывай ЧТО видно
+- Если есть описание с сайта - используй его для детальной оценки
+- Определяй район по адресу и используй точные ценовые диапазоны
+- Дай КОНКРЕТНЫЕ рекомендации (не общие фразы, а специфичные для этой квартиры)
+- Рекомендации должны быть практичными и выполнимыми
+
 Всегда отвечай ТОЛЬКО валидным JSON без дополнительного текста.
 Формат ответа: {
     "fair_price_usd": число,
     "is_overpriced": true/false,
-    "assessment": "детальная оценка на русском (2-3 предложения)",
+    "assessment": "детальная оценка на русском (2-3 предложения с конкретными фактами)",
     "renovation_state": "отличное/хорошее/среднее/требует ремонта/плохое",
-    "recommendations": "полезные советы для покупателя",
+    "recommendations": "КОНКРЕТНЫЕ советы для покупателя (что проверить, какие вопросы задать, на что обратить внимание)",
     "value_score": число от 1 до 10
 }"""
                 },
@@ -443,7 +601,7 @@ class AIValuator:
             ],
             "model": model_to_use,
             "temperature": 0.2,  # Снижена для более точных оценок
-            "max_tokens": 600  # Увеличено для детальных ответов
+            "max_tokens": 800  # Увеличено для детальных ответов с инспекцией
         }
         
         headers = {
