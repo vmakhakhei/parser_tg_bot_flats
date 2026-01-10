@@ -3,6 +3,7 @@ Telegram бот для мониторинга объявлений о кварт
 """
 import asyncio
 import logging
+import aiosqlite
 from typing import List, Dict, Any
 
 from aiogram import Bot, Dispatcher, Router, F
@@ -11,7 +12,7 @@ from aiogram.filters import Command, CommandStart
 from aiogram.enums import ParseMode
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
-from config import BOT_TOKEN, CHANNEL_ID, MAX_PHOTOS
+from config import BOT_TOKEN, MAX_PHOTOS, DATABASE_PATH
 from database import (
     init_database, 
     get_filters, 
@@ -21,7 +22,12 @@ from database import (
     mark_listing_sent,
     get_sent_listings_count,
     get_duplicates_stats,
-    get_recent_listings
+    get_recent_listings,
+    get_user_filters,
+    set_user_filters,
+    is_listing_sent_to_user,
+    mark_listing_sent_to_user,
+    get_active_users
 )
 from scrapers.aggregator import ListingsAggregator
 from scrapers.base import Listing
@@ -83,8 +89,8 @@ def format_listing_message(listing: Listing) -> str:
     return "\n".join(lines)
 
 
-async def send_listing_to_channel(bot: Bot, listing: Listing) -> bool:
-    """Отправляет объявление в канал"""
+async def send_listing_to_user(bot: Bot, user_id: int, listing: Listing) -> bool:
+    """Отправляет объявление пользователю"""
     try:
         message_text = format_listing_message(listing)
         photos = listing.photos
@@ -106,118 +112,178 @@ async def send_listing_to_channel(bot: Bot, listing: Listing) -> bool:
                     media_group.append(InputMediaPhoto(media=photo_url))
             
             await bot.send_media_group(
-                chat_id=CHANNEL_ID,
+                chat_id=user_id,
                 media=media_group
             )
         else:
             # Без фотографий - просто текст
             await bot.send_message(
-                chat_id=CHANNEL_ID,
+                chat_id=user_id,
                 text=message_text,
                 parse_mode=ParseMode.HTML,
                 disable_web_page_preview=False
             )
         
-        # Отмечаем как отправленное
-        await mark_listing_sent(listing.to_dict())
-        logger.info(f"Отправлено объявление: {listing.id} ({listing.source})")
+        # Отмечаем как отправленное пользователю и глобально
+        await mark_listing_sent_to_user(user_id, listing.id)
+        await mark_listing_sent(listing.to_dict())  # Глобальная дедупликация
+        logger.info(f"Отправлено пользователю {user_id}: {listing.id} ({listing.source})")
         return True
         
     except Exception as e:
-        error_logger.log_error("bot", f"Ошибка отправки объявления {listing.id}", e)
+        error_logger.log_error("bot", f"Ошибка отправки объявления {listing.id} пользователю {user_id}", e)
         return False
 
 
 async def check_new_listings(bot: Bot):
-    """Проверяет новые объявления и отправляет их в канал"""
+    """Проверяет новые объявления и отправляет их активным пользователям"""
     logger.info("=" * 50)
     logger.info("Проверка новых объявлений со всех источников...")
     
-    filters = await get_filters()
+    # Получаем список активных пользователей
+    active_users = await get_active_users()
     
-    if not filters.get("is_active", True):
-        logger.info("Мониторинг отключен")
+    if not active_users:
+        logger.info("Нет активных пользователей")
         return
     
-    # Используем агрегатор для получения со всех сайтов
+    logger.info(f"Активных пользователей: {len(active_users)}")
+    
+    # Получаем все объявления со всех источников (без фильтров)
     aggregator = ListingsAggregator(enabled_sources=DEFAULT_SOURCES)
     
-    listings = await aggregator.fetch_all_listings(
-        city=filters.get("city", "барановичи"),
-        min_rooms=filters.get("min_rooms", 1),
-        max_rooms=filters.get("max_rooms", 4),
-        min_price=filters.get("min_price", 0),
-        max_price=filters.get("max_price", 100000),
+    all_listings = await aggregator.fetch_all_listings(
+        city="барановичи",
+        min_rooms=1,
+        max_rooms=5,
+        min_price=0,
+        max_price=1000000,  # Широкий диапазон для всех пользователей
     )
     
-    logger.info(f"Всего найдено объявлений: {len(listings)}")
+    logger.info(f"Всего найдено объявлений: {len(all_listings)}")
     
-    new_count = 0
-    skipped_by_id = 0
-    skipped_by_content = 0
+    total_sent = 0
     
-    for listing in listings:
-        # 1. Проверяем по ID (точное совпадение)
-        if await is_listing_sent(listing.id):
-            skipped_by_id += 1
+    # Для каждого пользователя проверяем объявления по его фильтрам
+    for user_id in active_users:
+        user_filters = await get_user_filters(user_id)
+        if not user_filters or not user_filters.get("is_active"):
             continue
         
-        # 2. Проверяем по контенту (дубликаты с разных сайтов)
-        dup_check = await is_duplicate_content(
-            rooms=listing.rooms,
-            area=listing.area,
-            address=listing.address,
-            price=listing.price
-        )
+        user_new_count = 0
         
-        if dup_check["is_duplicate"]:
-            skipped_by_content += 1
-            log_info("dedup", 
-                f"Дубликат: {listing.source} ID={listing.id} "
-                f"похож на {dup_check['original_source']} ID={dup_check['original_id']}"
+        for listing in all_listings:
+            # Проверяем соответствие фильтрам пользователя
+            if not _matches_user_filters(listing, user_filters):
+                continue
+            
+            # Проверяем, не отправляли ли уже этому пользователю
+            if await is_listing_sent_to_user(user_id, listing.id):
+                continue
+            
+            # Проверяем глобальную дедупликацию по контенту
+            dup_check = await is_duplicate_content(
+                rooms=listing.rooms,
+                area=listing.area,
+                address=listing.address,
+                price=listing.price
             )
-            continue
+            
+            if dup_check["is_duplicate"]:
+                log_info("dedup", 
+                    f"Дубликат для пользователя {user_id}: {listing.source} ID={listing.id}"
+                )
+                continue
+            
+            # Отправляем объявление пользователю
+            if await send_listing_to_user(bot, user_id, listing):
+                user_new_count += 1
+                total_sent += 1
+                # Задержка между сообщениями чтобы не получить бан
+                await asyncio.sleep(2)
         
-        # Отправляем новое объявление
-        if await send_listing_to_channel(bot, listing):
-            new_count += 1
-            # Задержка между сообщениями чтобы не получить бан
-            await asyncio.sleep(3)
+        if user_new_count > 0:
+            logger.info(f"Пользователю {user_id} отправлено: {user_new_count} объявлений")
     
-    if new_count > 0:
-        logger.info(f"✅ Отправлено новых объявлений: {new_count}")
+    if total_sent > 0:
+        logger.info(f"✅ Всего отправлено новых объявлений: {total_sent}")
     else:
         logger.info("Новых объявлений нет")
     
-    if skipped_by_id > 0 or skipped_by_content > 0:
-        logger.info(f"⏭️ Пропущено: {skipped_by_id} по ID, {skipped_by_content} дубликатов по контенту")
-    
     logger.info("=" * 50)
+
+
+def _matches_user_filters(listing: Listing, filters: Dict[str, Any]) -> bool:
+    """Проверяет соответствие объявления фильтрам пользователя"""
+    # Комнаты
+    if listing.rooms > 0:
+        min_rooms = filters.get("min_rooms", 1)
+        max_rooms = filters.get("max_rooms", 4)
+        if listing.rooms < min_rooms or listing.rooms > max_rooms:
+            return False
+    
+    # Цена (конвертируем в USD если нужно)
+    price = listing.price
+    if listing.price_usd:
+        price = listing.price_usd
+    elif listing.price_byn and not listing.price_usd:
+        # Конвертируем BYN в USD примерно
+        price = int(listing.price_byn / 2.95)
+    
+    if price > 0:
+        min_price = filters.get("min_price", 0)
+        max_price = filters.get("max_price", 100000)
+        if price < min_price or price > max_price:
+            return False
+    
+    return True
 
 
 # ============ КОМАНДЫ БОТА ============
 
 @router.message(CommandStart())
 async def cmd_start(message: Message):
-    """Обработчик команды /start"""
-    sources_list = ", ".join(DEFAULT_SOURCES)
-    await message.answer(
-        "🏠 <b>Бот мониторинга квартир</b>\n\n"
-        "Этот бот отслеживает новые объявления о продаже квартир в Барановичах.\n\n"
-        f"📡 <b>Источники:</b> {sources_list}\n\n"
-        "📋 <b>Основные команды:</b>\n"
-        "/filters - 🎛 Настройка фильтров (с кнопками!)\n"
-        "/check - 🔍 Проверить объявления сейчас\n"
-        "/stats - 📊 Статистика\n\n"
-        "⚙️ <b>Быстрые фильтры:</b>\n"
-        "/setrooms 2 - Только 2-комнатные\n"
-        "/setrooms 1 3 - От 1 до 3 комнат\n"
-        "/setprice 50000 - До $50,000\n"
-        "/setprice 20000 40000 - $20k-$40k\n"
-        "/resetfilters - Сбросить все фильтры\n\n"
-        "/help - Полная справка",
-        parse_mode=ParseMode.HTML
-    )
+    """Обработчик команды /start - запрашивает фильтры если их нет"""
+    user_id = message.from_user.id
+    
+    # Проверяем, есть ли у пользователя фильтры
+    user_filters = await get_user_filters(user_id)
+    
+    if not user_filters:
+        # Первый запуск - запрашиваем фильтры
+        builder = InlineKeyboardBuilder()
+        builder.button(text="🚪 Настроить фильтры", callback_data="setup_filters")
+        
+        await message.answer(
+            "👋 <b>Добро пожаловать!</b>\n\n"
+            "Я помогу вам найти квартиру в Барановичах.\n\n"
+            "📋 <b>Как это работает:</b>\n"
+            "1️⃣ Настройте фильтры (комнаты, цена)\n"
+            "2️⃣ Я найду подходящие объявления\n"
+            "3️⃣ Автоматически буду присылать новые объявления\n\n"
+            "Нажмите кнопку ниже, чтобы начать:",
+            parse_mode=ParseMode.HTML,
+            reply_markup=builder.as_markup()
+        )
+    else:
+        # Фильтры уже установлены - показываем их и предлагаем изменить
+        status = "✅ Активен" if user_filters.get("is_active") else "❌ Отключен"
+        
+        builder = InlineKeyboardBuilder()
+        builder.button(text="🔍 Проверить сейчас", callback_data="check_now")
+        builder.button(text="⚙️ Изменить фильтры", callback_data="setup_filters")
+        builder.row()
+        builder.button(text="📊 Статистика", callback_data="show_stats")
+        
+        await message.answer(
+            f"🏠 <b>Ваши фильтры</b>\n\n"
+            f"🚪 <b>Комнат:</b> от {user_filters.get('min_rooms', 1)} до {user_filters.get('max_rooms', 4)}\n"
+            f"💰 <b>Цена:</b> ${user_filters.get('min_price', 0):,} - ${user_filters.get('max_price', 100000):,}\n\n"
+            f"📡 <b>Статус:</b> {status}\n\n"
+            f"Я проверяю новые объявления каждые 10 минут и присылаю только те, что подходят под ваши фильтры.",
+            parse_mode=ParseMode.HTML,
+            reply_markup=builder.as_markup()
+        )
 
 
 @router.message(Command("help"))
@@ -309,9 +375,277 @@ async def cmd_filters(message: Message):
 
 # ============ INLINE КНОПКИ ДЛЯ ФИЛЬТРОВ ============
 
+@router.callback_query(F.data == "setup_filters")
+async def cb_setup_filters(callback: CallbackQuery):
+    """Настройка фильтров для пользователя"""
+    user_id = callback.from_user.id
+    
+    builder = InlineKeyboardBuilder()
+    builder.button(text="🚪 Комнаты", callback_data="user_filter_rooms")
+    builder.button(text="💰 Цена", callback_data="user_filter_price")
+    builder.row()
+    builder.button(text="✅ Готово", callback_data="user_filters_done")
+    
+    await callback.message.edit_text(
+        "⚙️ <b>Настройка фильтров</b>\n\n"
+        "Выберите параметры поиска:\n\n"
+        "🚪 <b>Комнаты</b> — количество комнат\n"
+        "💰 <b>Цена</b> — диапазон цены в USD\n\n"
+        "После настройки я найду подходящие объявления и буду присылать новые автоматически.",
+        parse_mode=ParseMode.HTML,
+        reply_markup=builder.as_markup()
+    )
+    await callback.answer()
+
+
+@router.callback_query(F.data == "user_filters_done")
+async def cb_filters_done(callback: CallbackQuery):
+    """Завершение настройки фильтров и отправка результатов"""
+    user_id = callback.from_user.id
+    
+    user_filters = await get_user_filters(user_id)
+    if not user_filters:
+        # Устанавливаем дефолтные фильтры если их нет
+        await set_user_filters(user_id)
+        user_filters = await get_user_filters(user_id)
+    
+    await callback.message.edit_text(
+        "🔍 <b>Ищу подходящие объявления...</b>\n\n"
+        "Это может занять несколько секунд.",
+        parse_mode=ParseMode.HTML
+    )
+    
+    # Ищем объявления по фильтрам пользователя
+    aggregator = ListingsAggregator(enabled_sources=DEFAULT_SOURCES)
+    
+    listings = await aggregator.fetch_all_listings(
+        city=user_filters.get("city", "барановичи"),
+        min_rooms=user_filters.get("min_rooms", 1),
+        max_rooms=user_filters.get("max_rooms", 4),
+        min_price=user_filters.get("min_price", 0),
+        max_price=user_filters.get("max_price", 100000),
+    )
+    
+    # Фильтруем по фильтрам пользователя
+    filtered_listings = [
+        l for l in listings 
+        if _matches_user_filters(l, user_filters) and not await is_listing_sent_to_user(user_id, l.id)
+    ]
+    
+    # Отправляем результаты
+    if filtered_listings:
+        await callback.message.answer(
+            f"✅ <b>Найдено {len(filtered_listings)} объявлений</b>\n\n"
+            f"Отправляю результаты...",
+            parse_mode=ParseMode.HTML
+        )
+        
+        sent_count = 0
+        for listing in filtered_listings[:20]:  # Максимум 20 за раз
+            if await send_listing_to_user(callback.bot, user_id, listing):
+                sent_count += 1
+                await asyncio.sleep(2)
+        
+        await callback.message.answer(
+            f"✅ <b>Готово!</b>\n\n"
+            f"Отправлено {sent_count} объявлений.\n\n"
+            f"Я буду автоматически присылать новые объявления каждые 10 минут, которые подходят под ваши фильтры.\n\n"
+            f"Используйте /filters чтобы изменить настройки.",
+            parse_mode=ParseMode.HTML
+        )
+    else:
+        await callback.message.answer(
+            "😔 <b>Объявлений не найдено</b>\n\n"
+            "Попробуйте изменить фильтры:\n"
+            "• Расширьте диапазон цен\n"
+            "• Измените количество комнат\n\n"
+            "Используйте /filters для изменения настроек.",
+            parse_mode=ParseMode.HTML
+        )
+    
+    await callback.answer()
+
+
+@router.callback_query(F.data == "check_now")
+async def cb_check_now(callback: CallbackQuery):
+    """Принудительная проверка объявлений для пользователя"""
+    user_id = callback.from_user.id
+    
+    user_filters = await get_user_filters(user_id)
+    if not user_filters:
+        await callback.answer("Сначала настройте фильтры через /start", show_alert=True)
+        return
+    
+    await callback.message.edit_text(
+        "🔍 <b>Проверяю новые объявления...</b>",
+        parse_mode=ParseMode.HTML
+    )
+    
+    # Ищем новые объявления
+    aggregator = ListingsAggregator(enabled_sources=DEFAULT_SOURCES)
+    
+    all_listings = await aggregator.fetch_all_listings(
+        city="барановичи",
+        min_rooms=1,
+        max_rooms=5,
+        min_price=0,
+        max_price=1000000,
+    )
+    
+    new_listings = []
+    for listing in all_listings:
+        if _matches_user_filters(listing, user_filters):
+            if not await is_listing_sent_to_user(user_id, listing.id):
+                dup_check = await is_duplicate_content(
+                    listing.rooms, listing.area, listing.address, listing.price
+                )
+                if not dup_check["is_duplicate"]:
+                    new_listings.append(listing)
+    
+    if new_listings:
+        await callback.message.answer(
+            f"✅ <b>Найдено {len(new_listings)} новых объявлений</b>",
+            parse_mode=ParseMode.HTML
+        )
+        
+        for listing in new_listings[:20]:
+            await send_listing_to_user(callback.bot, user_id, listing)
+            await asyncio.sleep(2)
+    else:
+        await callback.message.answer(
+            "📭 <b>Новых объявлений нет</b>\n\n"
+            "Все подходящие объявления уже были отправлены ранее.",
+            parse_mode=ParseMode.HTML
+        )
+    
+    await callback.answer()
+
+
+@router.callback_query(F.data == "show_stats")
+async def cb_show_stats(callback: CallbackQuery):
+    """Показывает статистику для пользователя"""
+    user_id = callback.from_user.id
+    
+    user_filters = await get_user_filters(user_id)
+    if not user_filters:
+        await callback.answer("Сначала настройте фильтры", show_alert=True)
+        return
+    
+    # Подсчитываем отправленные объявления пользователю
+    async with aiosqlite.connect(DATABASE_PATH) as db:
+        cursor = await db.execute(
+            "SELECT COUNT(*) FROM user_sent_listings WHERE user_id = ?",
+            (user_id,)
+        )
+        sent_count = (await cursor.fetchone())[0]
+    
+    await callback.message.answer(
+        f"📊 <b>Ваша статистика</b>\n\n"
+        f"📨 Получено объявлений: {sent_count}\n"
+        f"🚪 Комнат: {user_filters.get('min_rooms', 1)}-{user_filters.get('max_rooms', 4)}\n"
+        f"💰 Цена: ${user_filters.get('min_price', 0):,} - ${user_filters.get('max_price', 100000):,}\n\n"
+        f"📡 Статус: {'✅ Активен' if user_filters.get('is_active') else '❌ Отключен'}",
+        parse_mode=ParseMode.HTML
+    )
+    await callback.answer()
+
+
+@router.callback_query(F.data == "user_filter_rooms")
+async def cb_user_filter_rooms(callback: CallbackQuery):
+    """Показывает кнопки выбора комнат для пользователя"""
+    builder = InlineKeyboardBuilder()
+    
+    # Кнопки для выбора количества комнат
+    builder.button(text="1 комн.", callback_data="user_rooms_1_1")
+    builder.button(text="2 комн.", callback_data="user_rooms_2_2")
+    builder.button(text="3 комн.", callback_data="user_rooms_3_3")
+    builder.button(text="4+ комн.", callback_data="user_rooms_4_5")
+    builder.row()
+    builder.button(text="Все (1-5)", callback_data="user_rooms_1_5")
+    builder.button(text="Назад", callback_data="setup_filters")
+    
+    await callback.message.edit_text(
+        "🚪 <b>Выберите количество комнат:</b>",
+        parse_mode=ParseMode.HTML,
+        reply_markup=builder.as_markup()
+    )
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("user_rooms_"))
+async def cb_user_set_rooms(callback: CallbackQuery):
+    """Устанавливает количество комнат для пользователя"""
+    user_id = callback.from_user.id
+    parts = callback.data.split("_")
+    min_rooms = int(parts[2])
+    max_rooms = int(parts[3])
+    
+    user_filters = await get_user_filters(user_id)
+    await set_user_filters(
+        user_id,
+        city=user_filters.get("city", "барановичи") if user_filters else "барановичи",
+        min_rooms=min_rooms,
+        max_rooms=max_rooms,
+        min_price=user_filters.get("min_price", 0) if user_filters else 0,
+        max_price=user_filters.get("max_price", 100000) if user_filters else 100000,
+        is_active=True
+    )
+    
+    await callback.answer(f"✅ Комнаты: {min_rooms}-{max_rooms}")
+    await cb_setup_filters(callback)
+
+
+@router.callback_query(F.data == "user_filter_price")
+async def cb_user_filter_price(callback: CallbackQuery):
+    """Показывает кнопки выбора цены для пользователя"""
+    builder = InlineKeyboardBuilder()
+    
+    # Популярные диапазоны цен
+    builder.button(text="до $30k", callback_data="user_price_0_30000")
+    builder.button(text="$30k - $50k", callback_data="user_price_30000_50000")
+    builder.button(text="$50k - $80k", callback_data="user_price_50000_80000")
+    builder.button(text="$80k - $120k", callback_data="user_price_80000_120000")
+    builder.row()
+    builder.button(text="от $120k", callback_data="user_price_120000_1000000")
+    builder.button(text="Любая цена", callback_data="user_price_0_1000000")
+    builder.row()
+    builder.button(text="Назад", callback_data="setup_filters")
+    
+    await callback.message.edit_text(
+        "💰 <b>Выберите диапазон цены (USD):</b>",
+        parse_mode=ParseMode.HTML,
+        reply_markup=builder.as_markup()
+    )
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("user_price_"))
+async def cb_user_set_price(callback: CallbackQuery):
+    """Устанавливает диапазон цены для пользователя"""
+    user_id = callback.from_user.id
+    parts = callback.data.split("_")
+    min_price = int(parts[2])
+    max_price = int(parts[3])
+    
+    user_filters = await get_user_filters(user_id)
+    await set_user_filters(
+        user_id,
+        city=user_filters.get("city", "барановичи") if user_filters else "барановичи",
+        min_rooms=user_filters.get("min_rooms", 1) if user_filters else 1,
+        max_rooms=user_filters.get("max_rooms", 4) if user_filters else 4,
+        min_price=min_price,
+        max_price=max_price,
+        is_active=True
+    )
+    
+    price_text = f"${min_price:,} - ${max_price:,}".replace(",", " ")
+    await callback.answer(f"✅ Цена: {price_text}")
+    await cb_setup_filters(callback)
+
+
 @router.callback_query(F.data == "filter_rooms")
 async def cb_filter_rooms(callback: CallbackQuery):
-    """Показывает кнопки выбора комнат"""
+    """Показывает кнопки выбора комнат (старая версия для обратной совместимости)"""
     builder = InlineKeyboardBuilder()
     
     # Кнопки для выбора количества комнат

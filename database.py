@@ -30,7 +30,7 @@ def generate_content_hash(rooms: int, area: float, address: str, price: int) -> 
 async def init_database():
     """Инициализация базы данных и создание таблиц"""
     async with aiosqlite.connect(DATABASE_PATH) as db:
-        # Таблица отправленных объявлений
+        # Таблица отправленных объявлений (глобальная для дедупликации)
         await db.execute("""
             CREATE TABLE IF NOT EXISTS sent_listings (
                 id TEXT PRIMARY KEY,
@@ -51,7 +51,37 @@ async def init_database():
             CREATE INDEX IF NOT EXISTS idx_content_hash ON sent_listings(content_hash)
         """)
         
-        # Таблица настроек фильтров
+        # Таблица фильтров пользователей
+        await db.execute("""
+            CREATE TABLE IF NOT EXISTS user_filters (
+                user_id INTEGER PRIMARY KEY,
+                city TEXT DEFAULT 'барановичи',
+                min_rooms INTEGER DEFAULT 1,
+                max_rooms INTEGER DEFAULT 4,
+                min_price INTEGER DEFAULT 0,
+                max_price INTEGER DEFAULT 100000,
+                is_active BOOLEAN DEFAULT 1,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        
+        # Таблица отправленных объявлений каждому пользователю
+        await db.execute("""
+            CREATE TABLE IF NOT EXISTS user_sent_listings (
+                user_id INTEGER,
+                listing_id TEXT,
+                sent_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                PRIMARY KEY (user_id, listing_id)
+            )
+        """)
+        
+        # Индекс для быстрого поиска
+        await db.execute("""
+            CREATE INDEX IF NOT EXISTS idx_user_sent ON user_sent_listings(user_id, listing_id)
+        """)
+        
+        # Старая таблица filters (для обратной совместимости, можно удалить позже)
         await db.execute("""
             CREATE TABLE IF NOT EXISTS filters (
                 id INTEGER PRIMARY KEY DEFAULT 1,
@@ -63,11 +93,6 @@ async def init_database():
                 is_active BOOLEAN DEFAULT 1,
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
-        """)
-        
-        # Вставляем дефолтные настройки если их нет
-        await db.execute("""
-            INSERT OR IGNORE INTO filters (id) VALUES (1)
         """)
         
         await db.commit()
@@ -263,4 +288,76 @@ async def get_recent_listings(limit: int = 10) -> List[Dict[str, Any]]:
         """, (limit,))
         rows = await cursor.fetchall()
         return [dict(row) for row in rows]
+
+
+# ========== Функции для работы с пользователями ==========
+
+async def get_user_filters(user_id: int) -> Optional[Dict[str, Any]]:
+    """Получает фильтры пользователя"""
+    async with aiosqlite.connect(DATABASE_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        cursor = await db.execute("SELECT * FROM user_filters WHERE user_id = ?", (user_id,))
+        row = await cursor.fetchone()
+        if row:
+            return dict(row)
+        return None
+
+
+async def set_user_filters(
+    user_id: int,
+    city: str = "барановичи",
+    min_rooms: int = 1,
+    max_rooms: int = 4,
+    min_price: int = 0,
+    max_price: int = 100000,
+    is_active: bool = True
+):
+    """Устанавливает фильтры пользователя"""
+    async with aiosqlite.connect(DATABASE_PATH) as db:
+        await db.execute("""
+            INSERT OR REPLACE INTO user_filters 
+            (user_id, city, min_rooms, max_rooms, min_price, max_price, is_active, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        """, (
+            user_id,
+            city,
+            min_rooms,
+            max_rooms,
+            min_price,
+            max_price,
+            is_active,
+            datetime.now().isoformat()
+        ))
+        await db.commit()
+
+
+async def is_listing_sent_to_user(user_id: int, listing_id: str) -> bool:
+    """Проверяет, было ли объявление отправлено пользователю"""
+    async with aiosqlite.connect(DATABASE_PATH) as db:
+        cursor = await db.execute(
+            "SELECT listing_id FROM user_sent_listings WHERE user_id = ? AND listing_id = ?",
+            (user_id, listing_id)
+        )
+        result = await cursor.fetchone()
+        return result is not None
+
+
+async def mark_listing_sent_to_user(user_id: int, listing_id: str):
+    """Отмечает объявление как отправленное пользователю"""
+    async with aiosqlite.connect(DATABASE_PATH) as db:
+        await db.execute("""
+            INSERT OR IGNORE INTO user_sent_listings (user_id, listing_id, sent_at)
+            VALUES (?, ?, ?)
+        """, (user_id, listing_id, datetime.now().isoformat()))
+        await db.commit()
+
+
+async def get_active_users() -> List[int]:
+    """Возвращает список ID активных пользователей (с включенными фильтрами)"""
+    async with aiosqlite.connect(DATABASE_PATH) as db:
+        cursor = await db.execute(
+            "SELECT user_id FROM user_filters WHERE is_active = 1"
+        )
+        rows = await cursor.fetchall()
+        return [row[0] for row in rows]
 

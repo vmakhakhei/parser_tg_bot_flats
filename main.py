@@ -9,7 +9,7 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.interval import IntervalTrigger
 
 from bot import create_bot, check_new_listings
-from config import CHECK_INTERVAL, BOT_TOKEN, CHANNEL_ID
+from config import CHECK_INTERVAL, BOT_TOKEN
 from database import init_database, clear_old_listings
 
 # Настройка логирования
@@ -47,11 +47,6 @@ async def main():
         logger.error("❌ BOT_TOKEN не установлен!")
         logger.error("Создайте файл .env и укажите BOT_TOKEN")
         logger.error("Получить токен можно у @BotFather в Telegram")
-        return
-    
-    if not CHANNEL_ID:
-        logger.error("❌ CHANNEL_ID не установлен!")
-        logger.error("Укажите ID канала в файле .env")
         return
     
     logger.info("=" * 50)
@@ -97,7 +92,7 @@ async def main():
     
     # Запуск бота
     logger.info("🚀 Бот запущен и готов к работе!")
-    logger.info(f"📢 Канал для уведомлений: {CHANNEL_ID}")
+    logger.info("📱 Бот работает в режиме личных сообщений")
     
     try:
         await dp.start_polling(bot)
