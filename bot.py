@@ -733,54 +733,85 @@ async def cb_check_now(callback: CallbackQuery):
         await callback.message.answer("Сначала настройте фильтры через /start")
         return
     
-    status_msg = await callback.message.answer(
-        "🔍 <b>Проверяю новые объявления...</b>",
-        parse_mode=ParseMode.HTML
-    )
+    # Проверяем режим работы пользователя
+    ai_mode = user_filters.get("ai_mode", False)
     
-    # Ищем новые объявления
-    aggregator = ListingsAggregator(enabled_sources=DEFAULT_SOURCES)
-    
-    all_listings = await aggregator.fetch_all_listings(
-        city="барановичи",
-        min_rooms=1,
-        max_rooms=5,
-        min_price=0,
-        max_price=1000000,
-    )
-    
-    new_listings = []
-    for listing in all_listings:
-        if _matches_user_filters(listing, user_filters):
-            if not await is_listing_sent_to_user(user_id, listing.id):
-                dup_check = await is_duplicate_content(
-                    listing.rooms, listing.area, listing.address, listing.price
-                )
-                if not dup_check["is_duplicate"]:
-                    new_listings.append(listing)
-    
-    if new_listings:
-        await status_msg.edit_text(
-            f"✅ <b>Найдено {len(new_listings)} новых объявлений</b>\n\nОтправляю...",
+    if ai_mode:
+        # ИИ-режим: используем специальную функцию
+        status_msg = await callback.message.answer(
+            "🤖 <b>ИИ-анализ запущен...</b>\n\n"
+            "Собираю объявления и анализирую лучшие варианты.",
             parse_mode=ParseMode.HTML
         )
         
-        sent_count = 0
-        for listing in new_listings[:20]:
-            if await send_listing_to_user(callback.bot, user_id, listing):
-                sent_count += 1
-                await asyncio.sleep(2)
-        
-        await status_msg.edit_text(
-            f"✅ <b>Отправлено {sent_count} новых объявлений</b>",
-            parse_mode=ParseMode.HTML
+        # Получаем все объявления
+        aggregator = ListingsAggregator(enabled_sources=DEFAULT_SOURCES)
+        all_listings = await aggregator.fetch_all_listings(
+            city="барановичи",
+            min_rooms=1,
+            max_rooms=5,
+            min_price=0,
+            max_price=1000000,
         )
+        
+        # Запускаем ИИ-режим
+        await check_new_listings_ai_mode(callback.bot, user_id, user_filters, all_listings)
+        
+        # Удаляем статус сообщение
+        try:
+            await status_msg.delete()
+        except Exception:
+            pass
     else:
-        await status_msg.edit_text(
-            "📭 <b>Новых объявлений нет</b>\n\n"
-            "Все подходящие объявления уже были отправлены ранее.",
+        # Обычный режим: отправляем все подходящие
+        status_msg = await callback.message.answer(
+            "🔍 <b>Проверяю новые объявления...</b>",
             parse_mode=ParseMode.HTML
         )
+        
+        # Ищем новые объявления
+        aggregator = ListingsAggregator(enabled_sources=DEFAULT_SOURCES)
+        
+        all_listings = await aggregator.fetch_all_listings(
+            city="барановичи",
+            min_rooms=1,
+            max_rooms=5,
+            min_price=0,
+            max_price=1000000,
+        )
+        
+        new_listings = []
+        for listing in all_listings:
+            if _matches_user_filters(listing, user_filters):
+                if not await is_listing_sent_to_user(user_id, listing.id):
+                    dup_check = await is_duplicate_content(
+                        listing.rooms, listing.area, listing.address, listing.price
+                    )
+                    if not dup_check["is_duplicate"]:
+                        new_listings.append(listing)
+        
+        if new_listings:
+            await status_msg.edit_text(
+                f"✅ <b>Найдено {len(new_listings)} новых объявлений</b>\n\nОтправляю...",
+                parse_mode=ParseMode.HTML
+            )
+            
+            sent_count = 0
+            for listing in new_listings[:20]:
+                if await send_listing_to_user(callback.bot, user_id, listing):
+                    sent_count += 1
+                    await asyncio.sleep(2)
+            
+            await status_msg.edit_text(
+                f"✅ <b>Отправлено {sent_count} новых объявлений</b>",
+                parse_mode=ParseMode.HTML
+            )
+        else:
+            await status_msg.edit_text(
+                "📭 <b>Новых объявлений нет</b>\n\n"
+                "Все подходящие объявления уже были отправлены ранее.",
+                parse_mode=ParseMode.HTML
+            )
 
 
 @router.callback_query(F.data == "show_stats")
@@ -814,7 +845,7 @@ async def cb_show_stats(callback: CallbackQuery):
 
 @router.callback_query(F.data == "toggle_ai_mode")
 async def cb_toggle_ai_mode(callback: CallbackQuery):
-    """Переключает ИИ-режим пользователя"""
+    """Переключает ИИ-режим пользователя и запускает проверку если включен"""
     user_id = callback.from_user.id
     
     user_filters = await get_user_filters(user_id)
@@ -828,20 +859,53 @@ async def cb_toggle_ai_mode(callback: CallbackQuery):
     
     await set_user_ai_mode(user_id, new_mode)
     
+    # Обновляем фильтры в памяти
+    user_filters["ai_mode"] = new_mode
+    
     mode_text = "включен" if new_mode else "выключен"
     mode_desc = "ИИ будет выбирать лучшие варианты из всех найденных" if new_mode else "Будут присылаться все подходящие объявления"
     
     await callback.answer(f"🤖 ИИ-режим {mode_text}")
     
-    # Обновляем сообщение
-    await callback.message.edit_text(
-        f"🤖 <b>ИИ-режим {mode_text.upper()}</b>\n\n"
-        f"{mode_desc}\n\n"
-        f"<b>Как это работает:</b>\n"
-        f"{'✅ ИИ анализирует все найденные объявления и выбирает лучшие по соотношению цена-качество (обычно 3-5 вариантов)' if new_mode else '📋 Присылаются все объявления, которые соответствуют вашим фильтрам'}\n\n"
-        f"Вы можете переключить режим в любой момент.",
-        parse_mode=ParseMode.HTML
-    )
+    # Если ИИ-режим включен, сразу запускаем проверку
+    if new_mode:
+        status_msg = await callback.message.answer(
+            f"🤖 <b>ИИ-режим ВКЛЮЧЕН</b>\n\n"
+            f"{mode_desc}\n\n"
+            f"<b>Как это работает:</b>\n"
+            f"✅ ИИ анализирует все найденные объявления по ссылкам и выбирает лучшие по соотношению цена-качество (обычно 3-5 вариантов)\n\n"
+            f"<b>Запускаю анализ...</b>",
+            parse_mode=ParseMode.HTML
+        )
+        
+        # Получаем все объявления
+        aggregator = ListingsAggregator(enabled_sources=DEFAULT_SOURCES)
+        all_listings = await aggregator.fetch_all_listings(
+            city="барановичи",
+            min_rooms=1,
+            max_rooms=5,
+            min_price=0,
+            max_price=1000000,
+        )
+        
+        # Запускаем ИИ-режим
+        await check_new_listings_ai_mode(callback.bot, user_id, user_filters, all_listings)
+        
+        # Удаляем статус сообщение
+        try:
+            await status_msg.delete()
+        except Exception:
+            pass
+    else:
+        # Обновляем сообщение
+        await callback.message.edit_text(
+            f"🤖 <b>ИИ-режим ВЫКЛЮЧЕН</b>\n\n"
+            f"{mode_desc}\n\n"
+            f"<b>Как это работает:</b>\n"
+            f"📋 Присылаются все объявления, которые соответствуют вашим фильтрам\n\n"
+            f"Вы можете переключить режим в любой момент.",
+            parse_mode=ParseMode.HTML
+        )
 
 
 @router.callback_query(F.data == "user_filter_rooms")
