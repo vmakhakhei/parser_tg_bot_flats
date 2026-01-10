@@ -1097,12 +1097,13 @@ class AIValuator:
             }
         }
         
-        # Используем актуальную модель (может быть изменена через fallback)
-        model = GEMINI_MODEL
-        url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={GEMINI_API_KEY}"
+        # Получаем список доступных моделей и используем первую рабочую
+        available_models = await self._get_available_gemini_models()
+        models_to_try = available_models if available_models else [GEMINI_MODEL] + GEMINI_FALLBACK_MODELS
+        
         log_info("ai_select", f"Отправляю POST запрос к Gemini API")
-        log_info("ai_select", f"Модель: {model}")
         log_info("ai_select", f"Размер промпта: {len(prompt)} символов, количество объявлений: {len(inspected_listings)}")
+        log_info("ai_select", f"Буду пробовать модели: {models_to_try[:3]}")
         
         # Если промпт слишком большой (>30000 символов), обрезаем его
         if len(prompt) > 30000:
@@ -1114,29 +1115,43 @@ class AIValuator:
                     "parts": [{"text": prompt}]
                 }],
                 "generationConfig": {
-                    "temperature": 0.3,
-                    "maxOutputTokens": 2000
+                    "temperature": 0.2,
+                    "maxOutputTokens": 1500
                 }
             }
         
-        try:
-            timeout = aiohttp.ClientTimeout(total=120)  # Увеличил до 120 секунд для больших промптов
-            log_info("ai_select", "Ожидаю ответ от Gemini API (максимум 120 секунд)...")
-            async with self.session.post(url, json=payload, timeout=timeout) as resp:
-                log_info("ai_select", f"Получен ответ от Gemini API. Статус: {resp.status}")
-                if resp.status == 200:
-                    data = await resp.json()
-                    content = data["candidates"][0]["content"]["parts"][0]["text"]
-                    log_info("ai_select", f"Ответ от Gemini: {content[:300]}...")
-                    
-                    # Парсим JSON из ответа
-                    selected_with_reasons = self._parse_selection_response_detailed(content, inspected_listings)
-                    return selected_with_reasons
-                else:
-                    error_text = await resp.text()
-                    log_error("ai_select", f"Gemini API вернул статус {resp.status}: {error_text[:200]}")
-        except Exception as e:
-            log_error("ai_select", f"Ошибка запроса к Gemini API", e)
+        # Пробуем модели по очереди
+        for model in models_to_try:
+            url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={GEMINI_API_KEY}"
+            log_info("ai_select", f"Пробую модель: {model}")
+            
+            try:
+                timeout = aiohttp.ClientTimeout(total=120)
+                log_info("ai_select", "Ожидаю ответ от Gemini API (максимум 120 секунд)...")
+                async with self.session.post(url, json=payload, timeout=timeout) as resp:
+                    log_info("ai_select", f"Получен ответ от Gemini API. Статус: {resp.status}")
+                    if resp.status == 200:
+                        data = await resp.json()
+                        content = data["candidates"][0]["content"]["parts"][0]["text"]
+                        log_info("ai_select", f"✅ Успешно использована модель {model}")
+                        log_info("ai_select", f"Ответ от Gemini: {content[:300]}...")
+                        
+                        # Парсим JSON из ответа
+                        selected_with_reasons = self._parse_selection_response_detailed(content, inspected_listings)
+                        return selected_with_reasons
+                    elif resp.status == 404:
+                        log_warning("ai_select", f"Модель {model} не найдена, пробую следующую...")
+                        continue
+                    else:
+                        error_text = await resp.text()
+                        log_error("ai_select", f"Gemini API вернул статус {resp.status}: {error_text[:200]}")
+                        if resp.status != 404:
+                            break  # Если не 404, прекращаем попытки
+            except Exception as e:
+                log_error("ai_select", f"Ошибка запроса к Gemini API с моделью {model}", e)
+                continue
+        
+        log_error("ai_select", f"Все модели не работают. Попробованы: {models_to_try[:5]}")
         
         return []
     
