@@ -30,7 +30,12 @@ except ImportError:
 
 GROQ_API_KEY = os.getenv("GROQ_API_KEY", "")
 GROQ_API_URL = "https://api.groq.com/openai/v1/chat/completions"
-GROQ_MODEL = "llama-3.1-70b-versatile"  # или "mixtral-8x7b-32768"
+# Актуальные модели Groq (2026):
+# - llama-3.1-8b-instant (быстрая, стабильная)
+# - mixtral-8x7b-32768 (стабильная, хорошее качество)
+# - llama-3.3-70b-versatile (если доступна)
+GROQ_MODEL = os.getenv("GROQ_MODEL", "llama-3.1-8b-instant")  # По умолчанию используем стабильную модель
+GROQ_FALLBACK_MODEL = "mixtral-8x7b-32768"  # Резервная модель
 
 
 # ========== ВАРИАНТ 2: Hugging Face Inference API ==========
@@ -176,6 +181,18 @@ class AIValuator:
                     if result:
                         log_info("ai_groq", f"Успешная оценка: ${result.get('fair_price_usd', 0):,}")
                     return result
+                elif resp.status == 400:
+                    # Если модель недоступна, пробуем резервную
+                    error_text = await resp.text()
+                    log_warning("ai_groq", f"Groq API вернул статус {resp.status}: {error_text[:200]}")
+                    if "decommissioned" in error_text.lower() or "not found" in error_text.lower():
+                        log_info("ai_groq", f"Пробую резервную модель: {GROQ_FALLBACK_MODEL}")
+                        payload["model"] = GROQ_FALLBACK_MODEL
+                        async with self.session.post(GROQ_API_URL, json=payload, headers=headers, timeout=timeout) as resp2:
+                            if resp2.status == 200:
+                                data = await resp2.json()
+                                content = data["choices"][0]["message"]["content"]
+                                return self._parse_ai_response(content)
                 else:
                     error_text = await resp.text()
                     log_warning("ai_groq", f"Groq API вернул статус {resp.status}: {error_text[:200]}")
