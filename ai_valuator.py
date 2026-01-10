@@ -2,10 +2,26 @@
 ИИ-оценщик квартир - бесплатные варианты интеграции
 """
 import os
+import sys
+import asyncio
 import aiohttp
 import json
+import re
 from typing import Optional, Dict, Any
 from scrapers.base import Listing
+
+# Добавляем путь для импорта error_logger
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+try:
+    from error_logger import log_error, log_warning, log_info
+except ImportError:
+    # Fallback если error_logger недоступен
+    def log_error(source, msg, exc=None):
+        print(f"[ERROR] [{source}] {msg}: {exc}")
+    def log_warning(source, msg):
+        print(f"[WARNING] [{source}] {msg}")
+    def log_info(source, msg):
+        print(f"[INFO] [{source}] {msg}")
 
 # ========== ВАРИАНТ 1: Groq API (РЕКОМЕНДУЕТСЯ) ==========
 # Бесплатно: 30 запросов/минуту, очень быстро
@@ -75,7 +91,18 @@ class AIValuator:
     
     def _prepare_prompt(self, listing: Listing) -> str:
         """Подготавливает промпт для ИИ"""
-        prompt = f"""Оцени стоимость квартиры в Барановичах, Беларусь.
+        # Определяем цену за м²
+        price_per_sqm = listing.price_per_sqm_usd if listing.price_per_sqm_usd else (
+            int(listing.price_per_sqm_byn / 2.95) if listing.price_per_sqm_byn else 0
+        )
+        price_per_sqm_text = f"{price_per_sqm} USD/м²" if price_per_sqm > 0 else "не указана"
+        
+        # Определяем текущую цену в USD
+        current_price_usd = listing.price_usd if listing.price_usd else (
+            int(listing.price_byn / 2.95) if listing.price_byn else 0
+        )
+        
+        prompt = f"""Ты эксперт по оценке недвижимости в Барановичах, Беларусь.
 
 Параметры квартиры:
 - Комнат: {listing.rooms}
@@ -83,19 +110,25 @@ class AIValuator:
 - Этаж: {listing.floor if listing.floor else 'не указан'}
 - Год постройки: {listing.year_built if listing.year_built else 'не указан'}
 - Адрес: {listing.address}
-- Цена за м²: {listing.price_per_sqm_usd if listing.price_per_sqm_usd else listing.price_per_sqm_byn} {'USD' if listing.price_per_sqm_usd else 'BYN'}/м²
-- Текущая цена: {listing.price_formatted}
+- Цена за м²: {price_per_sqm_text}
+- Текущая цена: {listing.price_formatted} (≈${current_price_usd:,} USD)
+
+Средние цены в Барановичах (2024-2025):
+- 1-комн: $20,000-30,000 ($400-600/м²)
+- 2-комн: $30,000-45,000 ($500-700/м²)
+- 3-комн: $45,000-65,000 ($600-800/м²)
+- 4+ комн: $65,000+ ($700-900/м²)
 
 Задача:
-1. Оцени справедливую стоимость квартиры в USD
-2. Определи, завышена ли цена (да/нет)
-3. Дай краткую оценку (1-2 предложения)
+1. Оцени справедливую стоимость квартиры в USD на основе параметров и рыночных цен
+2. Определи, завышена ли цена (true если текущая цена > справедливая цена + 10%)
+3. Дай краткую оценку на русском языке (1-2 предложения)
 
-Ответ в формате JSON:
+ВАЖНО: Ответь ТОЛЬКО валидным JSON без дополнительного текста:
 {{
     "fair_price_usd": число,
     "is_overpriced": true/false,
-    "assessment": "текст оценки"
+    "assessment": "текст оценки на русском"
 }}"""
         return prompt
     
@@ -122,14 +155,24 @@ class AIValuator:
         }
         
         try:
-            async with self.session.post(GROQ_API_URL, json=payload, headers=headers) as resp:
+            timeout = aiohttp.ClientTimeout(total=10)  # 10 секунд таймаут
+            async with self.session.post(GROQ_API_URL, json=payload, headers=headers, timeout=timeout) as resp:
                 if resp.status == 200:
                     data = await resp.json()
                     content = data["choices"][0]["message"]["content"]
+                    log_info("ai_groq", f"Получен ответ от Groq: {content[:100]}...")
                     # Парсим JSON из ответа
-                    return self._parse_ai_response(content)
+                    result = self._parse_ai_response(content)
+                    if result:
+                        log_info("ai_groq", f"Успешная оценка: ${result.get('fair_price_usd', 0):,}")
+                    return result
+                else:
+                    error_text = await resp.text()
+                    log_warning("ai_groq", f"Groq API вернул статус {resp.status}: {error_text[:200]}")
+        except asyncio.TimeoutError:
+            log_warning("ai_groq", "Таймаут запроса к Groq API")
         except Exception as e:
-            print(f"[AI] Groq ошибка: {e}")
+            log_error("ai_groq", f"Ошибка запроса к Groq API", e)
         
         return None
     
@@ -217,14 +260,30 @@ class AIValuator:
     def _parse_ai_response(self, content: str) -> Optional[Dict[str, Any]]:
         """Парсит ответ ИИ и извлекает JSON"""
         try:
-            # Пытаемся найти JSON в ответе
-            import re
-            json_match = re.search(r'\{[^}]+\}', content, re.DOTALL)
+            # Убираем markdown code blocks если есть
+            content = re.sub(r'```json\s*', '', content)
+            content = re.sub(r'```\s*', '', content)
+            content = content.strip()
+            
+            # Пытаемся найти JSON объект (может быть многострочным)
+            json_match = re.search(r'\{[^{}]*(?:\{[^{}]*\}[^{}]*)*\}', content, re.DOTALL)
             if json_match:
                 json_str = json_match.group(0)
-                return json.loads(json_str)
+                result = json.loads(json_str)
+                
+                # Валидация результата
+                if "fair_price_usd" in result and isinstance(result["fair_price_usd"], (int, float)):
+                    if "is_overpriced" in result and isinstance(result["is_overpriced"], bool):
+                        if "assessment" in result and isinstance(result["assessment"], str):
+                            return result
+                
+                log_warning("ai_parser", f"Неполный JSON в ответе: {result}")
+            else:
+                log_warning("ai_parser", f"JSON не найден в ответе: {content[:200]}")
+        except json.JSONDecodeError as e:
+            log_error("ai_parser", f"Ошибка парсинга JSON: {content[:200]}", e)
         except Exception as e:
-            print(f"[AI] Ошибка парсинга ответа: {e}")
+            log_error("ai_parser", f"Ошибка парсинга ответа", e)
         
         return None
     

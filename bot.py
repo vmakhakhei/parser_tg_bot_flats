@@ -81,9 +81,12 @@ def format_listing_message(listing: Listing, ai_valuation: Optional[Dict[str, An
         
         if fair_price > 0:
             price_status = "🔴 Завышена" if is_overpriced else "🟢 Справедлива"
+            price_emoji = "🔴" if is_overpriced else "🟢"
+            lines.append("")
             lines.append(f"🤖 <b>ИИ-оценка:</b> ${fair_price:,} {price_status}".replace(",", " "))
             if assessment:
                 lines.append(f"💡 <i>{assessment}</i>")
+            lines.append("")
     
     # Цена за м² (вычисляется автоматически в Listing.__post_init__)
     if listing.price_per_sqm_formatted:
@@ -116,9 +119,14 @@ async def send_listing_to_user(bot: Bot, user_id: int, listing: Listing) -> bool
         ai_valuation = None
         if AI_VALUATOR_AVAILABLE and valuate_listing:
             try:
-                ai_valuation = await valuate_listing(listing)
+                # Таймаут для ИИ-оценки (максимум 5 секунд)
+                ai_valuation = await asyncio.wait_for(valuate_listing(listing), timeout=5.0)
+                if ai_valuation:
+                    log_info("ai", f"ИИ-оценка получена для {listing.id}: ${ai_valuation.get('fair_price_usd', 0):,}")
+            except asyncio.TimeoutError:
+                log_warning("ai", f"Таймаут ИИ-оценки для {listing.id}")
             except Exception as e:
-                log_warning("ai", f"Ошибка ИИ-оценки: {e}")
+                log_warning("ai", f"Ошибка ИИ-оценки для {listing.id}: {e}")
         
         message_text = format_listing_message(listing, ai_valuation)
         photos = listing.photos
@@ -1286,6 +1294,87 @@ async def cmd_logs(message: Message):
         text = text[:4000] + "\n..."
     
     await message.answer(text, parse_mode=ParseMode.HTML)
+
+
+@router.message(Command("testai"))
+async def cmd_test_ai(message: Message):
+    """Тестирует ИИ-оценщик на примере объявления"""
+    if not AI_VALUATOR_AVAILABLE or not valuate_listing:
+        await message.answer(
+            "❌ <b>ИИ-оценщик не настроен</b>\n\n"
+            "Для активации:\n"
+            "1. Получи API ключ Groq: https://console.groq.com/keys\n"
+            "2. Добавь переменную GROQ_API_KEY в Railway\n\n"
+            "Подробнее: см. AI_SETUP.md",
+            parse_mode=ParseMode.HTML
+        )
+        return
+    
+    await message.answer("🤖 Тестирую ИИ-оценщик...")
+    
+    # Создаем тестовое объявление
+    from scrapers.base import Listing
+    test_listing = Listing(
+        id="test_123",
+        source="Test",
+        title="2-комн. квартира",
+        price=35000,
+        price_formatted="$35,000",
+        rooms=2,
+        area=50.0,
+        address="ул. Советская, Барановичи",
+        url="https://example.com",
+        floor="3/5",
+        year_built="2010",
+        currency="USD",
+        price_usd=35000,
+        price_byn=0,
+        price_per_sqm=700,
+        price_per_sqm_formatted="700 $/м²"
+    )
+    
+    try:
+        ai_valuation = await asyncio.wait_for(valuate_listing(test_listing), timeout=10.0)
+        
+        if ai_valuation:
+            fair_price = ai_valuation.get("fair_price_usd", 0)
+            is_overpriced = ai_valuation.get("is_overpriced", False)
+            assessment = ai_valuation.get("assessment", "")
+            
+            status = "🔴 Завышена" if is_overpriced else "🟢 Справедлива"
+            
+            await message.answer(
+                f"✅ <b>ИИ-оценщик работает!</b>\n\n"
+                f"📊 <b>Тестовое объявление:</b>\n"
+                f"2-комн., 50 м², $35,000\n\n"
+                f"🤖 <b>ИИ-оценка:</b>\n"
+                f"Справедливая цена: ${fair_price:,}\n"
+                f"Статус: {status}\n\n"
+                f"💡 <i>{assessment}</i>",
+                parse_mode=ParseMode.HTML
+            )
+        else:
+            await message.answer(
+                "⚠️ <b>ИИ-оценщик не вернул результат</b>\n\n"
+                "Проверь:\n"
+                "• Правильность API ключа\n"
+                "• Логи ошибок: /logs",
+                parse_mode=ParseMode.HTML
+            )
+    except asyncio.TimeoutError:
+        await message.answer(
+            "⏱ <b>Таймаут запроса</b>\n\n"
+            "ИИ-оценщик не ответил за 10 секунд.\n"
+            "Проверь подключение к интернету.",
+            parse_mode=ParseMode.HTML
+        )
+    except Exception as e:
+        await message.answer(
+            f"❌ <b>Ошибка тестирования</b>\n\n"
+            f"Детали: {str(e)}\n\n"
+            f"Проверь логи: /logs",
+            parse_mode=ParseMode.HTML
+        )
 
 
 async def create_bot() -> tuple[Bot, Dispatcher]:
