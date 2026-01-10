@@ -25,17 +25,18 @@ except ImportError:
         print(f"[INFO] [{source}] {msg}")
 
 # ========== ВАРИАНТ 1: Google Gemini API (РЕКОМЕНДУЕТСЯ - ОСНОВНОЙ) ==========
-# Бесплатно: 60 запросов/минуту
-# Поддерживает анализ изображений через Gemini Pro Vision
-# Регистрация: https://aistudio.google.com/app/apikey
-# Получить API ключ: https://aistudio.google.com/app/apikey
+# ✅ ПОЛНОСТЬЮ БЕСПЛАТНО: 60 запросов/минуту
+# ✅ Поддерживает анализ изображений (vision) - БЕСПЛАТНО
+# ✅ Не требует кредитной карты
+# ✅ Регистрация: https://aistudio.google.com/app/apikey
+# ✅ Получить API ключ: https://aistudio.google.com/app/apikey
 
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
-# Актуальные модели Gemini (2025-2026):
-# - gemini-1.5-flash (быстрая, поддерживает vision)
-# - gemini-1.5-pro (качественная, поддерживает vision)
-# - gemini-pro (устарела, может не работать)
-GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-1.5-flash")  # По умолчанию используем flash (быстрая и поддерживает vision)
+# Бесплатные модели Gemini (все модели в бесплатном тарифе):
+# - gemini-1.5-flash (быстрая, поддерживает vision) - РЕКОМЕНДУЕТСЯ
+# - gemini-1.5-pro (качественная, поддерживает vision) - тоже бесплатная
+# Все модели Gemini API бесплатные до определенного лимита запросов
+GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-1.5-flash")  # По умолчанию используем flash (быстрая и бесплатная)
 GEMINI_API_URL = f"https://generativelanguage.googleapis.com/v1beta/models/{GEMINI_MODEL}:generateContent"
 
 
