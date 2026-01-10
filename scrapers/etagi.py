@@ -46,7 +46,7 @@ class EtagiScraper(BaseScraper):
         import urllib.parse
         import json
         
-        # Фильтр для получения квартир
+        # Фильтр для получения квартир (без пробелов!)
         filter_data = [
             "and",
             [
@@ -58,7 +58,7 @@ class EtagiScraper(BaseScraper):
         
         params = {
             "protName": "flats",
-            "filter": json.dumps(filter_data),
+            "filter": json.dumps(filter_data, separators=(',', ':')),  # Без пробелов
             "orderId": "default",
             "limit": "50",
             "as": "f",

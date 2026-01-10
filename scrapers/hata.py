@@ -61,15 +61,15 @@ class HataScraper(BaseScraper):
         listings = []
         seen_ids = set()
         
-        # Ищем все ссылки на объявления формата /object/XXXXXX/ (относительные или абсолютные)
-        object_links = soup.find_all('a', href=re.compile(r'/object/\d+/?'))
+        # Ищем все ссылки с текстом "комнатная квартира"
+        title_links = soup.find_all('a', string=re.compile(r'\d+-комнатн', re.I))
         
-        log_info("hata", f"Найдено ссылок на объекты: {len(object_links)}")
+        log_info("hata", f"Найдено ссылок с заголовками: {len(title_links)}")
         
-        for link in object_links:
+        for link in title_links:
             href = link.get('href', '')
             
-            # Извлекаем ID объявления
+            # Проверяем что это ссылка на объявление
             id_match = re.search(r'/object/(\d+)', href)
             if not id_match:
                 continue
@@ -88,36 +88,24 @@ class HataScraper(BaseScraper):
             else:
                 full_url = f"{self.BASE_URL}{href}"
             
-            # Ищем заголовок - может быть текст ссылки или в родительском элементе
+            # Текст заголовка
             link_text = link.get_text(strip=True)
-            
-            # Если текст ссылки пустой или не содержит "квартир", ищем в родителе
-            if not link_text or 'квартир' not in link_text.lower():
-                # Ищем родительский контейнер с информацией об объявлении
-                parent = link.find_parent(['div', 'article', 'li'])
-                if parent:
-                    # Ищем заголовок в родителе
-                    title_link = parent.find('a', string=re.compile(r'комнатн', re.I))
-                    if title_link:
-                        link_text = title_link.get_text(strip=True)
-            
-            # Если всё ещё нет текста с "квартир", пропускаем
-            if not link_text or 'комнатн' not in link_text.lower():
-                continue
             
             # Проверяем что объявление НЕ из другого города (Брест, Минск и т.д.)
             other_cities = ['брест', 'минск', 'гродно', 'витебск', 'могилев', 'гомель']
             is_other_city = any(city in link_text.lower() for city in other_cities) and 'барановичи' not in link_text.lower()
             
             if is_other_city:
-                log_warning("hata", f"Пропускаем объявление из другого города: {link_text[:50]}")
+                log_warning("hata", f"Пропускаем из другого города: {link_text[:60]}")
                 continue
             
-            # Парсим детали из ссылки и окружающего контекста
+            # Парсим детали из ссылки и контекста
             listing = self._parse_listing_from_link(link, listing_id, full_url)
             if listing:
                 if self._matches_filters(listing, min_rooms, max_rooms, min_price, max_price):
                     listings.append(listing)
+                else:
+                    log_info("hata", f"Не прошёл фильтр: {listing.rooms}к, ${listing.price}")
         
         log_info("hata", f"После фильтрации: {len(listings)} объявлений")
         return listings
