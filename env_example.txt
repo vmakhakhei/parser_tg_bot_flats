@@ -20,3 +20,28 @@ DEFAULT_MAX_PRICE=100000
 # Количество фотографий в сообщении (1-3)
 MAX_PHOTOS=3
 
+# ========== ИИ-ОЦЕНЩИК (опционально) ==========
+# Выберите один из вариантов ниже:
+
+# Вариант 1: Groq API (РЕКОМЕНДУЕТСЯ - самый быстрый)
+# Бесплатно: 30 запросов/минуту
+# Регистрация: https://console.groq.com/
+# Получить ключ: https://console.groq.com/keys
+GROQ_API_KEY=your_groq_api_key_here
+
+# Вариант 2: Google Gemini API
+# Бесплатно: 60 запросов/минуту
+# Регистрация: https://aistudio.google.com/app/apikey
+# GEMINI_API_KEY=your_gemini_api_key_here
+
+# Вариант 3: Hugging Face Inference API
+# Бесплатно: ограниченное количество запросов
+# Регистрация: https://huggingface.co/
+# Получить токен: https://huggingface.co/settings/tokens
+# HF_API_KEY=your_hf_api_key_here
+
+# Вариант 4: Ollama (локально)
+# Полностью бесплатно, но нужно запускать локально
+# Установка: https://ollama.ai/
+# OLLAMA_URL=http://localhost:11434/api/generate
+

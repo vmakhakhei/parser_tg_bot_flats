@@ -4,7 +4,7 @@ Telegram бот для мониторинга объявлений о кварт
 import asyncio
 import logging
 import aiosqlite
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 
 from aiogram import Bot, Dispatcher, Router, F
 from aiogram.types import Message, InputMediaPhoto, CallbackQuery
@@ -33,6 +33,14 @@ from scrapers.aggregator import ListingsAggregator
 from scrapers.base import Listing
 from error_logger import error_logger, log_error, log_warning, log_info
 
+# ИИ-оценщик (опционально)
+try:
+    from ai_valuator import valuate_listing
+    AI_VALUATOR_AVAILABLE = True
+except ImportError:
+    AI_VALUATOR_AVAILABLE = False
+    valuate_listing = None
+
 # Логирование
 logging.basicConfig(
     level=logging.INFO,
@@ -50,7 +58,7 @@ router = Router()
 DEFAULT_SOURCES = ["kufar", "hata", "etagi"]
 
 
-def format_listing_message(listing: Listing) -> str:
+def format_listing_message(listing: Listing, ai_valuation: Optional[Dict[str, Any]] = None) -> str:
     """Форматирует сообщение об объявлении"""
     rooms_text = f"{listing.rooms}-комн." if listing.rooms > 0 else ""
     area_text = f"{listing.area} м²" if listing.area > 0 else ""
@@ -64,6 +72,18 @@ def format_listing_message(listing: Listing) -> str:
     
     # Цена
     lines.append(f"💰 <b>Цена:</b> {listing.price_formatted}")
+    
+    # ИИ-оценка (если доступна)
+    if ai_valuation:
+        fair_price = ai_valuation.get("fair_price_usd", 0)
+        is_overpriced = ai_valuation.get("is_overpriced", False)
+        assessment = ai_valuation.get("assessment", "")
+        
+        if fair_price > 0:
+            price_status = "🔴 Завышена" if is_overpriced else "🟢 Справедлива"
+            lines.append(f"🤖 <b>ИИ-оценка:</b> ${fair_price:,} {price_status}".replace(",", " "))
+            if assessment:
+                lines.append(f"💡 <i>{assessment}</i>")
     
     # Цена за м² (вычисляется автоматически в Listing.__post_init__)
     if listing.price_per_sqm_formatted:
@@ -92,7 +112,15 @@ def format_listing_message(listing: Listing) -> str:
 async def send_listing_to_user(bot: Bot, user_id: int, listing: Listing) -> bool:
     """Отправляет объявление пользователю"""
     try:
-        message_text = format_listing_message(listing)
+        # Пытаемся получить ИИ-оценку (если доступна)
+        ai_valuation = None
+        if AI_VALUATOR_AVAILABLE and valuate_listing:
+            try:
+                ai_valuation = await valuate_listing(listing)
+            except Exception as e:
+                log_warning("ai", f"Ошибка ИИ-оценки: {e}")
+        
+        message_text = format_listing_message(listing, ai_valuation)
         photos = listing.photos
         
         if photos:
