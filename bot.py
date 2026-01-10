@@ -11,6 +11,9 @@ from aiogram.types import Message, InputMediaPhoto, CallbackQuery
 from aiogram.filters import Command, CommandStart
 from aiogram.enums import ParseMode
 from aiogram.utils.keyboard import InlineKeyboardBuilder
+from aiogram.fsm.context import FSMContext
+from aiogram.fsm.state import State, StatesGroup
+from aiogram.fsm.storage.memory import MemoryStorage
 
 from config import BOT_TOKEN, MAX_PHOTOS, DATABASE_PATH
 from database import (
@@ -50,6 +53,11 @@ logger = logging.getLogger(__name__)
 
 # Роутер для обработки команд
 router = Router()
+
+# FSM состояния для ввода цены
+class PriceStates(StatesGroup):
+    waiting_for_min_price = State()
+    waiting_for_max_price = State()
 
 # Список источников по умолчанию (работающие парсеры)
 # kufar - Kufar.by API (30 объявлений)
@@ -688,35 +696,35 @@ async def cb_user_filter_price(callback: CallbackQuery):
 
 
 @router.callback_query(F.data == "user_price_min")
-async def cb_user_price_min(callback: CallbackQuery):
+async def cb_user_price_min(callback: CallbackQuery, state: FSMContext):
     """Запрашивает минимальную цену"""
     await callback.message.edit_text(
         "💰 <b>Введите минимальную цену (USD)</b>\n\n"
-        "Например:\n"
+        "Просто введите число, например:\n"
         "• <code>0</code> — без ограничения снизу\n"
         "• <code>20000</code> — от $20,000\n"
         "• <code>30000</code> — от $30,000\n\n"
-        "Или используйте команду:\n"
-        "<code>/pricefrom 20000</code>",
+        "<i>Или используйте команду: /pricefrom 20000</i>",
         parse_mode=ParseMode.HTML
     )
-    await callback.answer("Введите цену от или используйте /pricefrom")
+    await state.set_state(PriceStates.waiting_for_min_price)
+    await callback.answer("Введите число или используйте /pricefrom")
 
 
 @router.callback_query(F.data == "user_price_max")
-async def cb_user_price_max(callback: CallbackQuery):
+async def cb_user_price_max(callback: CallbackQuery, state: FSMContext):
     """Запрашивает максимальную цену"""
     await callback.message.edit_text(
         "💰 <b>Введите максимальную цену (USD)</b>\n\n"
-        "Например:\n"
+        "Просто введите число, например:\n"
         "• <code>50000</code> — до $50,000\n"
         "• <code>80000</code> — до $80,000\n"
         "• <code>1000000</code> — без ограничения сверху\n\n"
-        "Или используйте команду:\n"
-        "<code>/priceto 50000</code>",
+        "<i>Или используйте команду: /priceto 50000</i>",
         parse_mode=ParseMode.HTML
     )
-    await callback.answer("Введите цену до или используйте /priceto")
+    await state.set_state(PriceStates.waiting_for_max_price)
+    await callback.answer("Введите число или используйте /priceto")
 
 
 @router.callback_query(F.data == "user_price_reset")
@@ -737,6 +745,154 @@ async def cb_user_price_reset(callback: CallbackQuery):
     
     await callback.answer("✅ Цена сброшена: $0 - $1,000,000")
     await cb_user_filter_price(callback)
+
+
+# Обработчики ввода цены через FSM
+@router.message(PriceStates.waiting_for_min_price)
+async def process_min_price_input(message: Message, state: FSMContext):
+    """Обрабатывает ввод минимальной цены"""
+    user_id = message.from_user.id
+    
+    try:
+        # Извлекаем число из текста (может быть с пробелами или запятыми)
+        price_text = message.text.strip().replace(" ", "").replace(",", "").replace("$", "")
+        min_price = int(price_text)
+        
+        if min_price < 0:
+            await message.answer("❌ Цена не может быть отрицательной. Попробуйте снова.")
+            return
+        
+        # Получаем текущие фильтры
+        user_filters = await get_user_filters(user_id)
+        
+        # Обновляем минимальную цену
+        await set_user_filters(
+            user_id,
+            city=user_filters.get("city", "барановичи") if user_filters else "барановичи",
+            min_rooms=user_filters.get("min_rooms", 1) if user_filters else 1,
+            max_rooms=user_filters.get("max_rooms", 4) if user_filters else 4,
+            min_price=min_price,
+            max_price=user_filters.get("max_price", 100000) if user_filters else 100000,
+            is_active=True
+        )
+        
+        await state.clear()
+        await message.answer(
+            f"✅ <b>Минимальная цена установлена: ${min_price:,}</b>\n\n"
+            f"Теперь настройте максимальную цену или нажмите '✅ Готово'",
+            parse_mode=ParseMode.HTML
+        )
+        
+        # Возвращаемся в меню настройки цены
+        user_filters = await get_user_filters(user_id)
+        current_min = user_filters.get("min_price", 0)
+        current_max = user_filters.get("max_price", 100000)
+        
+        builder = InlineKeyboardBuilder()
+        builder.button(text="💰 Цена ОТ", callback_data="user_price_min")
+        builder.button(text="💰 Цена ДО", callback_data="user_price_max")
+        builder.row()
+        builder.button(text="✅ Готово", callback_data="setup_filters")
+        builder.button(text="🔄 Сбросить", callback_data="user_price_reset")
+        
+        await message.answer(
+            f"💰 <b>Настройка цены (USD)</b>\n\n"
+            f"Текущие значения:\n"
+            f"• Цена ОТ: ${current_min:,}\n"
+            f"• Цена ДО: ${current_max:,}\n\n"
+            f"Нажмите кнопку для изменения или введите значение вручную.",
+            parse_mode=ParseMode.HTML,
+            reply_markup=builder.as_markup()
+        )
+        
+    except ValueError:
+        await message.answer(
+            "❌ <b>Неверный формат</b>\n\n"
+            "Введите число, например:\n"
+            "• <code>0</code>\n"
+            "• <code>20000</code>\n"
+            "• <code>30000</code>\n\n"
+            "Или используйте команду: <code>/pricefrom 20000</code>",
+            parse_mode=ParseMode.HTML
+        )
+
+
+@router.message(PriceStates.waiting_for_max_price)
+async def process_max_price_input(message: Message, state: FSMContext):
+    """Обрабатывает ввод максимальной цены"""
+    user_id = message.from_user.id
+    
+    try:
+        # Извлекаем число из текста (может быть с пробелами или запятыми)
+        price_text = message.text.strip().replace(" ", "").replace(",", "").replace("$", "")
+        max_price = int(price_text)
+        
+        if max_price < 0:
+            await message.answer("❌ Цена не может быть отрицательной. Попробуйте снова.")
+            return
+        
+        # Получаем текущие фильтры
+        user_filters = await get_user_filters(user_id)
+        current_min = user_filters.get("min_price", 0) if user_filters else 0
+        
+        if max_price < current_min:
+            await message.answer(
+                f"❌ Максимальная цена ({max_price:,}) не может быть меньше минимальной ({current_min:,}).\n"
+                f"Попробуйте снова.",
+                parse_mode=ParseMode.HTML
+            )
+            return
+        
+        # Обновляем максимальную цену
+        await set_user_filters(
+            user_id,
+            city=user_filters.get("city", "барановичи") if user_filters else "барановичи",
+            min_rooms=user_filters.get("min_rooms", 1) if user_filters else 1,
+            max_rooms=user_filters.get("max_rooms", 4) if user_filters else 4,
+            min_price=current_min,
+            max_price=max_price,
+            is_active=True
+        )
+        
+        await state.clear()
+        await message.answer(
+            f"✅ <b>Максимальная цена установлена: ${max_price:,}</b>\n\n"
+            f"Диапазон цен: ${current_min:,} - ${max_price:,}",
+            parse_mode=ParseMode.HTML
+        )
+        
+        # Возвращаемся в меню настройки цены
+        user_filters = await get_user_filters(user_id)
+        current_min = user_filters.get("min_price", 0)
+        current_max = user_filters.get("max_price", 100000)
+        
+        builder = InlineKeyboardBuilder()
+        builder.button(text="💰 Цена ОТ", callback_data="user_price_min")
+        builder.button(text="💰 Цена ДО", callback_data="user_price_max")
+        builder.row()
+        builder.button(text="✅ Готово", callback_data="setup_filters")
+        builder.button(text="🔄 Сбросить", callback_data="user_price_reset")
+        
+        await message.answer(
+            f"💰 <b>Настройка цены (USD)</b>\n\n"
+            f"Текущие значения:\n"
+            f"• Цена ОТ: ${current_min:,}\n"
+            f"• Цена ДО: ${current_max:,}\n\n"
+            f"Нажмите кнопку для изменения или введите значение вручную.",
+            parse_mode=ParseMode.HTML,
+            reply_markup=builder.as_markup()
+        )
+        
+    except ValueError:
+        await message.answer(
+            "❌ <b>Неверный формат</b>\n\n"
+            "Введите число, например:\n"
+            "• <code>50000</code>\n"
+            "• <code>80000</code>\n"
+            "• <code>1000000</code>\n\n"
+            "Или используйте команду: <code>/priceto 50000</code>",
+            parse_mode=ParseMode.HTML
+        )
 
 
 
@@ -1388,7 +1544,9 @@ async def create_bot() -> tuple[Bot, Dispatcher]:
     
     bot = Bot(token=BOT_TOKEN, parse_mode=ParseMode.HTML)
     
-    dp = Dispatcher()
+    # Создаем FSM storage для состояний
+    storage = MemoryStorage()
+    dp = Dispatcher(storage=storage)
     dp.include_router(router)
     
     # Инициализация базы данных
