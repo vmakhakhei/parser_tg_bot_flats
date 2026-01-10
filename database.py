@@ -61,10 +61,18 @@ async def init_database():
                 min_price INTEGER DEFAULT 0,
                 max_price INTEGER DEFAULT 100000,
                 is_active BOOLEAN DEFAULT 1,
+                ai_mode BOOLEAN DEFAULT 0,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         """)
+        
+        # Добавляем колонку ai_mode если её нет (для существующих БД)
+        try:
+            await db.execute("ALTER TABLE user_filters ADD COLUMN ai_mode BOOLEAN DEFAULT 0")
+            await db.commit()
+        except aiosqlite.OperationalError:
+            pass  # Колонка уже существует
         
         # Таблица отправленных объявлений каждому пользователю
         await db.execute("""
@@ -310,14 +318,15 @@ async def set_user_filters(
     max_rooms: int = 4,
     min_price: int = 0,
     max_price: int = 100000,
-    is_active: bool = True
+    is_active: bool = True,
+    ai_mode: bool = False
 ):
     """Устанавливает фильтры пользователя"""
     async with aiosqlite.connect(DATABASE_PATH) as db:
         await db.execute("""
             INSERT OR REPLACE INTO user_filters 
-            (user_id, city, min_rooms, max_rooms, min_price, max_price, is_active, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            (user_id, city, min_rooms, max_rooms, min_price, max_price, is_active, ai_mode, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, (
             user_id,
             city,
@@ -326,8 +335,20 @@ async def set_user_filters(
             min_price,
             max_price,
             is_active,
+            ai_mode,
             datetime.now().isoformat()
         ))
+        await db.commit()
+
+
+async def set_user_ai_mode(user_id: int, ai_mode: bool):
+    """Устанавливает режим ИИ для пользователя"""
+    async with aiosqlite.connect(DATABASE_PATH) as db:
+        await db.execute("""
+            UPDATE user_filters 
+            SET ai_mode = ?, updated_at = ?
+            WHERE user_id = ?
+        """, (ai_mode, datetime.now().isoformat(), user_id))
         await db.commit()
 
 

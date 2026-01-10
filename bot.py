@@ -30,7 +30,8 @@ from database import (
     set_user_filters,
     is_listing_sent_to_user,
     mark_listing_sent_to_user,
-    get_active_users
+    get_active_users,
+    set_user_ai_mode
 )
 from scrapers.aggregator import ListingsAggregator
 from scrapers.base import Listing
@@ -38,11 +39,12 @@ from error_logger import error_logger, log_error, log_warning, log_info
 
 # ИИ-оценщик (опционально)
 try:
-    from ai_valuator import valuate_listing
+    from ai_valuator import valuate_listing, select_best_listings
     AI_VALUATOR_AVAILABLE = True
 except ImportError:
     AI_VALUATOR_AVAILABLE = False
     valuate_listing = None
+    select_best_listings = None
 
 # Логирование
 logging.basicConfig(
@@ -245,40 +247,48 @@ async def check_new_listings(bot: Bot):
         if not user_filters or not user_filters.get("is_active"):
             continue
         
-        user_new_count = 0
+        # Проверяем режим работы пользователя
+        ai_mode = user_filters.get("ai_mode", False)
         
-        for listing in all_listings:
-            # Проверяем соответствие фильтрам пользователя
-            if not _matches_user_filters(listing, user_filters):
-                continue
+        if ai_mode:
+            # ИИ-режим: собираем все подходящие объявления и отправляем ИИ для выбора лучших
+            await check_new_listings_ai_mode(bot, user_id, user_filters, all_listings)
+        else:
+            # Обычный режим: отправляем все подходящие объявления
+            user_new_count = 0
             
-            # Проверяем, не отправляли ли уже этому пользователю
-            if await is_listing_sent_to_user(user_id, listing.id):
-                continue
-            
-            # Проверяем глобальную дедупликацию по контенту
-            dup_check = await is_duplicate_content(
-                rooms=listing.rooms,
-                area=listing.area,
-                address=listing.address,
-                price=listing.price
-            )
-            
-            if dup_check["is_duplicate"]:
-                log_info("dedup", 
-                    f"Дубликат для пользователя {user_id}: {listing.source} ID={listing.id}"
+            for listing in all_listings:
+                # Проверяем соответствие фильтрам пользователя
+                if not _matches_user_filters(listing, user_filters):
+                    continue
+                
+                # Проверяем, не отправляли ли уже этому пользователю
+                if await is_listing_sent_to_user(user_id, listing.id):
+                    continue
+                
+                # Проверяем глобальную дедупликацию по контенту
+                dup_check = await is_duplicate_content(
+                    rooms=listing.rooms,
+                    area=listing.area,
+                    address=listing.address,
+                    price=listing.price
                 )
-                continue
+                
+                if dup_check["is_duplicate"]:
+                    log_info("dedup", 
+                        f"Дубликат для пользователя {user_id}: {listing.source} ID={listing.id}"
+                    )
+                    continue
+                
+                # Отправляем объявление пользователю
+                if await send_listing_to_user(bot, user_id, listing):
+                    user_new_count += 1
+                    total_sent += 1
+                    # Задержка между сообщениями чтобы не получить бан
+                    await asyncio.sleep(2)
             
-            # Отправляем объявление пользователю
-            if await send_listing_to_user(bot, user_id, listing):
-                user_new_count += 1
-                total_sent += 1
-                # Задержка между сообщениями чтобы не получить бан
-                await asyncio.sleep(2)
-        
-        if user_new_count > 0:
-            logger.info(f"Пользователю {user_id} отправлено: {user_new_count} объявлений")
+            if user_new_count > 0:
+                logger.info(f"Пользователю {user_id} отправлено: {user_new_count} объявлений")
     
     if total_sent > 0:
         logger.info(f"✅ Всего отправлено новых объявлений: {total_sent}")
@@ -286,6 +296,104 @@ async def check_new_listings(bot: Bot):
         logger.info("Новых объявлений нет")
     
     logger.info("=" * 50)
+
+
+async def check_new_listings_ai_mode(
+    bot: Bot, 
+    user_id: int, 
+    user_filters: Dict[str, Any], 
+    all_listings: List[Listing]
+):
+    """ИИ-режим: собирает все подходящие объявления, отправляет ИИ для выбора лучших"""
+    logger.info(f"🤖 ИИ-режим для пользователя {user_id}")
+    
+    # Собираем все подходящие объявления (еще не отправленные пользователю)
+    candidate_listings = []
+    
+    for listing in all_listings:
+        # Проверяем соответствие фильтрам пользователя
+        if not _matches_user_filters(listing, user_filters):
+            continue
+        
+        # Проверяем, не отправляли ли уже этому пользователю
+        if await is_listing_sent_to_user(user_id, listing.id):
+            continue
+        
+        # Проверяем глобальную дедупликацию по контенту
+        dup_check = await is_duplicate_content(
+            rooms=listing.rooms,
+            area=listing.area,
+            address=listing.address,
+            price=listing.price
+        )
+        
+        if dup_check["is_duplicate"]:
+            continue
+        
+        candidate_listings.append(listing)
+    
+    if not candidate_listings:
+        logger.info(f"Пользователю {user_id} нет новых объявлений для ИИ-анализа")
+        return
+    
+    logger.info(f"Найдено {len(candidate_listings)} кандидатов для ИИ-анализа")
+    
+    # Отправляем уведомление пользователю о начале анализа
+    try:
+        await bot.send_message(
+            user_id,
+            f"🤖 <b>ИИ-анализ</b>\n\n"
+            f"Найдено {len(candidate_listings)} подходящих объявлений.\n"
+            f"Анализирую и выбираю лучшие варианты...",
+            parse_mode=ParseMode.HTML
+        )
+    except Exception as e:
+        log_warning("ai_mode", f"Не удалось отправить уведомление пользователю {user_id}: {e}")
+    
+    # Отправляем все объявления в ИИ для выбора лучших
+    if AI_VALUATOR_AVAILABLE and select_best_listings:
+        try:
+            best_listings = await select_best_listings(
+                candidate_listings, 
+                user_filters,
+                max_results=5
+            )
+            
+            if best_listings:
+                logger.info(f"ИИ выбрал {len(best_listings)} лучших вариантов для пользователя {user_id}")
+                
+                # Отправляем выбранные объявления пользователю
+                sent_count = 0
+                for listing in best_listings:
+                    if await send_listing_to_user(bot, user_id, listing):
+                        sent_count += 1
+                        await asyncio.sleep(2)
+                
+                # Отправляем итоговое сообщение
+                try:
+                    await bot.send_message(
+                        user_id,
+                        f"✅ <b>ИИ выбрал {sent_count} лучших вариантов</b>\n\n"
+                        f"Из {len(candidate_listings)} объявлений отобраны лучшие по соотношению цена-качество.",
+                        parse_mode=ParseMode.HTML
+                    )
+                except Exception:
+                    pass
+            else:
+                logger.warning(f"ИИ не выбрал ни одного варианта для пользователя {user_id}")
+        except Exception as e:
+            log_error("ai_mode", f"Ошибка ИИ-анализа для пользователя {user_id}", e)
+            # Fallback: отправляем первые 3 объявления
+            logger.info(f"Fallback: отправляю первые 3 объявления пользователю {user_id}")
+            for listing in candidate_listings[:3]:
+                await send_listing_to_user(bot, user_id, listing)
+                await asyncio.sleep(2)
+    else:
+        logger.warning("ИИ-оценщик недоступен, отправляю все объявления")
+        # Fallback: отправляем все объявления
+        for listing in candidate_listings[:10]:
+            await send_listing_to_user(bot, user_id, listing)
+            await asyncio.sleep(2)
 
 
 def _matches_user_filters(listing: Listing, filters: Dict[str, Any]) -> bool:
@@ -346,17 +454,23 @@ async def cmd_start(message: Message):
         # Фильтры уже установлены - показываем их и предлагаем изменить
         status = "✅ Активен" if user_filters.get("is_active") else "❌ Отключен"
         
+        ai_mode = user_filters.get("ai_mode", False)
+        mode_text = "🤖 ИИ-режим" if ai_mode else "📋 Обычный режим"
+        mode_desc = "ИИ выбирает лучшие варианты" if ai_mode else "Присылаю все подходящие"
+        
         builder = InlineKeyboardBuilder()
         builder.button(text="🔍 Проверить сейчас", callback_data="check_now")
         builder.button(text="⚙️ Изменить фильтры", callback_data="setup_filters")
         builder.row()
         builder.button(text="📊 Статистика", callback_data="show_stats")
+        builder.button(text=mode_text, callback_data="toggle_ai_mode")
         
         await message.answer(
             f"🏠 <b>Ваши фильтры</b>\n\n"
             f"🚪 <b>Комнат:</b> от {user_filters.get('min_rooms', 1)} до {user_filters.get('max_rooms', 4)}\n"
             f"💰 <b>Цена:</b> ${user_filters.get('min_price', 0):,} - ${user_filters.get('max_price', 100000):,}\n\n"
-            f"📡 <b>Статус:</b> {status}\n\n"
+            f"📡 <b>Статус:</b> {status}\n"
+            f"🤖 <b>Режим:</b> {mode_desc}\n\n"
             f"Я проверяю новые объявления каждые 10 минут и присылаю только те, что подходят под ваши фильтры.",
             parse_mode=ParseMode.HTML,
             reply_markup=builder.as_markup()
@@ -465,6 +579,10 @@ async def cb_setup_filters(callback: CallbackQuery):
     builder = InlineKeyboardBuilder()
     builder.button(text="🚪 Комнаты", callback_data="user_filter_rooms")
     builder.button(text="💰 Цена", callback_data="user_filter_price")
+    builder.row()
+    ai_mode = user_filters.get("ai_mode", False) if user_filters else False
+    mode_text = "🤖 ИИ-режим: ВКЛ" if ai_mode else "🤖 ИИ-режим: ВЫКЛ"
+    builder.button(text=mode_text, callback_data="toggle_ai_mode")
     builder.row()
     builder.button(text="✅ Готово", callback_data="user_filters_done")
     
@@ -649,6 +767,38 @@ async def cb_show_stats(callback: CallbackQuery):
         parse_mode=ParseMode.HTML
     )
     await callback.answer()
+
+
+@router.callback_query(F.data == "toggle_ai_mode")
+async def cb_toggle_ai_mode(callback: CallbackQuery):
+    """Переключает ИИ-режим пользователя"""
+    user_id = callback.from_user.id
+    
+    user_filters = await get_user_filters(user_id)
+    if not user_filters:
+        await callback.answer("Сначала настройте фильтры", show_alert=True)
+        return
+    
+    # Переключаем режим
+    current_mode = user_filters.get("ai_mode", False)
+    new_mode = not current_mode
+    
+    await set_user_ai_mode(user_id, new_mode)
+    
+    mode_text = "включен" if new_mode else "выключен"
+    mode_desc = "ИИ будет выбирать лучшие варианты из всех найденных" if new_mode else "Будут присылаться все подходящие объявления"
+    
+    await callback.answer(f"🤖 ИИ-режим {mode_text}")
+    
+    # Обновляем сообщение
+    await callback.message.edit_text(
+        f"🤖 <b>ИИ-режим {mode_text.upper()}</b>\n\n"
+        f"{mode_desc}\n\n"
+        f"<b>Как это работает:</b>\n"
+        f"{'✅ ИИ анализирует все найденные объявления и выбирает лучшие по соотношению цена-качество (обычно 3-5 вариантов)' if new_mode else '📋 Присылаются все объявления, которые соответствуют вашим фильтрам'}\n\n"
+        f"Вы можете переключить режим в любой момент.",
+        parse_mode=ParseMode.HTML
+    )
 
 
 @router.callback_query(F.data == "user_filter_rooms")

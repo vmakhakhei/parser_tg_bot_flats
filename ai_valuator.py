@@ -1031,6 +1031,119 @@ class AIValuator:
             return await self.valuate_ollama(listing)
         
         return None
+    
+    async def _select_best_gemini(self, prompt: str, listings: List[Listing]) -> List[str]:
+        """Выбирает лучшие варианты через Gemini API"""
+        if not GEMINI_API_KEY:
+            return []
+        
+        payload = {
+            "contents": [{
+                "parts": [{"text": prompt}]
+            }],
+            "generationConfig": {
+                "temperature": 0.3,
+                "maxOutputTokens": 1000
+            }
+        }
+        
+        url = f"{GEMINI_API_URL}?key={GEMINI_API_KEY}"
+        
+        try:
+            timeout = aiohttp.ClientTimeout(total=30)
+            async with self.session.post(url, json=payload, timeout=timeout) as resp:
+                if resp.status == 200:
+                    data = await resp.json()
+                    content = data["candidates"][0]["content"]["parts"][0]["text"]
+                    log_info("ai_select", f"Ответ от Gemini: {content[:200]}...")
+                    
+                    # Парсим JSON из ответа
+                    selected_ids = self._parse_selection_response(content, listings)
+                    return selected_ids
+                else:
+                    error_text = await resp.text()
+                    log_error("ai_select", f"Gemini API вернул статус {resp.status}: {error_text[:200]}")
+        except Exception as e:
+            log_error("ai_select", f"Ошибка запроса к Gemini API", e)
+        
+        return []
+    
+    async def _select_best_groq(self, prompt: str, listings: List[Listing]) -> List[str]:
+        """Выбирает лучшие варианты через Groq API"""
+        if not GROQ_API_KEY:
+            return []
+        
+        headers = {
+            "Authorization": f"Bearer {GROQ_API_KEY}",
+            "Content-Type": "application/json"
+        }
+        
+        payload = {
+            "messages": [
+                {"role": "system", "content": "Ты эксперт по недвижимости. Отвечай только JSON."},
+                {"role": "user", "content": prompt}
+            ],
+            "model": GROQ_MODEL,
+            "temperature": 0.3,
+            "max_tokens": 1000
+        }
+        
+        try:
+            timeout = aiohttp.ClientTimeout(total=30)
+            async with self.session.post(GROQ_API_URL, json=payload, headers=headers, timeout=timeout) as resp:
+                if resp.status == 200:
+                    data = await resp.json()
+                    content = data["choices"][0]["message"]["content"]
+                    log_info("ai_select", f"Ответ от Groq: {content[:200]}...")
+                    
+                    selected_ids = self._parse_selection_response(content, listings)
+                    return selected_ids
+                else:
+                    error_text = await resp.text()
+                    log_error("ai_select", f"Groq API вернул статус {resp.status}: {error_text[:200]}")
+        except Exception as e:
+            log_error("ai_select", f"Ошибка запроса к Groq API", e)
+        
+        return []
+    
+    def _parse_selection_response(self, content: str, listings: List[Listing]) -> List[str]:
+        """Парсит ответ ИИ и извлекает список ID выбранных объявлений"""
+        try:
+            # Ищем JSON в ответе
+            json_match = re.search(r'\{[^{}]*"selected_ids"[^{}]*\}', content, re.DOTALL)
+            if json_match:
+                json_str = json_match.group(0)
+                result = json.loads(json_str)
+                selected_ids = result.get("selected_ids", [])
+                
+                # Проверяем что все ID существуют в списке
+                valid_ids = [lid for lid in selected_ids if any(l.id == lid for l in listings)]
+                
+                if valid_ids:
+                    log_info("ai_select", f"Найдено {len(valid_ids)} валидных ID: {valid_ids}")
+                    return valid_ids
+                else:
+                    log_warning("ai_select", f"Не найдено валидных ID в ответе")
+            
+            # Fallback: пытаемся найти ID в тексте напрямую
+            all_ids = [l.id for l in listings]
+            found_ids = []
+            for listing_id in all_ids:
+                if listing_id in content:
+                    found_ids.append(listing_id)
+            
+            if found_ids:
+                log_info("ai_select", f"Найдено ID через fallback: {found_ids[:5]}")
+                return found_ids[:5]
+            
+        except json.JSONDecodeError as e:
+            log_error("ai_select", f"Ошибка парсинга JSON: {content[:200]}", e)
+        except Exception as e:
+            log_error("ai_select", f"Ошибка парсинга ответа", e)
+        
+        # Если ничего не найдено, возвращаем первые несколько
+        log_warning("ai_select", "Не удалось распарсить ответ, возвращаю первые 3")
+        return [l.id for l in listings[:3]]
 
 
 # Глобальный экземпляр
@@ -1066,4 +1179,114 @@ async def valuate_listing(listing: Listing) -> Optional[Dict[str, Any]]:
     
     async with valuator:
         return await valuator.valuate(listing)
+
+
+async def select_best_listings(
+    listings: List[Listing], 
+    user_filters: Dict[str, Any],
+    max_results: int = 5
+) -> List[Listing]:
+    """
+    ИИ выбирает лучшие варианты из списка объявлений по критериям цена-качество.
+    Возвращает список лучших объявлений (обычно 3-5 штук).
+    """
+    if not listings:
+        return []
+    
+    valuator = get_valuator()
+    if not valuator:
+        log_warning("ai_select", "ИИ-оценщик недоступен, возвращаю все объявления")
+        return listings[:max_results]
+    
+    await valuator.start_session()
+    
+    try:
+        # Формируем промпт с описанием всех объявлений
+        prompt = _prepare_selection_prompt(listings, user_filters, max_results)
+        
+        # Отправляем запрос в ИИ (без фото для массового анализа)
+        if valuator.provider == "gemini":
+            selected_ids = await valuator._select_best_gemini(prompt, listings)
+        elif valuator.provider == "groq":
+            selected_ids = await valuator._select_best_groq(prompt, listings)
+        else:
+            log_warning("ai_select", f"Провайдер {valuator.provider} не поддерживает массовый выбор")
+            return listings[:max_results]
+        
+        # Фильтруем объявления по выбранным ID
+        selected_listings = [l for l in listings if l.id in selected_ids]
+        
+        log_info("ai_select", f"ИИ выбрал {len(selected_listings)} из {len(listings)} объявлений")
+        
+        return selected_listings[:max_results]
+        
+    except Exception as e:
+        log_error("ai_select", f"Ошибка при выборе лучших вариантов", e)
+        return listings[:max_results]
+
+
+def _prepare_selection_prompt(listings: List[Listing], user_filters: Dict[str, Any], max_results: int) -> str:
+    """Подготавливает промпт для выбора лучших вариантов"""
+    
+    min_price = user_filters.get("min_price", 0)
+    max_price = user_filters.get("max_price", 100000)
+    min_rooms = user_filters.get("min_rooms", 1)
+    max_rooms = user_filters.get("max_rooms", 4)
+    
+    # Формируем список объявлений для анализа
+    listings_text = []
+    for i, listing in enumerate(listings, 1):
+        rooms_text = f"{listing.rooms}-комн." if listing.rooms > 0 else "?"
+        area_text = f"{listing.area} м²" if listing.area > 0 else "?"
+        price_text = listing.price_formatted
+        
+        # Рассчитываем цену за м² если возможно
+        price_per_sqm = ""
+        if listing.area > 0 and listing.price > 0:
+            price_per_sqm_usd = listing.price / listing.area
+            price_per_sqm = f" (${price_per_sqm_usd:.0f}/м²)"
+        
+        listing_info = f"""
+{i}. ID: {listing.id}
+   - Комнаты: {rooms_text}
+   - Площадь: {area_text}
+   - Цена: {price_text}{price_per_sqm}
+   - Адрес: {listing.address}
+   - Источник: {listing.source}
+   - Ссылка: {listing.url}
+"""
+        listings_text.append(listing_info)
+    
+    prompt = f"""Ты - эксперт по недвижимости в Барановичах, Беларусь. 
+
+ЗАДАЧА: Выбери {max_results} лучших вариантов квартир из предложенного списка по критерию "цена-качество".
+
+КРИТЕРИИ ПОЛЬЗОВАТЕЛЯ:
+- Комнаты: от {min_rooms} до {max_rooms}
+- Цена: от ${min_price:,} до ${max_price:,}
+- Город: Барановичи
+
+ЧТО УЧИТЫВАТЬ ПРИ ВЫБОРЕ:
+1. Соотношение цена/качество (цена за м²)
+2. Расположение (центр предпочтительнее, но не критично)
+3. Размер площади (больше - лучше, но в разумных пределах)
+4. Количество комнат (соответствие запросу)
+5. Общая привлекательность предложения
+
+СПИСОК ОБЪЯВЛЕНИЙ:
+{''.join(listings_text)}
+
+ВЕРНИ ОТВЕТ В ФОРМАТЕ JSON:
+{{
+    "selected_ids": ["id1", "id2", "id3", ...],
+    "reasoning": "Краткое объяснение почему выбраны именно эти варианты"
+}}
+
+ВАЖНО:
+- Верни ТОЛЬКО JSON, без дополнительного текста
+- Выбери от 3 до {max_results} лучших вариантов
+- Укажи ID в том же формате, как в списке выше
+"""
+    
+    return prompt
 
