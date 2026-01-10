@@ -347,7 +347,18 @@ class AIValuator:
                     # Парсим JSON из ответа
                     result = self._parse_ai_response(content)
                     if result:
-                        log_info("ai_groq", f"Успешная оценка: ${result.get('fair_price_usd', 0):,}")
+                        fair_price = result.get('fair_price_usd', 0)
+                        has_renovation = 'renovation_state' in result and result.get('renovation_state')
+                        has_recommendations = 'recommendations' in result and result.get('recommendations')
+                        has_value_score = 'value_score' in result and result.get('value_score', 0) > 0
+                        
+                        log_info("ai_groq", f"Успешная оценка: ${fair_price:,}")
+                        if has_renovation:
+                            log_info("ai_groq", f"  - Состояние ремонта: {result.get('renovation_state')}")
+                        if has_recommendations:
+                            log_info("ai_groq", f"  - Рекомендации: {result.get('recommendations')[:50]}...")
+                        if has_value_score:
+                            log_info("ai_groq", f"  - Оценка: {result.get('value_score')}/10")
                     return result
                 elif resp.status == 400:
                     # Если модель недоступна, пробуем резервную
