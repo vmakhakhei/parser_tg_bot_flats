@@ -483,6 +483,136 @@ async def check_new_listings_ai_mode(
             pass
 
 
+async def evaluate_and_compare_new_listings(
+    bot: Bot,
+    user_id: int,
+    new_listings: List[Listing],
+    previous_selected: List[Dict[str, Any]],
+    user_filters: Dict[str, Any]
+):
+    """Оценивает новые объявления через ИИ и сравнивает с предыдущими выбранными вариантами"""
+    logger.info(f"Оцениваю {len(new_listings)} новых объявлений и сравниваю с {len(previous_selected)} предыдущими")
+    
+    # Отправляем уведомление пользователю
+    status_msg = None
+    try:
+        status_msg = await bot.send_message(
+            user_id,
+            f"🔍 <b>Оценка новых объявлений</b>\n\n"
+            f"Найдено {len(new_listings)} новых объявлений.\n"
+            f"Оцениваю и сравниваю с предыдущими выбранными вариантами...",
+            parse_mode=ParseMode.HTML
+        )
+    except Exception as e:
+        log_warning("ai_mode", f"Не удалось отправить уведомление пользователю {user_id}: {e}")
+    
+    # Оцениваем новые объявления через ИИ
+    evaluated_listings = []
+    for listing in new_listings[:10]:  # Ограничиваем до 10 для экономии API
+        try:
+            ai_valuation = await valuate_listing(listing)
+            if ai_valuation:
+                evaluated_listings.append({
+                    "listing": listing,
+                    "valuation": ai_valuation
+                })
+        except Exception as e:
+            log_error("ai_mode", f"Ошибка оценки объявления {listing.id}", e)
+    
+    if not evaluated_listings:
+        try:
+            if status_msg:
+                await status_msg.edit_text(
+                    "⚠️ <b>Не удалось оценить новые объявления</b>\n\n"
+                    "Попробуйте повторить позже.",
+                    parse_mode=ParseMode.HTML
+                )
+        except Exception:
+            pass
+        return
+    
+    # Формируем сообщение с оценкой и сравнением
+    results_text = f"📊 <b>Оценка новых объявлений</b>\n\n"
+    results_text += f"Проанализировано {len(evaluated_listings)} новых объявлений.\n"
+    results_text += f"Сравнение с {len(previous_selected)} предыдущими выбранными вариантами.\n\n"
+    results_text += "━━━━━━━━━━━━━━━━━━━━\n\n"
+    
+    # Сортируем по оценке (лучшие первыми)
+    evaluated_listings.sort(
+        key=lambda x: x["valuation"].get("value_score", 0),
+        reverse=True
+    )
+    
+    # Показываем топ-3 новых объявления с оценкой
+    for i, item in enumerate(evaluated_listings[:3], 1):
+        listing = item["listing"]
+        valuation = item["valuation"]
+        
+        rooms_text = f"{listing.rooms}-комн." if listing.rooms > 0 else "?"
+        area_text = f"{listing.area} м²" if listing.area > 0 else "?"
+        
+        price_per_sqm = ""
+        if listing.area > 0 and listing.price > 0:
+            price_per_sqm_usd = int(listing.price / listing.area)
+            price_per_sqm = f" (${price_per_sqm_usd}/м²)"
+        
+        year_info = ""
+        if listing.year_built:
+            year_info = f", {listing.year_built}г"
+        
+        fair_price = valuation.get("fair_price_usd", 0)
+        is_overpriced = valuation.get("is_overpriced", False)
+        value_score = valuation.get("value_score", 0)
+        assessment = valuation.get("assessment", "Оценка недоступна")
+        
+        results_text += f"<b>{i}. {rooms_text}, {area_text}{year_info}</b>\n"
+        results_text += f"💰 {listing.price_formatted}{price_per_sqm}\n"
+        results_text += f"📍 {listing.address}\n"
+        results_text += f"🔗 <a href=\"{listing.url}\">Открыть объявление</a>\n\n"
+        
+        if fair_price > 0:
+            price_diff = listing.price - fair_price
+            price_diff_percent = int((price_diff / fair_price) * 100) if fair_price > 0 else 0
+            results_text += f"💵 <b>Справедливая цена:</b> ${fair_price:,}\n"
+            if is_overpriced:
+                results_text += f"⚠️ <b>Завышена на:</b> ${abs(price_diff):,} ({abs(price_diff_percent)}%)\n"
+            else:
+                results_text += f"✅ <b>Цена справедлива</b>\n"
+        
+        results_text += f"⭐ <b>Оценка:</b> {value_score}/10\n"
+        results_text += f"📋 <b>Анализ:</b> {assessment}\n\n"
+        
+        # Сравнение с предыдущими вариантами
+        if previous_selected:
+            results_text += f"📊 <b>Сравнение:</b> "
+            if value_score >= 7:
+                results_text += "Лучше большинства предыдущих вариантов\n"
+            elif value_score >= 5:
+                results_text += "Сопоставимо с предыдущими вариантами\n"
+            else:
+                results_text += "Хуже предыдущих вариантов\n"
+        
+        results_text += "━━━━━━━━━━━━━━━━━━━━\n\n"
+    
+    # Отправляем сообщение
+    try:
+        if status_msg:
+            await status_msg.edit_text(
+                results_text,
+                parse_mode=ParseMode.HTML,
+                disable_web_page_preview=False
+            )
+        else:
+            await bot.send_message(
+                user_id,
+                results_text,
+                parse_mode=ParseMode.HTML,
+                disable_web_page_preview=False
+            )
+    except Exception as e:
+        log_error("ai_mode", f"Ошибка отправки оценки пользователю {user_id}", e)
+
+
 def _matches_user_filters(listing: Listing, filters: Dict[str, Any]) -> bool:
     """Проверяет соответствие объявления фильтрам пользователя"""
     # Комнаты
