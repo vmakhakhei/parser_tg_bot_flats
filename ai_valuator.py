@@ -1446,77 +1446,52 @@ def _prepare_selection_prompt_detailed(
     user_filters: Dict[str, Any], 
     max_results: int
 ) -> str:
-    """Подготавливает детальный промпт для выбора лучших вариантов с анализом по ссылкам"""
+    """Подготавливает минимальный промпт с ссылками - Gemini сам просмотрит страницы"""
     
     min_price = user_filters.get("min_price", 0)
     max_price = user_filters.get("max_price", 100000)
     min_rooms = user_filters.get("min_rooms", 1)
     max_rooms = user_filters.get("max_rooms", 4)
     
-    # Формируем список объявлений с полной информацией (сокращенный формат)
+    # Формируем минимальный список: только ID, базовые параметры и URL
     listings_text = []
-    # Ограничиваем количество объявлений в промпте (максимум 15)
+    # Ограничиваем количество объявлений (максимум 15)
     listings_to_process = inspected_listings[:15]
     
     for i, item in enumerate(listings_to_process, 1):
         listing = item["listing"]
-        inspection = item.get("inspection", {})
         
-        rooms_text = f"{listing.rooms}-комн." if listing.rooms > 0 else "?"
-        area_text = f"{listing.area} м²" if listing.area > 0 else "?"
-        price_text = listing.price_formatted
+        rooms_text = f"{listing.rooms}к" if listing.rooms > 0 else "?"
+        area_text = f"{listing.area}м²" if listing.area > 0 else "?"
         
-        # Рассчитываем цену за м² если возможно
+        # Цена за м² (главный критерий)
         price_per_sqm = ""
         if listing.area > 0 and listing.price > 0:
-            price_per_sqm_usd = listing.price / listing.area
-            price_per_sqm = f" ${price_per_sqm_usd:.0f}/м²"
+            price_per_sqm_usd = int(listing.price / listing.area)
+            price_per_sqm = f" ${price_per_sqm_usd}/м²"
         
-        # Год постройки
+        # Год постройки (если есть)
         year_info = ""
         if listing.year_built:
-            year_info = f", год: {listing.year_built}"
-        elif inspection.get("detailed_info", {}).get("year_built"):
-            year_info = f", год: {inspection['detailed_info']['year_built']}"
+            year_info = f" {listing.year_built}г"
         
-        # Описание из инспекции (сокращаем до 200 символов)
-        description = inspection.get("full_description", "") if inspection.get("full_description") else ""
-        if description:
-            description = description[:200].strip()
-            if len(inspection.get("full_description", "")) > 200:
-                description += "..."
-        else:
-            description = "нет описания"
-        
-        # Фото (только количество)
-        photos_count = len(inspection.get("all_photos", [])) if inspection.get("all_photos") else 0
-        
-        # Сокращаем адрес (берем только улицу, без города)
-        address_short = listing.address.replace(", Барановичи", "").replace("Барановичи, ", "").strip()
-        if len(address_short) > 50:
-            address_short = address_short[:50] + "..."
-        
-        # Компактный формат
-        listing_info = f"{i}. ID:{listing.id} | {rooms_text}, {area_text} | {price_text}{price_per_sqm}{year_info} | {address_short} | фото:{photos_count} | {description} | {listing.url}\n"
+        # Минимальный формат: ID | параметры | URL
+        listing_info = f"{i}.{listing.id}|{rooms_text},{area_text}{price_per_sqm}{year_info}|{listing.url}\n"
         listings_text.append(listing_info)
     
-    prompt = f"""Эксперт по недвижимости Барановичей. Выбери {max_results} лучших вариантов по цене-качество.
+    # Максимально короткий промпт
+    prompt = f"""Недвижимость Барановичи. Выбери {max_results} лучших по цене-качество.
 
-Критерии: комнаты {min_rooms}-{max_rooms}, цена ${min_price:,}-${max_price:,}
+Критерии: {min_rooms}-{max_rooms}к, ${min_price:,}-${max_price:,}
+Приоритет: цена/м², год, район.
 
-Приоритеты:
-1. Цена за м² (главное)
-2. Год постройки
-3. Расположение
-4. Состояние
-
-Объявления:
+Список:
 {''.join(listings_text)}
 
-Верни JSON:
-{{"selected": [{{"id": "listing_id", "reason": "краткое объяснение (2-3 предложения): цена/м², год, район, состояние"}}]}}
+Проанализируй ссылки и выбери лучшие. JSON:
+{{"selected": [{{"id": "id", "reason": "кратко: цена/м², год, район"}}]}}
 
-Выбери 3-{max_results} лучших. Только JSON."""
+Только JSON, 3-{max_results} вариантов."""
     
     return prompt
 
