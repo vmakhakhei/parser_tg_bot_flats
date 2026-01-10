@@ -62,9 +62,14 @@ async def main():
         from ai_valuator import get_valuator
         valuator = get_valuator()
         if valuator:
-            logger.info(f"🤖 ИИ-оценщик настроен: {valuator.provider.upper()}")
+            provider_name = valuator.provider.upper()
+            if provider_name == "GEMINI":
+                logger.info(f"🤖 ИИ-оценщик настроен: {provider_name} (с анализом фото)")
+            else:
+                logger.info(f"🤖 ИИ-оценщик настроен: {provider_name} (без анализа фото)")
         else:
             logger.info("⚠️ ИИ-оценщик не настроен (GEMINI_API_KEY не указан)")
+            logger.info("💡 Рекомендуется использовать Gemini для анализа фотографий квартир")
     except Exception as e:
         logger.warning(f"⚠️ ИИ-оценщик недоступен: {e}")
     
