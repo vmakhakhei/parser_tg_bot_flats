@@ -33,13 +33,19 @@ except ImportError:
 
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
 # Актуальные модели Gemini API (бесплатные):
-# Правильные названия для v1beta API (проверено):
-# - gemini-pro (стабильная, работает, поддерживает vision) - используется по умолчанию
-# - gemini-1.5-flash (может не работать в некоторых регионах)
-# - gemini-1.5-pro (может не работать в некоторых регионах)
-GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-pro")  # По умолчанию используем gemini-pro (стабильная)
-# Используем v1beta API (gemini-pro работает стабильно)
+# Правильные названия для v1beta API:
+# Попробуем разные варианты названий моделей
+GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-1.5-flash")  # По умолчанию пробуем flash
+# Используем v1beta API
 GEMINI_API_URL = f"https://generativelanguage.googleapis.com/v1beta/models/{GEMINI_MODEL}:generateContent"
+
+# Список моделей для fallback (пробуем по очереди)
+GEMINI_FALLBACK_MODELS = [
+    "gemini-1.5-flash",
+    "gemini-1.5-pro", 
+    "gemini-pro",
+    "gemini-1.0-pro"
+]
 
 
 # ========== ВАРИАНТ 2: Groq API (АЛЬТЕРНАТИВА) ==========
