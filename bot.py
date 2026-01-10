@@ -442,6 +442,9 @@ async def check_new_listings_ai_mode(
                 # НЕ отправляем объявления отдельно - только одно сообщение с оценкой ИИ
                 logger.info(f"Отправлено сообщение с {len(best_with_reasons)} рекомендациями пользователю {user_id}")
                 
+                # Сохраняем выбранные варианты для будущего сравнения
+                await save_ai_selected_listings(user_id, best_with_reasons)
+                
             else:
                 logger.warning(f"ИИ не выбрал ни одного варианта для пользователя {user_id}")
                 try:
