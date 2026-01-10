@@ -10,8 +10,8 @@ load_dotenv()
 BOT_TOKEN = os.getenv("BOT_TOKEN", "")
 CHANNEL_ID = os.getenv("CHANNEL_ID", "")
 
-# Интервал проверки в минутах
-CHECK_INTERVAL = int(os.getenv("CHECK_INTERVAL", "10"))
+# Интервал проверки в минутах (12 часов = 720 минут)
+CHECK_INTERVAL = int(os.getenv("CHECK_INTERVAL", "720"))
 
 # Настройки фильтров по умолчанию
 DEFAULT_FILTERS = {
