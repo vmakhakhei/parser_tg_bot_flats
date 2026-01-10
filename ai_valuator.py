@@ -1098,8 +1098,12 @@ class AIValuator:
         }
         
         # Получаем список доступных моделей и используем первую рабочую
-        available_models = await self._get_available_gemini_models()
-        models_to_try = available_models if available_models else [GEMINI_MODEL] + GEMINI_FALLBACK_MODELS
+        try:
+            available_models = await self._get_available_gemini_models()
+            models_to_try = available_models if available_models else GEMINI_FALLBACK_MODELS
+        except Exception as e:
+            log_warning("ai_select", f"Не удалось получить список моделей, использую fallback: {e}")
+            models_to_try = GEMINI_FALLBACK_MODELS
         
         log_info("ai_select", f"Отправляю POST запрос к Gemini API")
         log_info("ai_select", f"Размер промпта: {len(prompt)} символов, количество объявлений: {len(inspected_listings)}")
@@ -1140,7 +1144,7 @@ class AIValuator:
                         selected_with_reasons = self._parse_selection_response_detailed(content, inspected_listings)
                         return selected_with_reasons
                     elif resp.status == 404:
-                        log_warning("ai_select", f"Модель {model} не найдена, пробую следующую...")
+                        log_warning("ai_select", f"Модель {model} не найдена (404), пробую следующую...")
                         continue
                     else:
                         error_text = await resp.text()
