@@ -90,13 +90,12 @@ class ListingsAggregator:
         # Выполняем все запросы параллельно
         results = await asyncio.gather(*tasks, return_exceptions=True)
         
-        # Обрабатываем результаты
+        # Обрабатываем результаты (парсеры сами логируют количество)
         for source_name, result in zip(source_names, results):
             if isinstance(result, Exception):
                 log_error(source_name, f"Ошибка парсинга", result)
             elif isinstance(result, list):
                 all_listings.extend(result)
-                log_info(source_name, f"Найдено: {len(result)} объявлений")
         
         # Удаляем дубликаты по ID
         unique_listings = self._remove_duplicates(all_listings)

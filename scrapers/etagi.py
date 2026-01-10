@@ -25,10 +25,12 @@ except ImportError:
 
 
 class EtagiScraper(BaseScraper):
-    """Парсер объявлений с baranovichi.etagi.com"""
+    """Парсер объявлений с baranovichi.etagi.com через API"""
     
     SOURCE_NAME = "etagi"
     BASE_URL = "https://baranovichi.etagi.com"
+    API_URL = "https://baranovichi.etagi.com/rest/etagi.flats"
+    CITY_ID = 3192  # ID Барановичей в системе Etagi
     
     async def fetch_listings(
         self,
@@ -38,153 +40,138 @@ class EtagiScraper(BaseScraper):
         min_price: int = 0,
         max_price: int = 100000,
     ) -> List[Listing]:
-        """Получает список объявлений"""
+        """Получает список объявлений через API"""
         
-        url = f"{self.BASE_URL}/realty/"
+        # Формируем запрос к API
+        import urllib.parse
+        import json
         
-        html = await self._fetch_html(url)
-        if not html:
+        # Фильтр для получения квартир
+        filter_data = [
+            "and",
+            [
+                ["in|=", "f.city_id", [self.CITY_ID]],
+                ["=", "class", "flats"],
+                ["in", "status", ["active"]]
+            ]
+        ]
+        
+        params = {
+            "protName": "flats",
+            "filter": json.dumps(filter_data),
+            "orderId": "default",
+            "limit": "50",
+            "as": "f",
+            "lang": "ru",
+        }
+        
+        url = f"{self.API_URL}?{urllib.parse.urlencode(params)}"
+        log_info("etagi", f"Запрос API: {url[:100]}...")
+        
+        json_data = await self._fetch_json(url)
+        if not json_data:
+            log_warning("etagi", "API не вернул данные")
             return []
         
-        return self._parse_html(html, min_rooms, max_rooms, min_price, max_price)
+        return self._parse_api_response(json_data, min_rooms, max_rooms, min_price, max_price)
     
-    def _parse_html(
+    def _parse_api_response(
         self, 
-        html: str,
+        data: dict,
         min_rooms: int,
         max_rooms: int,
         min_price: int,
         max_price: int
     ) -> List[Listing]:
-        """Парсит HTML страницу"""
-        soup = BeautifulSoup(html, 'lxml')
+        """Парсит ответ API"""
         listings = []
-        seen_ids = set()
         
-        # Ищем все ссылки на объявления формата /realty/XXXXXXXX/
-        for link in soup.find_all('a', href=re.compile(r'/realty/\d+/')):
-            href = link.get('href', '')
-            
-            # Извлекаем ID объявления
-            id_match = re.search(r'/realty/(\d+)/', href)
-            if not id_match:
-                continue
-            
-            object_id = id_match.group(1)
-            listing_id = f"etagi_{object_id}"
-            
-            # Пропускаем дубликаты
-            if listing_id in seen_ids:
-                continue
-            seen_ids.add(listing_id)
-            
-            # Ищем текст объявления
-            link_text = link.get_text(separator=' ', strip=True)
-            
-            # Пропускаем если это не карточка объявления
-            if 'комн' not in link_text.lower() and 'студия' not in link_text.lower():
-                continue
-            
-            # Парсим данные
-            listing = self._parse_listing_from_text(link_text, listing_id, href)
+        # API возвращает данные в поле "data" или напрямую как список
+        items = data.get("data", data) if isinstance(data, dict) else data
+        
+        if not isinstance(items, list):
+            items = [items] if items else []
+        
+        log_info("etagi", f"API вернул {len(items)} записей")
+        
+        for item in items:
+            listing = self._parse_api_item(item)
             if listing:
                 if self._matches_filters(listing, min_rooms, max_rooms, min_price, max_price):
                     listings.append(listing)
         
-        log_info("etagi", f"Найдено: {len(listings)} объявлений")
+        log_info("etagi", f"После фильтрации: {len(listings)} объявлений")
         return listings
     
-    def _parse_listing_from_text(self, text: str, listing_id: str, href: str) -> Optional[Listing]:
-        """Парсит объявление из текста"""
+    def _parse_api_item(self, item: dict) -> Optional[Listing]:
+        """Парсит одну запись из API"""
         try:
+            # ID объявления
+            obj_id = item.get("id") or item.get("object_id")
+            if not obj_id:
+                return None
+            
+            listing_id = f"etagi_{obj_id}"
+            
             # URL
-            url = href if href.startswith('http') else f"{self.BASE_URL}{href}"
+            url = f"{self.BASE_URL}/realty/{obj_id}/"
             
             # Комнаты
-            rooms = 0
-            rooms_match = re.search(r'(\d+)-комн', text, re.I)
-            if rooms_match:
-                rooms = int(rooms_match.group(1))
-            elif 'студия' in text.lower():
+            rooms = int(item.get("rooms", 0) or item.get("rooms_count", 0) or 0)
+            if rooms == 0 and item.get("is_studio"):
                 rooms = 1
             
-            # Площадь - ищем формат "XX.X м2"
-            area = 0.0
-            area_match = re.search(r'(\d+(?:[.,]\d+)?)\s*м[²2]', text)
-            if area_match:
-                area = float(area_match.group(1).replace(',', '.'))
+            # Площадь
+            area = float(item.get("area", 0) or item.get("area_total", 0) or 0)
             
-            # Цена в BYN - ищем формат "XXX XXX BYN"
-            price_byn = 0
-            price_byn_match = re.search(r'(\d[\d\s]*\d)\s*BYN', text)
-            if price_byn_match:
-                price_str = price_byn_match.group(1).replace(' ', '').replace('\xa0', '')
-                try:
-                    price_byn = int(price_str)
-                except:
-                    pass
+            # Цена в BYN
+            price_byn = int(item.get("price", 0) or 0)
             
-            # Цена за м² в BYN
-            price_per_sqm = 0
-            price_per_sqm_match = re.search(r'(\d[\d\s]*\d)\s*BYN\s*/\s*м[²2]', text)
-            if price_per_sqm_match:
-                price_str = price_per_sqm_match.group(1).replace(' ', '').replace('\xa0', '')
-                try:
-                    price_per_sqm = int(price_str)
-                except:
-                    pass
+            # Цена за м²
+            price_per_sqm = int(item.get("price_m2", 0) or 0)
             
-            # Этаж - ищем формат "X/Y эт"
-            floor = ""
-            floor_match = re.search(r'(\d+)/(\d+)\s*эт', text)
-            if floor_match:
-                floor = f"{floor_match.group(1)}/{floor_match.group(2)}"
+            # Этаж
+            floor_num = item.get("floor", "")
+            floor_total = item.get("floors", "") or item.get("floors_total", "")
+            floor = f"{floor_num}/{floor_total}" if floor_num and floor_total else str(floor_num) if floor_num else ""
             
-            # Адрес - ищем "ул. XXX" или всё что после этажа
-            address = "Барановичи"
-            addr_match = re.search(r'(ул\.\s*[^\d]+?)(?:\d|Показать|$)', text)
-            if addr_match:
-                address = addr_match.group(1).strip() + ", Барановичи"
-            
-            # Состояние квартиры
-            condition = ""
-            condition_patterns = [
-                'Обычное состояние', 'Косметический ремонт', 'Евроремонт',
-                'Требует ремонта', 'Улучшенная черновая', 'Без отделки'
-            ]
-            for pattern in condition_patterns:
-                if pattern.lower() in text.lower():
-                    condition = pattern
-                    break
-            
-            # Формируем заголовок
-            title = f"{rooms}-комн., {area} м²" if rooms and area else "Квартира"
-            if condition:
-                title += f" ({condition})"
+            # Адрес
+            street = item.get("street", "") or item.get("address", "")
+            house = item.get("house", "") or item.get("house_num", "")
+            address = f"{street} {house}, Барановичи".strip(", ")
+            if not street:
+                address = "Барановичи"
             
             # Пропускаем если цена = 0
             if price_byn == 0:
                 return None
             
-            # Конвертация примерная BYN -> USD (курс ~2.95)
+            # Конвертация BYN -> USD (курс ~2.95)
             price_usd = int(price_byn / 2.95) if price_byn else 0
             
-            # Формируем цену
-            price_formatted = f"{price_byn:,} BYN".replace(",", " ")
-            if price_usd:
-                price_formatted += f" (≈${price_usd:,})".replace(",", " ")
+            # Формируем заголовок
+            title = f"{rooms}-комн., {area} м²" if rooms and area else "Квартира"
+            
+            # Фото
+            photos = []
+            if item.get("images"):
+                for img in item["images"][:3]:
+                    if isinstance(img, dict):
+                        photos.append(img.get("src", ""))
+                    elif isinstance(img, str):
+                        photos.append(img)
             
             return Listing(
                 id=listing_id,
                 source="Etagi.com",
                 title=title,
-                price=price_byn,  # Основная цена в BYN
-                price_formatted=price_formatted,
+                price=price_byn,
+                price_formatted=f"{price_byn:,} BYN (≈${price_usd:,})".replace(",", " "),
                 rooms=rooms,
                 area=area,
                 floor=floor,
                 address=address,
-                photos=[],  # Фото не парсим (требуется отдельный запрос)
+                photos=photos,
                 url=url,
                 currency="BYN",
                 price_usd=price_usd,
@@ -194,7 +181,7 @@ class EtagiScraper(BaseScraper):
             )
             
         except Exception as e:
-            log_error("etagi", f"Ошибка парсинга объявления", e)
+            log_error("etagi", f"Ошибка парсинга записи API", e)
             return None
     
     def _matches_filters(
