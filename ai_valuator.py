@@ -774,6 +774,30 @@ class AIValuator:
         
         return None
     
+    async def _get_available_gemini_models(self) -> List[str]:
+        """Получает список доступных моделей Gemini через API"""
+        try:
+            models_url = f"https://generativelanguage.googleapis.com/v1beta/models?key={GEMINI_API_KEY}"
+            async with self.session.get(models_url, timeout=aiohttp.ClientTimeout(total=5)) as resp:
+                if resp.status == 200:
+                    data = await resp.json()
+                    models = []
+                    for m in data.get("models", []):
+                        name = m.get("name", "")
+                        if name and "gemini" in name.lower():
+                            # Убираем префикс "models/"
+                            model_name = name.replace("models/", "")
+                            # Проверяем что модель поддерживает generateContent
+                            supported_methods = m.get("supportedGenerationMethods", [])
+                            if "generateContent" in supported_methods:
+                                models.append(model_name)
+                    if models:
+                        log_info("ai_gemini", f"Найдено доступных моделей: {models[:5]}")
+                    return models[:5] if models else []
+        except Exception as e:
+            log_warning("ai_gemini", f"Не удалось получить список моделей: {e}")
+        return []
+    
     async def valuate_gemini(self, listing: Listing) -> Optional[Dict[str, Any]]:
         """Оценка через Google Gemini API с поддержкой анализа фото"""
         if not GEMINI_API_KEY:
