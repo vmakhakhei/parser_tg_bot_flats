@@ -49,13 +49,15 @@ HF_API_KEY = os.getenv("HF_API_KEY", "")
 HF_API_URL = "https://api-inference.huggingface.co/models/meta-llama/Meta-Llama-3-8B-Instruct"
 
 
-# ========== ВАРИАНТ 3: Google Gemini API ==========
+# ========== ВАРИАНТ 3: Google Gemini API (С ПОДДЕРЖКОЙ VISION) ==========
 # Бесплатно: 60 запросов/минуту
-# Регистрация: https://makersuite.google.com/app/apikey
+# Поддерживает анализ изображений через Gemini Pro Vision
+# Регистрация: https://aistudio.google.com/app/apikey
 # Получить API ключ: https://aistudio.google.com/app/apikey
 
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
 GEMINI_API_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent"
+GEMINI_VISION_API_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-pro-vision:generateContent"
 
 
 # ========== ВАРИАНТ 4: Ollama (локально) ==========
@@ -675,27 +677,122 @@ class AIValuator:
         return None
     
     async def valuate_gemini(self, listing: Listing) -> Optional[Dict[str, Any]]:
-        """Оценка через Google Gemini API"""
+        """Оценка через Google Gemini API с поддержкой анализа фото"""
         if not GEMINI_API_KEY:
             return None
         
-        prompt = self._prepare_prompt(listing)
+        # ИНСПЕКЦИЯ СТРАНИЦЫ ОБЪЯВЛЕНИЯ
+        log_info("ai_inspect", f"Начинаю инспекцию объявления: {listing.url}")
+        inspection = await self._inspect_listing_page(listing)
         
-        url = f"{GEMINI_API_URL}?key={GEMINI_API_KEY}"
+        # Используем полное описание если есть
+        full_description = inspection.get("full_description", "")
+        if full_description and len(full_description) > len(listing.description):
+            listing.description = full_description
+        
+        # Используем все фото со страницы если их больше
+        all_photos = inspection.get("all_photos", [])
+        if len(all_photos) > len(listing.photos):
+            listing.photos = all_photos[:10]  # Максимум 10 фото
+        
+        # Обновляем информацию о центре
+        is_center = inspection.get("is_center", False)
+        address_details = inspection.get("address_details", "")
+        
+        prompt = self._prepare_prompt(listing, inspection)
+        
+        # Информация об инспекции
+        inspection_info = ""
+        if inspection.get("full_description"):
+            inspection_info += f"\n\nПОЛНОЕ ОПИСАНИЕ С САЙТА:\n{inspection['full_description'][:1000]}\n"
+        if address_details:
+            inspection_info += f"\nДЕТАЛИ АДРЕСА: {address_details}\n"
+        if is_center:
+            inspection_info += "\nРАСПОЛОЖЕНИЕ: Центральный район города (престижный, развитая инфраструктура)\n"
+        
+        # Подготавливаем части сообщения (текст + фото)
+        parts = []
+        
+        # Добавляем текстовый промпт
+        final_prompt = prompt + inspection_info
+        parts.append({"text": final_prompt})
+        
+        # Добавляем фото для анализа (максимум 5 фото для детального анализа)
+        photos_added = 0
+        photos_to_analyze = listing.photos[:5] if listing.photos else []
+        
+        for photo_url in photos_to_analyze:
+            if photos_added >= 5:
+                break
+            base64_image = await self._download_image_base64(photo_url)
+            if base64_image:
+                # Извлекаем base64 без data: префикса для Gemini
+                if base64_image.startswith("data:"):
+                    base64_data = base64_image.split(",", 1)[1]
+                else:
+                    base64_data = base64_image
+                
+                parts.append({
+                    "inline_data": {
+                        "mime_type": "image/jpeg",
+                        "data": base64_data
+                    }
+                })
+                photos_added += 1
+                log_info("ai_photo", f"Добавлено фото для анализа Gemini: {photo_url[:50]}...")
+        
+        # Добавляем инструкции по анализу фото
+        if photos_added > 0:
+            photo_instructions = f"\n\nВНИМАНИЕ: К сообщению прикреплены {photos_added} фото(графий) квартиры с сайта объявления. "
+            photo_instructions += "Ты должен ВНИМАТЕЛЬНО проанализировать каждое фото и дать КОНКРЕТНУЮ оценку:\n"
+            photo_instructions += "1. Состояние ремонта: отличное/хорошее/среднее/требует ремонта/плохое (опиши ЧТО видно на фото)\n"
+            photo_instructions += "2. Качество отделки: опиши состояние стен, пола, потолка, дверей, окон\n"
+            photo_instructions += "3. Мебель и техника: что есть, в каком состоянии\n"
+            photo_instructions += "4. Общее впечатление: чистота, ухоженность, готовность к проживанию\n"
+            photo_instructions += "5. Потенциальные проблемы: что нужно проверить/отремонтировать\n"
+            photo_instructions += "Используй эту ВИЗУАЛЬНУЮ информацию для точной оценки стоимости.\n"
+            
+            # Добавляем инструкции в начало текста
+            parts[0]["text"] = photo_instructions + parts[0]["text"]
+        
+        # Используем Vision модель если есть фото, иначе обычную
+        if photos_added > 0:
+            url = f"{GEMINI_VISION_API_URL}?key={GEMINI_API_KEY}"
+            log_info("ai_gemini", f"Использую Gemini Vision для анализа {photos_added} фото")
+        else:
+            url = f"{GEMINI_API_URL}?key={GEMINI_API_KEY}"
+        
         payload = {
             "contents": [{
-                "parts": [{"text": prompt}]
-            }]
+                "parts": parts
+            }],
+            "generationConfig": {
+                "temperature": 0.2,
+                "maxOutputTokens": 800
+            }
         }
         
         try:
-            async with self.session.post(url, json=payload) as resp:
+            timeout = aiohttp.ClientTimeout(total=20)  # 20 секунд для анализа фото
+            async with self.session.post(url, json=payload, timeout=timeout) as resp:
                 if resp.status == 200:
                     data = await resp.json()
                     content = data["candidates"][0]["content"]["parts"][0]["text"]
-                    return self._parse_ai_response(content)
+                    log_info("ai_gemini", f"Получен ответ от Gemini: {content[:100]}...")
+                    result = self._parse_ai_response(content)
+                    if result:
+                        log_info("ai_gemini", f"Успешная оценка: ${result.get('fair_price_usd', 0):,}")
+                        log_info("ai_gemini", f"  - Состояние ремонта: {result.get('renovation_state', 'N/A')}")
+                        log_info("ai_gemini", f"  - Рекомендации: {result.get('recommendations', 'N/A')[:50]}...")
+                        log_info("ai_gemini", f"  - Оценка: {result.get('value_score', 'N/A')}/10")
+                    return result
+                else:
+                    error_text = await resp.text()
+                    log_error("ai_gemini", f"Gemini API вернул статус {resp.status}: {error_text[:200]}")
+        except asyncio.TimeoutError:
+            log_error("ai_gemini", "Таймаут запроса к Gemini API (20 сек)")
         except Exception as e:
-            print(f"[AI] Gemini ошибка: {e}")
+            log_error("ai_gemini", f"Ошибка запроса к Gemini API", e)
         
         return None
     
