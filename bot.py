@@ -362,49 +362,72 @@ async def check_new_listings_ai_mode(
             if best_with_reasons:
                 logger.info(f"ИИ выбрал {len(best_with_reasons)} лучших вариантов для пользователя {user_id}")
                 
-                # Отправляем выбранные объявления пользователю с описаниями
-                sent_count = 0
-                for item in best_with_reasons:
+                # Формируем одно сообщение со всеми результатами
+                results_text = f"✅ <b>ИИ выбрал {len(best_with_reasons)} лучших вариантов</b>\n\n"
+                results_text += f"Из {len(candidate_listings)} объявлений проанализированы все по ссылкам и отобраны лучшие по соотношению цена-качество.\n\n"
+                results_text += "━━━━━━━━━━━━━━━━━━━━\n\n"
+                
+                # Добавляем каждую рекомендацию
+                for i, item in enumerate(best_with_reasons, 1):
                     listing = item.get("listing")
                     reason = item.get("reason", "Хорошее соотношение цена-качество")
                     
                     if not listing:
                         continue
                     
-                    # Отправляем сообщение с описанием почему вариант хороший
-                    try:
-                        await bot.send_message(
-                            user_id,
-                            f"⭐ <b>Рекомендация ИИ</b>\n\n"
-                            f"{reason}\n\n"
-                            f"Просматриваю объявление...",
-                            parse_mode=ParseMode.HTML
-                        )
-                        await asyncio.sleep(1)
-                    except Exception:
-                        pass
+                    rooms_text = f"{listing.rooms}-комн." if listing.rooms > 0 else "?"
+                    area_text = f"{listing.area} м²" if listing.area > 0 else "?"
                     
-                    # Отправляем само объявление
-                    if await send_listing_to_user(bot, user_id, listing):
-                        sent_count += 1
-                        await asyncio.sleep(2)
+                    results_text += f"<b>{i}. {rooms_text}, {area_text}</b>\n"
+                    results_text += f"💰 {listing.price_formatted}\n"
+                    results_text += f"📍 {listing.address}\n"
+                    results_text += f"⭐ <i>{reason}</i>\n"
+                    results_text += f"🔗 <a href=\"{listing.url}\">Открыть объявление</a>\n\n"
+                    results_text += "━━━━━━━━━━━━━━━━━━━━\n\n"
                 
-                # Отправляем итоговое сообщение
+                # Отправляем одно сообщение с результатами
                 try:
                     await bot.send_message(
                         user_id,
-                        f"✅ <b>ИИ выбрал {sent_count} лучших вариантов</b>\n\n"
-                        f"Из {len(candidate_listings)} объявлений проанализированы все по ссылкам и отобраны лучшие по соотношению цена-качество.",
+                        results_text,
+                        parse_mode=ParseMode.HTML,
+                        disable_web_page_preview=False
+                    )
+                except Exception as e:
+                    log_error("ai_mode", f"Ошибка отправки результатов пользователю {user_id}", e)
+                
+                # Отправляем объявления по одному (без дополнительных сообщений)
+                sent_count = 0
+                for item in best_with_reasons:
+                    listing = item.get("listing")
+                    if listing and await send_listing_to_user(bot, user_id, listing):
+                        sent_count += 1
+                        await asyncio.sleep(2)
+                
+            else:
+                logger.warning(f"ИИ не выбрал ни одного варианта для пользователя {user_id}")
+                try:
+                    await bot.send_message(
+                        user_id,
+                        f"❌ <b>ИИ не нашел подходящих вариантов</b>\n\n"
+                        f"Из {len(candidate_listings)} объявлений ни одно не соответствует критериям качества.",
                         parse_mode=ParseMode.HTML
                     )
                 except Exception:
                     pass
-            else:
-                logger.warning(f"ИИ не выбрал ни одного варианта для пользователя {user_id}")
         except Exception as e:
             log_error("ai_mode", f"Ошибка ИИ-анализа для пользователя {user_id}", e)
             # Fallback: отправляем первые 3 объявления
             logger.info(f"Fallback: отправляю первые 3 объявления пользователю {user_id}")
+            try:
+                await bot.send_message(
+                    user_id,
+                    f"⚠️ <b>Ошибка ИИ-анализа</b>\n\n"
+                    f"Отправляю первые {min(3, len(candidate_listings))} объявления.",
+                    parse_mode=ParseMode.HTML
+                )
+            except Exception:
+                pass
             for listing in candidate_listings[:3]:
                 await send_listing_to_user(bot, user_id, listing)
                 await asyncio.sleep(2)
