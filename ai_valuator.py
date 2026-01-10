@@ -35,7 +35,7 @@ GROQ_API_URL = "https://api.groq.com/openai/v1/chat/completions"
 # - mixtral-8x7b-32768 (стабильная, хорошее качество)
 # - llama-3.3-70b-versatile (если доступна)
 GROQ_MODEL = os.getenv("GROQ_MODEL", "llama-3.1-8b-instant")  # По умолчанию используем стабильную модель
-GROQ_VISION_MODEL = "llama-3.2-90b-vision-preview"  # Vision модель для анализа фото (если доступна)
+GROQ_VISION_MODEL = None  # Vision модель временно отключена (устарела)
 GROQ_FALLBACK_MODEL = "mixtral-8x7b-32768"  # Резервная модель
 
 
@@ -304,8 +304,8 @@ class AIValuator:
             "text": prompt + photo_prompt
         })
         
-        # Используем vision модель если есть фото, иначе обычную
-        model_to_use = GROQ_VISION_MODEL if photos_added > 0 else GROQ_MODEL
+        # Используем vision модель если есть фото и она доступна, иначе обычную
+        model_to_use = GROQ_VISION_MODEL if (photos_added > 0 and GROQ_VISION_MODEL) else GROQ_MODEL
         
         payload = {
             "messages": [
@@ -372,6 +372,14 @@ class AIValuator:
                                 data = await resp2.json()
                                 content = data["choices"][0]["message"]["content"]
                                 return self._parse_ai_response(content)
+                elif resp.status == 429:
+                    # Rate limit - ждем и пробуем еще раз
+                    error_text = await resp.text()
+                    log_warning("ai_groq", f"Rate limit достигнут. Жду 5 секунд...")
+                    await asyncio.sleep(5)
+                    # Пробуем еще раз с меньшим промптом или пропускаем
+                    log_info("ai_groq", "Пропускаю ИИ-оценку из-за rate limit")
+                    return None
                 else:
                     error_text = await resp.text()
                     log_warning("ai_groq", f"Groq API вернул статус {resp.status}: {error_text[:200]}")
