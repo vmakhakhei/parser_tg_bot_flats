@@ -379,6 +379,7 @@ async def cmd_filters(message: Message):
 async def cb_setup_filters(callback: CallbackQuery):
     """Настройка фильтров для пользователя"""
     user_id = callback.from_user.id
+    user_filters = await get_user_filters(user_id)
     
     builder = InlineKeyboardBuilder()
     builder.button(text="🚪 Комнаты", callback_data="user_filter_rooms")
@@ -386,12 +387,21 @@ async def cb_setup_filters(callback: CallbackQuery):
     builder.row()
     builder.button(text="✅ Готово", callback_data="user_filters_done")
     
+    # Показываем текущие значения если они есть
+    if user_filters:
+        rooms_text = f"{user_filters.get('min_rooms', 1)}-{user_filters.get('max_rooms', 4)}"
+        price_text = f"${user_filters.get('min_price', 0):,} - ${user_filters.get('max_price', 100000):,}".replace(",", " ")
+        current_info = f"\n\n<b>Текущие настройки:</b>\n🚪 Комнаты: {rooms_text}\n💰 Цена: {price_text}"
+    else:
+        current_info = ""
+    
     await callback.message.edit_text(
         "⚙️ <b>Настройка фильтров</b>\n\n"
         "Выберите параметры поиска:\n\n"
-        "🚪 <b>Комнаты</b> — количество комнат\n"
-        "💰 <b>Цена</b> — диапазон цены в USD\n\n"
-        "После настройки я найду подходящие объявления и буду присылать новые автоматически.",
+        "🚪 <b>Комнаты</b> — диапазон комнат (1-2, 2-3, 3-4, 4+)\n"
+        "💰 <b>Цена</b> — цена от и до в USD\n\n"
+        "После настройки я найду подходящие объявления и буду присылать новые автоматически."
+        + current_info,
         parse_mode=ParseMode.HTML,
         reply_markup=builder.as_markup()
     )
@@ -555,17 +565,17 @@ async def cb_user_filter_rooms(callback: CallbackQuery):
     """Показывает кнопки выбора комнат для пользователя"""
     builder = InlineKeyboardBuilder()
     
-    # Кнопки для выбора количества комнат
-    builder.button(text="1 комн.", callback_data="user_rooms_1_1")
-    builder.button(text="2 комн.", callback_data="user_rooms_2_2")
-    builder.button(text="3 комн.", callback_data="user_rooms_3_3")
-    builder.button(text="4+ комн.", callback_data="user_rooms_4_5")
+    # Кнопки для выбора диапазонов комнат
+    builder.button(text="1-2 комнаты", callback_data="user_rooms_1_2")
+    builder.button(text="2-3 комнаты", callback_data="user_rooms_2_3")
+    builder.button(text="3-4 комнаты", callback_data="user_rooms_3_4")
+    builder.button(text="4+ комнат", callback_data="user_rooms_4_5")
     builder.row()
     builder.button(text="Все (1-5)", callback_data="user_rooms_1_5")
     builder.button(text="Назад", callback_data="setup_filters")
     
     await callback.message.edit_text(
-        "🚪 <b>Выберите количество комнат:</b>",
+        "🚪 <b>Выберите диапазон комнат:</b>",
         parse_mode=ParseMode.HTML,
         reply_markup=builder.as_markup()
     )
@@ -597,50 +607,86 @@ async def cb_user_set_rooms(callback: CallbackQuery):
 
 @router.callback_query(F.data == "user_filter_price")
 async def cb_user_filter_price(callback: CallbackQuery):
-    """Показывает кнопки выбора цены для пользователя"""
-    builder = InlineKeyboardBuilder()
+    """Показывает меню настройки цены (в 2 шага)"""
+    user_id = callback.from_user.id
+    user_filters = await get_user_filters(user_id)
     
-    # Популярные диапазоны цен
-    builder.button(text="до $30k", callback_data="user_price_0_30000")
-    builder.button(text="$30k - $50k", callback_data="user_price_30000_50000")
-    builder.button(text="$50k - $80k", callback_data="user_price_50000_80000")
-    builder.button(text="$80k - $120k", callback_data="user_price_80000_120000")
+    current_min = user_filters.get("min_price", 0) if user_filters else 0
+    current_max = user_filters.get("max_price", 100000) if user_filters else 100000
+    
+    builder = InlineKeyboardBuilder()
+    builder.button(text="💰 Цена ОТ", callback_data="user_price_min")
+    builder.button(text="💰 Цена ДО", callback_data="user_price_max")
     builder.row()
-    builder.button(text="от $120k", callback_data="user_price_120000_1000000")
-    builder.button(text="Любая цена", callback_data="user_price_0_1000000")
-    builder.row()
-    builder.button(text="Назад", callback_data="setup_filters")
+    builder.button(text="✅ Готово", callback_data="setup_filters")
+    builder.button(text="🔄 Сбросить", callback_data="user_price_reset")
     
     await callback.message.edit_text(
-        "💰 <b>Выберите диапазон цены (USD):</b>",
+        f"💰 <b>Настройка цены (USD)</b>\n\n"
+        f"Текущие значения:\n"
+        f"• Цена ОТ: ${current_min:,}\n"
+        f"• Цена ДО: ${current_max:,}\n\n"
+        f"Нажмите кнопку для изменения или введите значение вручную:\n"
+        f"<code>/pricefrom 20000</code> — цена от $20,000\n"
+        f"<code>/priceto 50000</code> — цена до $50,000",
         parse_mode=ParseMode.HTML,
         reply_markup=builder.as_markup()
     )
     await callback.answer()
 
 
-@router.callback_query(F.data.startswith("user_price_"))
-async def cb_user_set_price(callback: CallbackQuery):
-    """Устанавливает диапазон цены для пользователя"""
+@router.callback_query(F.data == "user_price_min")
+async def cb_user_price_min(callback: CallbackQuery):
+    """Запрашивает минимальную цену"""
+    await callback.message.edit_text(
+        "💰 <b>Введите минимальную цену (USD)</b>\n\n"
+        "Например:\n"
+        "• <code>0</code> — без ограничения снизу\n"
+        "• <code>20000</code> — от $20,000\n"
+        "• <code>30000</code> — от $30,000\n\n"
+        "Или используйте команду:\n"
+        "<code>/pricefrom 20000</code>",
+        parse_mode=ParseMode.HTML
+    )
+    await callback.answer("Введите цену от или используйте /pricefrom")
+
+
+@router.callback_query(F.data == "user_price_max")
+async def cb_user_price_max(callback: CallbackQuery):
+    """Запрашивает максимальную цену"""
+    await callback.message.edit_text(
+        "💰 <b>Введите максимальную цену (USD)</b>\n\n"
+        "Например:\n"
+        "• <code>50000</code> — до $50,000\n"
+        "• <code>80000</code> — до $80,000\n"
+        "• <code>1000000</code> — без ограничения сверху\n\n"
+        "Или используйте команду:\n"
+        "<code>/priceto 50000</code>",
+        parse_mode=ParseMode.HTML
+    )
+    await callback.answer("Введите цену до или используйте /priceto")
+
+
+@router.callback_query(F.data == "user_price_reset")
+async def cb_user_price_reset(callback: CallbackQuery):
+    """Сбрасывает фильтр цены"""
     user_id = callback.from_user.id
-    parts = callback.data.split("_")
-    min_price = int(parts[2])
-    max_price = int(parts[3])
-    
     user_filters = await get_user_filters(user_id)
+    
     await set_user_filters(
         user_id,
         city=user_filters.get("city", "барановичи") if user_filters else "барановичи",
         min_rooms=user_filters.get("min_rooms", 1) if user_filters else 1,
         max_rooms=user_filters.get("max_rooms", 4) if user_filters else 4,
-        min_price=min_price,
-        max_price=max_price,
+        min_price=0,
+        max_price=1000000,
         is_active=True
     )
     
-    price_text = f"${min_price:,} - ${max_price:,}".replace(",", " ")
-    await callback.answer(f"✅ Цена: {price_text}")
-    await cb_setup_filters(callback)
+    await callback.answer("✅ Цена сброшена: $0 - $1,000,000")
+    await cb_user_filter_price(callback)
+
+
 
 
 @router.callback_query(F.data == "filter_rooms")
@@ -777,37 +823,31 @@ async def cb_filter_back(callback: CallbackQuery):
 
 @router.message(Command("setrooms"))
 async def cmd_set_rooms(message: Message):
-    """Установка фильтра по количеству комнат
-    
-    Примеры:
-    /setrooms 2 - только 2-комнатные
-    /setrooms 1 3 - от 1 до 3 комнат
-    """
+    """Установка фильтра по количеству комнат для пользователя"""
+    user_id = message.from_user.id
     try:
         args = message.text.split()[1:]
         
         if len(args) == 0:
-            # Показываем помощь
             await message.answer(
                 "🚪 <b>Настройка фильтра комнат</b>\n\n"
-                "Используйте:\n"
-                "• <code>/setrooms 2</code> — только 2-комнатные\n"
-                "• <code>/setrooms 1 3</code> — от 1 до 3 комнат\n"
-                "• <code>/setrooms 1 4</code> — любые (1-4 комнаты)\n\n"
-                "Или нажмите /filters для интерактивного выбора",
+                "Используйте диапазоны:\n"
+                "• <code>/setrooms 1 2</code> — 1-2 комнаты\n"
+                "• <code>/setrooms 2 3</code> — 2-3 комнаты\n"
+                "• <code>/setrooms 3 4</code> — 3-4 комнаты\n"
+                "• <code>/setrooms 4 5</code> — 4+ комнат\n\n"
+                "Или нажмите /start для интерактивного выбора",
                 parse_mode=ParseMode.HTML
             )
             return
         
         if len(args) == 1:
-            # Один параметр — точное количество комнат
             rooms = int(args[0])
             if rooms < 1 or rooms > 5:
                 await message.answer("⚠️ Комнат может быть от 1 до 5.")
                 return
             min_rooms = max_rooms = rooms
         else:
-            # Два параметра — диапазон
             min_rooms = int(args[0])
             max_rooms = int(args[1])
         
@@ -815,52 +855,137 @@ async def cmd_set_rooms(message: Message):
             await message.answer("⚠️ Неверные значения. Комнат может быть от 1 до 5.")
             return
         
-        await update_filters(min_rooms=min_rooms, max_rooms=max_rooms)
+        user_filters = await get_user_filters(user_id)
+        await set_user_filters(
+            user_id,
+            city=user_filters.get("city", "барановичи") if user_filters else "барановичи",
+            min_rooms=min_rooms,
+            max_rooms=max_rooms,
+            min_price=user_filters.get("min_price", 0) if user_filters else 0,
+            max_price=user_filters.get("max_price", 1000000) if user_filters else 1000000,
+            is_active=True
+        )
         
         if min_rooms == max_rooms:
             await message.answer(f"✅ Фильтр обновлен!\nТолько {min_rooms}-комнатные квартиры")
         else:
-            await message.answer(f"✅ Фильтр обновлен!\nКомнат: от {min_rooms} до {max_rooms}")
+            await message.answer(f"✅ Фильтр обновлен!\nКомнат: {min_rooms}-{max_rooms}")
         
     except ValueError:
         await message.answer(
             "⚠️ Неверный формат!\n\n"
             "Примеры:\n"
-            "/setrooms 2 — только 2-комнатные\n"
-            "/setrooms 1 3 — от 1 до 3 комнат"
+            "/setrooms 1 2 — 1-2 комнаты\n"
+            "/setrooms 2 3 — 2-3 комнаты"
         )
+
+
+@router.message(Command("pricefrom"))
+async def cmd_price_from(message: Message):
+    """Установка минимальной цены для пользователя"""
+    user_id = message.from_user.id
+    try:
+        args = message.text.split()[1:]
+        if not args:
+            await message.answer(
+                "💰 <b>Установка минимальной цены</b>\n\n"
+                "Используйте:\n"
+                "• <code>/pricefrom 20000</code> — цена от $20,000\n"
+                "• <code>/pricefrom 0</code> — без ограничения снизу",
+                parse_mode=ParseMode.HTML
+            )
+            return
+        
+        min_price = int(args[0])
+        if min_price < 0 or min_price > 1000000:
+            await message.answer("⚠️ Неверное значение (0 - 1,000,000)")
+            return
+        
+        user_filters = await get_user_filters(user_id)
+        if not user_filters:
+            await set_user_filters(user_id, min_price=min_price)
+        else:
+            await set_user_filters(
+                user_id,
+                city=user_filters.get("city", "барановичи"),
+                min_rooms=user_filters.get("min_rooms", 1),
+                max_rooms=user_filters.get("max_rooms", 4),
+                min_price=min_price,
+                max_price=user_filters.get("max_price", 1000000),
+                is_active=True
+            )
+        
+        await message.answer(f"✅ Минимальная цена установлена: ${min_price:,}")
+        
+    except ValueError:
+        await message.answer("⚠️ Неверный формат! Используйте: /pricefrom 20000")
+
+
+@router.message(Command("priceto"))
+async def cmd_price_to(message: Message):
+    """Установка максимальной цены для пользователя"""
+    user_id = message.from_user.id
+    try:
+        args = message.text.split()[1:]
+        if not args:
+            await message.answer(
+                "💰 <b>Установка максимальной цены</b>\n\n"
+                "Используйте:\n"
+                "• <code>/priceto 50000</code> — цена до $50,000\n"
+                "• <code>/priceto 1000000</code> — без ограничения сверху",
+                parse_mode=ParseMode.HTML
+            )
+            return
+        
+        max_price = int(args[0])
+        if max_price < 0 or max_price > 1000000:
+            await message.answer("⚠️ Неверное значение (0 - 1,000,000)")
+            return
+        
+        user_filters = await get_user_filters(user_id)
+        if not user_filters:
+            await set_user_filters(user_id, max_price=max_price)
+        else:
+            await set_user_filters(
+                user_id,
+                city=user_filters.get("city", "барановичи"),
+                min_rooms=user_filters.get("min_rooms", 1),
+                max_rooms=user_filters.get("max_rooms", 4),
+                min_price=user_filters.get("min_price", 0),
+                max_price=max_price,
+                is_active=True
+            )
+        
+        await message.answer(f"✅ Максимальная цена установлена: ${max_price:,}")
+        
+    except ValueError:
+        await message.answer("⚠️ Неверный формат! Используйте: /priceto 50000")
 
 
 @router.message(Command("setprice"))
 async def cmd_set_price(message: Message):
-    """Установка фильтра по цене
-    
-    Примеры:
-    /setprice 50000 - до $50,000
-    /setprice 20000 50000 - от $20,000 до $50,000
-    """
+    """Установка фильтра по цене (старая команда для обратной совместимости)"""
+    user_id = message.from_user.id
     try:
         args = message.text.split()[1:]
         
         if len(args) == 0:
-            # Показываем помощь
             await message.answer(
                 "💰 <b>Настройка фильтра цены</b>\n\n"
                 "Используйте:\n"
                 "• <code>/setprice 50000</code> — до $50,000\n"
-                "• <code>/setprice 20000 50000</code> — от $20k до $50k\n"
-                "• <code>/setprice 0 100000</code> — любая цена\n\n"
-                "Или нажмите /filters для интерактивного выбора",
+                "• <code>/setprice 20000 50000</code> — от $20k до $50k\n\n"
+                "Или по отдельности:\n"
+                "• <code>/pricefrom 20000</code> — цена от\n"
+                "• <code>/priceto 50000</code> — цена до",
                 parse_mode=ParseMode.HTML
             )
             return
         
         if len(args) == 1:
-            # Один параметр — максимальная цена (от 0)
             max_price = int(args[0])
             min_price = 0
         else:
-            # Два параметра — диапазон
             min_price = int(args[0])
             max_price = int(args[1])
         
@@ -868,7 +993,16 @@ async def cmd_set_price(message: Message):
             await message.answer("⚠️ Неверные значения цены (0 - 1,000,000).")
             return
         
-        await update_filters(min_price=min_price, max_price=max_price)
+        user_filters = await get_user_filters(user_id)
+        await set_user_filters(
+            user_id,
+            city=user_filters.get("city", "барановичи") if user_filters else "барановичи",
+            min_rooms=user_filters.get("min_rooms", 1) if user_filters else 1,
+            max_rooms=user_filters.get("max_rooms", 4) if user_filters else 4,
+            min_price=min_price,
+            max_price=max_price,
+            is_active=True
+        )
         
         if min_price == 0:
             await message.answer(f"✅ Фильтр обновлен!\nЦена: до ${max_price:,}")
