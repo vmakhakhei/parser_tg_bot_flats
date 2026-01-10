@@ -597,7 +597,7 @@ class AIValuator:
     "value_score": число от 1 до 10
 }"""
                 },
-                {"role": "user", "content": user_content if photos_added > 0 else prompt + photo_prompt}
+                {"role": "user", "content": prompt + photo_prompt + inspection_info}
             ],
             "model": model_to_use,
             "temperature": 0.2,  # Снижена для более точных оценок
