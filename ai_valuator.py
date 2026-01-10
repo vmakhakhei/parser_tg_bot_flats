@@ -518,7 +518,19 @@ class AIValuator:
                         
                         photo_urls.add(img_src)
                     
-                    inspection_data["all_photos"] = list(photo_urls)[:10]  # Максимум 10 фото
+                    # Сортируем фото по размеру (приоритет большим) и берем до 10
+                    photo_list = list(photo_urls)
+                    # Сортируем: сначала большие фото (gallery, list_thumbs_2x), потом остальные
+                    photo_list.sort(key=lambda x: (
+                        0 if 'gallery' in x.lower() or 'list_thumbs_2x' in x.lower() else 1,
+                        -len(x)  # Длиннее URL обычно = больше фото
+                    ))
+                    inspection_data["all_photos"] = photo_list[:10]  # Максимум 10 фото
+                    
+                    if len(photo_list) > 0:
+                        log_info("ai_inspect", f"Найдено {len(photo_list)} фото объявления (первые 3: {[p[:50] for p in photo_list[:3]]})")
+                    else:
+                        log_warning("ai_inspect", "Фото объявления не найдены, возможно неправильные селекторы")
                     
                     # Извлекаем детальную информацию
                     # Ищем таблицы с параметрами
