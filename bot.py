@@ -1187,10 +1187,10 @@ async def cb_check_now_ai(callback: CallbackQuery):
             max_price=1000000,
         )
         
-        # Собираем ВСЕ подходящие объявления (включая уже отправленные)
+        # Собираем ВСЕ подходящие объявления (включая уже отправленные), применяя фильтры пользователя
         candidate_listings = []
         for listing in all_listings:
-            # Проверяем соответствие фильтрам пользователя
+            # ВАЖНО: Всегда применяем фильтры пользователя
             if not _matches_user_filters(listing, user_filters):
                 continue
             
