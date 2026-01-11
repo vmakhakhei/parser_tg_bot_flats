@@ -1353,36 +1353,104 @@ async def cb_check_now_ai(callback: CallbackQuery):
             if best_with_reasons and len(best_with_reasons) > 0:
                 logger.info(f"ИИ выбрал {len(best_with_reasons)} лучших вариантов для пользователя {user_id}")
                 
-                # Отправляем заголовок
-                header_text = (
-                    f"✅ <b>ИИ выбрал {len(best_with_reasons)} лучших вариантов</b>\n\n"
-                    f"Из {total_count} объявлений проанализированы все по ссылкам и отобраны лучшие по соотношению цена-качество.\n\n"
-                )
-                await callback.bot.send_message(
-                    user_id,
-                    header_text,
-                    parse_mode=ParseMode.HTML
-                )
+                # Используем тот же формат сообщений, что и при первом запуске ИИ-мода
+                TELEGRAM_MAX_LENGTH = 4000  # Оставляем запас от 4096
                 
-                # Отправляем каждое выбранное объявление
-                for item in best_with_reasons:
+                # Заголовок
+                header_text = f"✅ <b>ИИ выбрал {len(best_with_reasons)} лучших вариантов</b>\n\n"
+                header_text += f"Из {total_count} объявлений проанализированы все по ссылкам и отобраны лучшие по соотношению цена-качество.\n\n"
+                
+                # Формируем части сообщений
+                messages_parts = []
+                current_message = header_text
+                
+                for i, item in enumerate(best_with_reasons, 1):
                     listing = item.get("listing")
                     reason = item.get("reason", "Хорошее соотношение цена-качество")
                     
                     if not listing:
+                        logger.warning(f"Пропускаю элемент {i}: нет listing")
                         continue
                     
-                    # Отправляем объявление с пометкой о том, что это выбор ИИ
-                    message_text = format_listing_message(listing)
-                    message_text += f"\n\n🤖 <b>Почему ИИ выбрал этот вариант:</b>\n{reason}"
+                    rooms_text = f"{listing.rooms}-комн." if listing.rooms > 0 else "?"
+                    area_text = f"{listing.area} м²" if listing.area > 0 else "?"
                     
-                    await callback.bot.send_message(
-                        user_id,
-                        message_text,
-                        parse_mode=ParseMode.HTML,
-                        disable_web_page_preview=False
-                    )
-                    await asyncio.sleep(2)
+                    # Рассчитываем цену за м² для сравнения
+                    price_per_sqm = ""
+                    if listing.area > 0 and listing.price > 0:
+                        price_per_sqm_usd = int(listing.price / listing.area)
+                        price_per_sqm = f" (${price_per_sqm_usd}/м²)"
+                    
+                    # Год постройки (если есть)
+                    year_info = ""
+                    if listing.year_built:
+                        year_info = f", {listing.year_built}г"
+                    
+                    # Формируем текст для варианта
+                    variant_text = f"━━━━━━━━━━━━━━━━━━━━\n\n"
+                    variant_text += f"<b>{i}. {rooms_text}, {area_text}{year_info}</b>\n"
+                    variant_text += f"💰 {listing.price_formatted}{price_per_sqm}\n"
+                    variant_text += f"📍 {listing.address}\n"
+                    variant_text += f"🔗 <a href=\"{listing.url}\">Открыть объявление</a>\n\n"
+                    
+                    # Ограничиваем длину обоснования (максимум 500 символов)
+                    if len(reason) > 500:
+                        reason = reason[:497] + "..."
+                    
+                    variant_text += f"<b>📋 Обоснование:</b>\n{reason}\n\n"
+                    
+                    # Проверяем, поместится ли вариант в текущее сообщение
+                    if len(current_message) + len(variant_text) > TELEGRAM_MAX_LENGTH:
+                        # Сохраняем текущее сообщение и начинаем новое
+                        messages_parts.append(current_message)
+                        current_message = f"<b>Продолжение ({i}/{len(best_with_reasons)}):</b>\n\n{variant_text}"
+                    else:
+                        current_message += variant_text
+                
+                # Добавляем последнее сообщение
+                if current_message.strip() != header_text.strip():
+                    messages_parts.append(current_message)
+                
+                # Отправляем сообщения
+                try:
+                    # Первое сообщение редактируем статус
+                    if messages_parts:
+                        await status_msg.edit_text(
+                            messages_parts[0],
+                            parse_mode=ParseMode.HTML,
+                            disable_web_page_preview=False
+                        )
+                        # Остальные отправляем отдельными сообщениями
+                        for msg_part in messages_parts[1:]:
+                            await callback.bot.send_message(
+                                user_id,
+                                msg_part,
+                                parse_mode=ParseMode.HTML,
+                                disable_web_page_preview=False
+                            )
+                except Exception as e:
+                    log_error("ai_mode", f"Ошибка редактирования/отправки результатов пользователю {user_id}", e)
+                    # Fallback: отправляем сокращенную версию
+                    try:
+                        short_text = f"✅ <b>ИИ выбрал {len(best_with_reasons)} лучших вариантов</b>\n\n"
+                        for i, item in enumerate(best_with_reasons[:3], 1):  # Только первые 3
+                            listing = item.get("listing")
+                            if listing:
+                                rooms_text = f"{listing.rooms}-комн." if listing.rooms > 0 else "?"
+                                area_text = f"{listing.area} м²" if listing.area > 0 else "?"
+                                short_text += f"{i}. {rooms_text}, {area_text} - {listing.price_formatted}\n"
+                                short_text += f"🔗 <a href=\"{listing.url}\">Открыть</a>\n\n"
+                        await callback.bot.send_message(
+                            user_id,
+                            short_text,
+                            parse_mode=ParseMode.HTML,
+                            disable_web_page_preview=False
+                        )
+                    except Exception:
+                        pass
+                
+                # Сохраняем выбранные варианты для будущего сравнения
+                await save_ai_selected_listings(user_id, best_with_reasons)
                 
                 # Показываем меню действий
                 await show_actions_menu(callback.bot, user_id, len(best_with_reasons), "ИИ-режим")
