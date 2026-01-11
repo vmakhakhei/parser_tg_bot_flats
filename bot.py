@@ -1280,6 +1280,70 @@ async def show_actions_menu(bot: Bot, user_id: int, listings_count: int, mode: s
         log_warning("bot", f"Не удалось отправить меню действий пользователю {user_id}: {e}")
 
 
+@router.callback_query(F.data == "send_all_listings")
+async def cb_send_all_listings(callback: CallbackQuery):
+    """Отправляет все найденные объявления пользователю"""
+    user_id = callback.from_user.id
+    
+    await callback.answer("Отправляю все объявления...")
+    
+    user_filters = await get_user_filters(user_id)
+    if not user_filters:
+        await callback.message.answer("Сначала настройте фильтры через /start")
+        return
+    
+    # Получаем объявления заново
+    user_city = user_filters.get("city", "барановичи")
+    aggregator = ListingsAggregator(enabled_sources=DEFAULT_SOURCES)
+    
+    all_listings = await aggregator.fetch_all_listings(
+        city=user_city,
+        min_rooms=1,
+        max_rooms=5,
+        min_price=0,
+        max_price=1000000,
+    )
+    
+    new_listings = []
+    for listing in all_listings:
+        if _matches_user_filters(listing, user_filters):
+            if not await is_listing_sent_to_user(user_id, listing.id):
+                dup_check = await is_duplicate_content(
+                    listing.rooms, listing.area, listing.address, listing.price
+                )
+                if not dup_check["is_duplicate"]:
+                    new_listings.append(listing)
+    
+    if new_listings:
+        status_msg = await callback.message.answer(
+            f"📤 <b>Отправляю {len(new_listings)} объявлений...</b>",
+            parse_mode=ParseMode.HTML
+        )
+        
+        sent_count = 0
+        for listing in new_listings[:20]:
+            # Обычный режим - БЕЗ ИИ-оценки
+            if await send_listing_to_user(callback.bot, user_id, listing, use_ai_valuation=False):
+                sent_count += 1
+                await asyncio.sleep(2)
+        
+        # Показываем финальное меню действий
+        await show_actions_menu(callback.bot, user_id, sent_count, "Обычный режим")
+    else:
+        await callback.message.answer(
+            "📭 <b>Новых объявлений нет</b>",
+            parse_mode=ParseMode.HTML
+        )
+        await show_actions_menu(callback.bot, user_id, 0, "Обычный режим")
+
+
+@router.callback_query(F.data == "cancel_listings")
+async def cb_cancel_listings(callback: CallbackQuery):
+    """Отменяет просмотр списка объявлений"""
+    await callback.answer("Отменено")
+    await show_actions_menu(callback.bot, callback.from_user.id, 0, "Обычный режим")
+
+
 @router.callback_query(F.data == "show_stats")
 async def cb_show_stats(callback: CallbackQuery):
     """Показывает статистику для пользователя"""
