@@ -1180,6 +1180,62 @@ async def cb_check_now_ai(callback: CallbackQuery):
         pass
 
 
+async def show_listings_list(bot: Bot, user_id: int, listings: List[Listing], status_msg: Message):
+    """Показывает список всех найденных объявлений с краткой информацией"""
+    if not listings:
+        await status_msg.edit_text(
+            "📭 <b>Объявлений не найдено</b>",
+            parse_mode=ParseMode.HTML
+        )
+        await show_actions_menu(bot, user_id, 0, "Обычный режим")
+        return
+    
+    # Ограничиваем до 20 объявлений для удобства
+    listings_to_show = listings[:20]
+    
+    # Формируем список объявлений
+    listings_text = f"✅ <b>Найдено {len(listings)} объявлений</b>\n\n"
+    listings_text += f"<b>Список всех вариантов:</b>\n\n"
+    
+    for i, listing in enumerate(listings_to_show, 1):
+        rooms_text = f"{listing.rooms}-комн." if listing.rooms > 0 else "?"
+        area_text = f"{listing.area} м²" if listing.area > 0 else "?"
+        price_text = listing.price_formatted
+        
+        # Краткая информация
+        listing_info = f"<b>{i}.</b> {rooms_text}, {area_text} - {price_text}\n"
+        listing_info += f"📍 {listing.address[:50]}\n\n"
+        
+        # Если текст слишком длинный, обрезаем
+        if len(listings_text) + len(listing_info) > 3500:
+            listings_text += f"\n... и еще {len(listings) - i + 1} объявлений"
+            break
+        
+        listings_text += listing_info
+    
+    builder = InlineKeyboardBuilder()
+    builder.button(text="📤 Отправить все", callback_data="send_all_listings")
+    builder.button(text="❌ Отмена", callback_data="cancel_listings")
+    
+    try:
+        await status_msg.edit_text(
+            listings_text,
+            parse_mode=ParseMode.HTML,
+            reply_markup=builder.as_markup()
+        )
+    except Exception as e:
+        # Если сообщение слишком длинное, разбиваем на части
+        log_warning("bot", f"Сообщение слишком длинное, отправляю сокращенную версию: {e}")
+        short_text = f"✅ <b>Найдено {len(listings)} объявлений</b>\n\n"
+        short_text += f"Показано первых {min(10, len(listings_to_show))} из {len(listings)} объявлений.\n\n"
+        short_text += f"Нажмите 'Отправить все' чтобы получить все объявления."
+        await status_msg.edit_text(
+            short_text,
+            parse_mode=ParseMode.HTML,
+            reply_markup=builder.as_markup()
+        )
+
+
 async def show_actions_menu(bot: Bot, user_id: int, listings_count: int, mode: str = "Обычный режим"):
     """Показывает меню действий после отправки объявлений"""
     builder = InlineKeyboardBuilder()
