@@ -1385,13 +1385,14 @@ async def cb_check_now_ai(callback: CallbackQuery):
                     parse_mode=ParseMode.HTML
                 )
                 await show_actions_menu(callback.bot, user_id, 0, "ИИ-режим")
-        else:
-            await status_msg.edit_text(
-                "❌ <b>ИИ-оценщик недоступен</b>\n\n"
-                "ИИ-анализ временно недоступен. Попробуйте позже.",
-                parse_mode=ParseMode.HTML
-            )
-            await show_actions_menu(callback.bot, user_id, 0, "Обычный режим")
+            except Exception as e:
+                logger.error(f"Ошибка при вызове select_best_listings для пользователя {user_id}: {e}", exc_info=True)
+                await status_msg.edit_text(
+                    "❌ <b>Ошибка ИИ-анализа</b>\n\n"
+                    "Произошла ошибка при попытке проанализировать объявления. Попробуйте позже.",
+                    parse_mode=ParseMode.HTML
+                )
+                await show_actions_menu(callback.bot, user_id, 0, "ИИ-режим")
     
     except Exception as e:
         logger.error(f"Ошибка ИИ-анализа для пользователя {user_id}: {e}")
