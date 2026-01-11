@@ -1157,16 +1157,147 @@ async def cb_check_now(callback: CallbackQuery):
 
 @router.callback_query(F.data == "check_now_ai")
 async def cb_check_now_ai(callback: CallbackQuery):
-    """Информация об ИИ-оценке"""
-    await callback.answer()
+    """ИИ-анализ: собирает все объявления и выбирает лучшие 3-5"""
+    user_id = callback.from_user.id
     
-    await callback.message.answer(
-        "🤖 <b>ИИ-оценка объявлений</b>\n\n"
-        "Для оценки конкретного объявления используйте кнопку <b>\"🤖 ИИ Оценка квартиры\"</b>, которая находится под каждым объявлением.\n\n"
-        "ИИ проанализирует объявление, проверит страницу и даст справедливую оценку с рекомендациями.\n\n"
-        "💡 <i>ИИ-оценка доступна только для уже отправленных вам объявлений.</i>",
+    await callback.answer("Запускаю ИИ-анализ...")
+    
+    user_filters = await get_user_filters(user_id)
+    if not user_filters:
+        await callback.message.answer("Сначала настройте фильтры через /start")
+        return
+    
+    # Получаем все объявления для города пользователя
+    user_city = user_filters.get("city", "барановичи")
+    aggregator = ListingsAggregator(enabled_sources=DEFAULT_SOURCES)
+    
+    status_msg = await callback.message.answer(
+        "🤖 <b>ИИ-анализ запущен...</b>\n\n"
+        "Собираю все объявления и анализирую лучшие варианты...",
         parse_mode=ParseMode.HTML
     )
+    
+    try:
+        all_listings = await aggregator.fetch_all_listings(
+            city=user_city,
+            min_rooms=1,
+            max_rooms=5,
+            min_price=0,
+            max_price=1000000,
+        )
+        
+        # Собираем ВСЕ подходящие объявления (включая уже отправленные)
+        candidate_listings = []
+        for listing in all_listings:
+            # Проверяем соответствие фильтрам пользователя
+            if not _matches_user_filters(listing, user_filters):
+                continue
+            
+            # Проверяем глобальную дедупликацию по контенту
+            dup_check = await is_duplicate_content(
+                rooms=listing.rooms,
+                area=listing.area,
+                address=listing.address,
+                price=listing.price
+            )
+            
+            if dup_check["is_duplicate"]:
+                continue
+            
+            candidate_listings.append(listing)
+        
+        if not candidate_listings:
+            await status_msg.edit_text(
+                "📭 <b>Объявлений не найдено</b>\n\n"
+                "Не найдено объявлений, соответствующих вашим фильтрам.",
+                parse_mode=ParseMode.HTML
+            )
+            await show_actions_menu(callback.bot, user_id, 0, "Обычный режим")
+            return
+        
+        # Определяем количество лучших вариантов в зависимости от общего количества
+        total_count = len(candidate_listings)
+        if total_count <= 3:
+            max_results = total_count  # Если объявлений 3 или меньше, выбираем все
+        elif total_count <= 10:
+            max_results = 3  # Если объявлений 4-10, выбираем 3 лучших
+        else:
+            max_results = 5  # Если объявлений больше 10, выбираем 5 лучших
+        
+        await status_msg.edit_text(
+            f"🤖 <b>ИИ-анализ</b>\n\n"
+            f"Найдено {total_count} объявлений.\n"
+            f"Анализирую и выбираю {max_results} лучших вариантов...",
+            parse_mode=ParseMode.HTML
+        )
+        
+        # Отправляем все объявления в ИИ для выбора лучших
+        if AI_VALUATOR_AVAILABLE and select_best_listings:
+            best_with_reasons = await select_best_listings(
+                candidate_listings,
+                user_filters,
+                max_results=max_results
+            )
+            
+            if best_with_reasons and len(best_with_reasons) > 0:
+                logger.info(f"ИИ выбрал {len(best_with_reasons)} лучших вариантов для пользователя {user_id}")
+                
+                # Отправляем заголовок
+                header_text = (
+                    f"✅ <b>ИИ выбрал {len(best_with_reasons)} лучших вариантов</b>\n\n"
+                    f"Из {total_count} объявлений проанализированы все по ссылкам и отобраны лучшие по соотношению цена-качество.\n\n"
+                )
+                await callback.bot.send_message(
+                    user_id,
+                    header_text,
+                    parse_mode=ParseMode.HTML
+                )
+                
+                # Отправляем каждое выбранное объявление
+                for item in best_with_reasons:
+                    listing = item.get("listing")
+                    reason = item.get("reason", "Хорошее соотношение цена-качество")
+                    
+                    if not listing:
+                        continue
+                    
+                    # Отправляем объявление с пометкой о том, что это выбор ИИ
+                    message_text = format_listing_message(listing)
+                    message_text += f"\n\n🤖 <b>Почему ИИ выбрал этот вариант:</b>\n{reason}"
+                    
+                    await callback.bot.send_message(
+                        user_id,
+                        message_text,
+                        parse_mode=ParseMode.HTML,
+                        disable_web_page_preview=False
+                    )
+                    await asyncio.sleep(2)
+                
+                # Показываем меню действий
+                await show_actions_menu(callback.bot, user_id, len(best_with_reasons), "ИИ-режим")
+            else:
+                await status_msg.edit_text(
+                    "⚠️ <b>ИИ не смог выбрать лучшие варианты</b>\n\n"
+                    "Попробуйте позже или используйте обычный поиск.",
+                    parse_mode=ParseMode.HTML
+                )
+                await show_actions_menu(callback.bot, user_id, 0, "Обычный режим")
+        else:
+            await status_msg.edit_text(
+                "❌ <b>ИИ-оценщик недоступен</b>\n\n"
+                "ИИ-анализ временно недоступен. Попробуйте позже.",
+                parse_mode=ParseMode.HTML
+            )
+            await show_actions_menu(callback.bot, user_id, 0, "Обычный режим")
+    
+    except Exception as e:
+        logger.error(f"Ошибка ИИ-анализа для пользователя {user_id}: {e}")
+        await status_msg.edit_text(
+            "❌ <b>Ошибка ИИ-анализа</b>\n\n"
+            "Произошла ошибка при попытке проанализировать объявления. Попробуйте позже.",
+            parse_mode=ParseMode.HTML
+        )
+        await show_actions_menu(callback.bot, user_id, 0, "Обычный режим")
 
 
 async def show_listings_list(bot: Bot, user_id: int, listings: List[Listing], status_msg: Message):
