@@ -1259,9 +1259,9 @@ async def cb_check_now_ai(callback: CallbackQuery):
         
         # Собираем ВСЕ подходящие объявления (включая уже отправленные), применяя фильтры пользователя
         # ВАЖНО: НЕ проверяем is_listing_sent_to_user - берем ВСЕ подходящие объявления
+        # ВАЖНО: НЕ проверяем is_duplicate_content - для ИИ-анализа нужны ВСЕ объявления, включая дубликаты
         candidate_listings = []
         filtered_out_by_filters = 0
-        filtered_out_by_dup = 0
         
         for listing in all_listings:
             # ВАЖНО: Всегда применяем фильтры пользователя (дополнительная проверка)
@@ -1269,24 +1269,12 @@ async def cb_check_now_ai(callback: CallbackQuery):
                 filtered_out_by_filters += 1
                 continue
             
-            # Проверяем глобальную дедупликацию по контенту
-            dup_check = await is_duplicate_content(
-                rooms=listing.rooms,
-                area=listing.area,
-                address=listing.address,
-                price=listing.price
-            )
-            
-            if dup_check["is_duplicate"]:
-                filtered_out_by_dup += 1
-                continue
-            
-            # ВАЖНО: Добавляем ВСЕ подходящие объявления, включая уже отправленные
+            # ВАЖНО: Добавляем ВСЕ подходящие объявления, включая уже отправленные и дубликаты
+            # ИИ должен проанализировать все варианты, чтобы выбрать лучшие
             candidate_listings.append(listing)
         
         logger.info(f"ИИ-анализ для пользователя {user_id}: всего объявлений {len(all_listings)}, "
                    f"отфильтровано по фильтрам {filtered_out_by_filters}, "
-                   f"отфильтровано дубликатов {filtered_out_by_dup}, "
                    f"кандидатов для анализа {len(candidate_listings)}")
         
         if not candidate_listings:
