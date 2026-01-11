@@ -861,14 +861,17 @@ async def show_city_selection_menu(message: Message, state: FSMContext):
     """Показывает меню выбора города для пошаговой настройки"""
     builder = InlineKeyboardBuilder()
     
-    # Только областные центры - по 2 кнопки в ряду для лучшей читаемости
+    # Все кнопки на отдельных строках для лучшей читаемости
     builder.button(text="Минск", callback_data="setup_city_минск")
+    builder.row()
     builder.button(text="Брест", callback_data="setup_city_брест")
     builder.row()
     builder.button(text="Гродно", callback_data="setup_city_гродно")
+    builder.row()
     builder.button(text="Витебск", callback_data="setup_city_витебск")
     builder.row()
     builder.button(text="Гомель", callback_data="setup_city_гомель")
+    builder.row()
     builder.button(text="Могилёв", callback_data="setup_city_могилёв")
     builder.row()
     
@@ -985,7 +988,9 @@ async def cb_setup_filters(callback: CallbackQuery):
     
     builder = InlineKeyboardBuilder()
     builder.button(text="📍 Город", callback_data="user_filter_city")
+    builder.row()
     builder.button(text="🚪 Комнаты", callback_data="user_filter_rooms")
+    builder.row()
     builder.button(text="💰 Цена", callback_data="user_filter_price")
     builder.row()
     ai_mode = user_filters.get("ai_mode", False) if user_filters else False
@@ -1217,6 +1222,7 @@ async def show_listings_list(bot: Bot, user_id: int, listings: List[Listing], st
     
     builder = InlineKeyboardBuilder()
     builder.button(text="📤 Отправить все", callback_data="send_all_listings")
+    builder.row()
     builder.button(text="❌ Отмена", callback_data="cancel_listings")
     
     try:
@@ -1243,9 +1249,11 @@ async def show_actions_menu(bot: Bot, user_id: int, listings_count: int, mode: s
     builder = InlineKeyboardBuilder()
     
     builder.button(text="🔍 Проверить сейчас", callback_data="check_now")
+    builder.row()
     builder.button(text="🤖 ИИ-анализ", callback_data="check_now_ai")
     builder.row()
     builder.button(text="⚙️ Изменить фильтры", callback_data="setup_filters")
+    builder.row()
     builder.button(text="📊 Статистика", callback_data="show_stats")
     
     mode_text = "ИИ-режим" if mode == "ИИ-режим" else "Обычный режим"
@@ -1446,14 +1454,17 @@ async def cb_user_filter_rooms(callback: CallbackQuery):
     """Показывает кнопки выбора комнат для пользователя"""
     builder = InlineKeyboardBuilder()
     
-    # Кнопки для выбора диапазонов комнат - по 2 в ряду для лучшей читаемости
+    # Все кнопки на отдельных строках для лучшей читаемости
     builder.button(text="1-2 комн.", callback_data="user_rooms_1_2")
+    builder.row()
     builder.button(text="2-3 комн.", callback_data="user_rooms_2_3")
     builder.row()
     builder.button(text="3-4 комн.", callback_data="user_rooms_3_4")
+    builder.row()
     builder.button(text="4+ комн.", callback_data="user_rooms_4_5")
     builder.row()
     builder.button(text="Все (1-5)", callback_data="user_rooms_1_5")
+    builder.row()
     builder.button(text="Назад", callback_data="setup_filters")
     
     await callback.message.edit_text(
@@ -1498,9 +1509,11 @@ async def cb_user_filter_price(callback: CallbackQuery):
     
     builder = InlineKeyboardBuilder()
     builder.button(text="💰 От", callback_data="user_price_min")
+    builder.row()
     builder.button(text="💰 До", callback_data="user_price_max")
     builder.row()
     builder.button(text="✅ Готово", callback_data="setup_filters")
+    builder.row()
     builder.button(text="🔄 Сброс", callback_data="user_price_reset")
     
     await callback.message.edit_text(
@@ -1554,19 +1567,23 @@ async def cb_user_filter_city(callback: CallbackQuery):
     """Показывает меню выбора города"""
     builder = InlineKeyboardBuilder()
     
-    # Только областные центры - по 2 кнопки в ряду для лучшей читаемости
+    # Все кнопки на отдельных строках для лучшей читаемости
     builder.button(text="Минск", callback_data="city_минск")
+    builder.row()
     builder.button(text="Брест", callback_data="city_брест")
     builder.row()
     builder.button(text="Гродно", callback_data="city_гродно")
+    builder.row()
     builder.button(text="Витебск", callback_data="city_витебск")
     builder.row()
     builder.button(text="Гомель", callback_data="city_гомель")
+    builder.row()
     builder.button(text="Могилёв", callback_data="city_могилёв")
     builder.row()
     
     # Кнопка для ввода вручную
     builder.button(text="✏️ Ввести вручную", callback_data="city_manual")
+    builder.row()
     builder.button(text="🔙 Назад", callback_data="setup_filters")
     
     await callback.message.edit_text(
@@ -1642,11 +1659,13 @@ async def show_rooms_selection_menu(message: Message, state: FSMContext, city_na
     """Показывает меню выбора комнат"""
     builder = InlineKeyboardBuilder()
     
-    # По 2 кнопки в ряду для лучшей читаемости
+    # Все кнопки на отдельных строках для лучшей читаемости
     builder.button(text="1-2 комн.", callback_data="setup_rooms_1_2")
+    builder.row()
     builder.button(text="2-3 комн.", callback_data="setup_rooms_2_3")
     builder.row()
     builder.button(text="3-4 комн.", callback_data="setup_rooms_3_4")
+    builder.row()
     builder.button(text="4+ комн.", callback_data="setup_rooms_4_5")
     builder.row()
     builder.button(text="Все (1-5)", callback_data="setup_rooms_1_5")
@@ -1682,6 +1701,7 @@ async def show_price_selection_menu(message: Message, state: FSMContext, rooms_t
     """Показывает меню выбора цены"""
     builder = InlineKeyboardBuilder()
     builder.button(text="💰 От", callback_data="setup_price_min")
+    builder.row()
     builder.button(text="💰 До", callback_data="setup_price_max")
     builder.row()
     builder.button(text="✅ Продолжить", callback_data="setup_price_continue")
@@ -1757,6 +1777,7 @@ async def process_setup_price_min(message: Message, state: FSMContext):
         # Запрашиваем максимальную цену
         builder = InlineKeyboardBuilder()
         builder.button(text="💰 До", callback_data="setup_price_max")
+        builder.row()
         builder.button(text="✅ Продолжить", callback_data="setup_price_continue")
         
         await message.answer(
@@ -1821,6 +1842,7 @@ async def show_mode_selection_menu(message: Message, state: FSMContext):
     """Показывает меню выбора режима работы"""
     builder = InlineKeyboardBuilder()
     builder.button(text="📋 Обычный режим", callback_data="setup_mode_normal")
+    builder.row()
     builder.button(text="🤖 ИИ-режим", callback_data="setup_mode_ai")
     
     # Получаем данные из состояния
@@ -2138,9 +2160,11 @@ async def process_min_price_input(message: Message, state: FSMContext):
         
         builder = InlineKeyboardBuilder()
         builder.button(text="💰 От", callback_data="user_price_min")
+        builder.row()
         builder.button(text="💰 До", callback_data="user_price_max")
         builder.row()
         builder.button(text="✅ Готово", callback_data="setup_filters")
+        builder.row()
         builder.button(text="🔄 Сброс", callback_data="user_price_reset")
         
         await message.answer(
@@ -2216,9 +2240,11 @@ async def process_max_price_input(message: Message, state: FSMContext):
         
         builder = InlineKeyboardBuilder()
         builder.button(text="💰 От", callback_data="user_price_min")
+        builder.row()
         builder.button(text="💰 До", callback_data="user_price_max")
         builder.row()
         builder.button(text="✅ Готово", callback_data="setup_filters")
+        builder.row()
         builder.button(text="🔄 Сброс", callback_data="user_price_reset")
         
         await message.answer(
@@ -2250,14 +2276,21 @@ async def cb_filter_rooms(callback: CallbackQuery):
     """Показывает кнопки выбора комнат (старая версия для обратной совместимости)"""
     builder = InlineKeyboardBuilder()
     
-    # Кнопки для выбора количества комнат
+    # Все кнопки на отдельных строках для лучшей читаемости
     builder.button(text="1 комната", callback_data="rooms_1_1")
+    builder.row()
     builder.button(text="2 комнаты", callback_data="rooms_2_2")
+    builder.row()
     builder.button(text="3 комнаты", callback_data="rooms_3_3")
+    builder.row()
     builder.button(text="1-2 комн.", callback_data="rooms_1_2")
+    builder.row()
     builder.button(text="2-3 комн.", callback_data="rooms_2_3")
+    builder.row()
     builder.button(text="1-3 комн.", callback_data="rooms_1_3")
+    builder.row()
     builder.button(text="1-4 комн.", callback_data="rooms_1_4")
+    builder.row()
     builder.button(text="🔙 Назад", callback_data="filter_back")
     builder.adjust(3, 3, 1, 1)
     
@@ -2295,15 +2328,23 @@ async def cb_filter_price(callback: CallbackQuery):
     """Показывает кнопки выбора цены"""
     builder = InlineKeyboardBuilder()
     
-    # Популярные диапазоны цен
+    # Все кнопки на отдельных строках для лучшей читаемости
     builder.button(text="до $30,000", callback_data="price_0_30000")
+    builder.row()
     builder.button(text="до $40,000", callback_data="price_0_40000")
+    builder.row()
     builder.button(text="до $50,000", callback_data="price_0_50000")
+    builder.row()
     builder.button(text="$20k-$40k", callback_data="price_20000_40000")
+    builder.row()
     builder.button(text="$30k-$50k", callback_data="price_30000_50000")
+    builder.row()
     builder.button(text="$40k-$60k", callback_data="price_40000_60000")
+    builder.row()
     builder.button(text="$50k-$80k", callback_data="price_50000_80000")
+    builder.row()
     builder.button(text="Любая цена", callback_data="price_0_500000")
+    builder.row()
     builder.button(text="🔙 Назад", callback_data="filter_back")
     builder.adjust(3, 2, 2, 1, 1)
     
