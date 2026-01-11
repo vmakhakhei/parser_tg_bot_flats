@@ -1541,18 +1541,35 @@ def get_valuator() -> Optional[AIValuator]:
     global _valuator
     
     if _valuator is None:
-        # Определяем провайдер по наличию ключей
-        # Приоритет: Gemini (если есть) для поддержки vision, иначе Groq
-        if GEMINI_API_KEY:
-            _valuator = AIValuator("gemini")
-            log_info("ai", "Использую Gemini API (поддержка анализа фото)")
-        elif GROQ_API_KEY:
+        # Проверяем явно указанный провайдер через переменную окружения
+        forced_provider = os.getenv("AI_PROVIDER", "").lower()
+        
+        if forced_provider == "groq" and GROQ_API_KEY:
             _valuator = AIValuator("groq")
-            log_info("ai", "Использую Groq API (без анализа фото)")
-        elif HF_API_KEY:
+            log_info("ai", "Использую Groq API (явно указан через AI_PROVIDER)")
+        elif forced_provider == "gemini" and GEMINI_API_KEY:
+            _valuator = AIValuator("gemini")
+            log_info("ai", "Использую Gemini API (явно указан через AI_PROVIDER)")
+        elif forced_provider == "huggingface" and HF_API_KEY:
             _valuator = AIValuator("huggingface")
-        elif os.getenv("OLLAMA_URL"):
+            log_info("ai", "Использую Hugging Face API (явно указан через AI_PROVIDER)")
+        elif forced_provider == "ollama" and os.getenv("OLLAMA_URL"):
             _valuator = AIValuator("ollama")
+            log_info("ai", "Использую Ollama API (явно указан через AI_PROVIDER)")
+        else:
+            # Автоматический выбор: приоритет Groq (без суточных лимитов), затем Gemini
+            if GROQ_API_KEY:
+                _valuator = AIValuator("groq")
+                log_info("ai", "Использую Groq API (30 запросов/минуту, без суточных лимитов)")
+            elif GEMINI_API_KEY:
+                _valuator = AIValuator("gemini")
+                log_info("ai", "Использую Gemini API (поддержка анализа фото, но есть суточные лимиты)")
+            elif HF_API_KEY:
+                _valuator = AIValuator("huggingface")
+                log_info("ai", "Использую Hugging Face API")
+            elif os.getenv("OLLAMA_URL"):
+                _valuator = AIValuator("ollama")
+                log_info("ai", "Использую Ollama API")
     
     return _valuator
 
