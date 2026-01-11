@@ -1592,91 +1592,127 @@ async def select_best_listings(
     """
     ИИ анализирует объявления по ссылкам и выбирает лучшие варианты.
     Возвращает список словарей с listing и описанием почему вариант хороший.
+    Использует fallback: сначала Groq, при ошибке - Gemini.
     """
     if not listings:
         return []
     
-    valuator = get_valuator()
-    if not valuator:
+    # Формируем список для промпта (только базовые данные + ссылки)
+    # Исключаем объявления без цены (договорная, 0, None)
+    listings_for_prompt = []
+    for listing in listings[:15]:  # Максимум 15 объявлений
+        # Пропускаем объявления без цены
+        if not listing.price or listing.price <= 0:
+            log_info("ai_select", f"Пропускаю объявление {listing.id}: цена не указана или равна 0")
+            continue
+        
+        listings_for_prompt.append({
+            "listing": listing,
+            "inspection": {}  # Пустая инспекция - ИИ сам посмотрит
+        })
+    
+    log_info("ai_select", f"Подготавливаю {len(listings_for_prompt)} объявлений для анализа...")
+    log_info("ai_select", f"Формирую минимальный промпт с ссылками...")
+    prompt = _prepare_selection_prompt_detailed(listings_for_prompt, user_filters, max_results)
+    log_info("ai_select", f"Промпт сформирован. Длина: {len(prompt)} символов")
+    
+    # Список провайдеров для fallback (в порядке приоритета)
+    providers_to_try = []
+    
+    # Если явно указан провайдер, используем только его
+    forced_provider = os.getenv("AI_PROVIDER", "").lower()
+    if forced_provider:
+        if forced_provider == "groq" and GROQ_API_KEY:
+            providers_to_try = [("groq", GROQ_API_KEY)]
+        elif forced_provider == "gemini" and GEMINI_API_KEY:
+            providers_to_try = [("gemini", GEMINI_API_KEY)]
+    else:
+        # Автоматический fallback: сначала Groq, потом Gemini
+        if GROQ_API_KEY:
+            providers_to_try.append(("groq", GROQ_API_KEY))
+        if GEMINI_API_KEY:
+            providers_to_try.append(("gemini", GEMINI_API_KEY))
+    
+    if not providers_to_try:
         log_warning("ai_select", "ИИ-оценщик недоступен, возвращаю все объявления")
-        return [{"listing": l, "reason": "ИИ недоступен"} for l in listings[:max_results]]
+        return [{"listing": l["listing"], "reason": "ИИ недоступен"} for l in listings_for_prompt[:max_results]]
     
-    await valuator.start_session()
-    
-    try:
-        # НЕ инспектируем страницы - отправляем Gemini только ссылки
-        # Gemini сам проанализирует страницы через googleSearchRetrieval или по ссылкам
-        log_info("ai_select", f"Подготавливаю {len(listings)} объявлений для анализа Gemini...")
+    # Пробуем провайдеры по очереди
+    for provider_name, api_key in providers_to_try:
+        log_info("ai_select", f"Пробую провайдер: {provider_name.upper()}")
         
-        # Формируем список для промпта (только базовые данные + ссылки)
-        # Исключаем объявления без цены (договорная, 0, None)
-        listings_for_prompt = []
-        for listing in listings[:15]:  # Максимум 15 объявлений
-            # Пропускаем объявления без цены
-            if not listing.price or listing.price <= 0:
-                log_info("ai_select", f"Пропускаю объявление {listing.id}: цена не указана или равна 0")
-                continue
+        try:
+            valuator = AIValuator(provider_name)
+            await valuator.start_session()
             
-            listings_for_prompt.append({
-                "listing": listing,
-                "inspection": {}  # Пустая инспекция - Gemini сам посмотрит
-            })
-        
-        log_info("ai_select", f"Формирую минимальный промпт с ссылками...")
-        prompt = _prepare_selection_prompt_detailed(listings_for_prompt, user_filters, max_results)
-        log_info("ai_select", f"Промпт сформирован. Длина: {len(prompt)} символов")
-        
-        # Отправляем запрос в ИИ
-        log_info("ai_select", f"Отправляю запрос в {valuator.provider.upper()} API...")
-        if valuator.provider == "gemini":
-            selected_with_reasons = await valuator._select_best_gemini_detailed(prompt, listings_for_prompt)
-        elif valuator.provider == "groq":
-            selected_with_reasons = await valuator._select_best_groq_detailed(prompt, listings_for_prompt)
-        else:
-            log_warning("ai_select", f"Провайдер {valuator.provider} не поддерживает детальный выбор")
-            return [{"listing": l["listing"], "reason": "Провайдер не поддерживает"} for l in listings_for_prompt[:max_results]]
-        
-        log_info("ai_select", f"ИИ выбрал {len(selected_with_reasons)} из {len(listings)} объявлений")
-        
-        # Проверяем, что выбрано минимум 5 вариантов (если есть столько кандидатов)
-        min_required = min(5, max_results, len(listings))
-        if len(selected_with_reasons) < min_required and len(listings) >= min_required:
-            log_warning("ai_select", f"ИИ выбрал только {len(selected_with_reasons)} вариантов, требуется минимум {min_required}")
-            # Если есть больше кандидатов, добавляем лучшие из оставшихся
-            selected_ids = [item["listing"].id for item in selected_with_reasons]
-            remaining = [l["listing"] for l in listings_for_prompt if l["listing"].id not in selected_ids]
-            # Сортируем оставшиеся по цене за м² (лучшие первыми)
-            remaining_sorted = sorted(
-                remaining,
-                key=lambda l: l.price / l.area if l.area > 0 else float('inf')
-            )
-            # Добавляем недостающие варианты
-            needed = min_required - len(selected_with_reasons)
-            for listing in remaining_sorted[:needed]:
-                price_per_sqm = int(listing.price / listing.area) if listing.area > 0 else 0
-                # Формируем более детальное объяснение для fallback вариантов
-                year_info = f" Год постройки: {listing.year_built}." if listing.year_built else ""
-                district_info = ""
-                if "советская" in listing.address.lower() or "брестская" in listing.address.lower() or "ленина" in listing.address.lower():
-                    district_info = " Район Центр - престижный район с развитой инфраструктурой."
-                elif "волошина" in listing.address.lower() or "марфицкого" in listing.address.lower():
-                    district_info = " Район Боровки - современный район с новыми домами."
-                elif "космонавтов" in listing.address.lower():
-                    district_info = " Район Текстильный - доступные цены, тихий район."
+            try:
+                if provider_name == "gemini":
+                    selected_with_reasons = await valuator._select_best_gemini_detailed(prompt, listings_for_prompt)
+                elif provider_name == "groq":
+                    selected_with_reasons = await valuator._select_best_groq_detailed(prompt, listings_for_prompt)
+                else:
+                    log_warning("ai_select", f"Провайдер {provider_name} не поддерживает детальный выбор")
+                    continue
                 
-                reason = f"Хорошая цена за м²: ${price_per_sqm}/м², что соответствует среднерыночной стоимости.{year_info}{district_info} Квартира подходит под критерии поиска по цене и количеству комнат."
+                # Если получили результат, используем его
+                if selected_with_reasons and len(selected_with_reasons) > 0:
+                    log_info("ai_select", f"✅ Успешно использован {provider_name.upper()}: выбрано {len(selected_with_reasons)} вариантов")
+                    await valuator.close_session()
+                    
+                    # Проверяем, что выбрано минимум 5 вариантов (если есть столько кандидатов)
+                    min_required = min(5, max_results, len(listings))
+                    if len(selected_with_reasons) < min_required and len(listings) >= min_required:
+                        log_warning("ai_select", f"ИИ выбрал только {len(selected_with_reasons)} вариантов, требуется минимум {min_required}")
+                        # Если есть больше кандидатов, добавляем лучшие из оставшихся
+                        selected_ids = [item["listing"].id for item in selected_with_reasons]
+                        remaining = [l["listing"] for l in listings_for_prompt if l["listing"].id not in selected_ids]
+                        # Сортируем оставшиеся по цене за м² (лучшие первыми)
+                        remaining_sorted = sorted(
+                            remaining,
+                            key=lambda l: l.price / l.area if l.area > 0 else float('inf')
+                        )
+                        # Добавляем недостающие варианты
+                        needed = min_required - len(selected_with_reasons)
+                        for listing in remaining_sorted[:needed]:
+                            price_per_sqm = int(listing.price / listing.area) if listing.area > 0 else 0
+                            # Формируем более детальное объяснение для fallback вариантов
+                            year_info = f" Год постройки: {listing.year_built}." if listing.year_built else ""
+                            district_info = ""
+                            if "советская" in listing.address.lower() or "брестская" in listing.address.lower() or "ленина" in listing.address.lower():
+                                district_info = " Район Центр - престижный район с развитой инфраструктурой."
+                            elif "волошина" in listing.address.lower() or "марфицкого" in listing.address.lower():
+                                district_info = " Район Боровки - современный район с новыми домами."
+                            elif "космонавтов" in listing.address.lower():
+                                district_info = " Район Текстильный - доступные цены, тихий район."
+                            
+                            reason = f"Хорошая цена за м²: ${price_per_sqm}/м², что соответствует среднерыночной стоимости.{year_info}{district_info} Квартира подходит под критерии поиска по цене и количеству комнат."
+                            
+                            selected_with_reasons.append({
+                                "listing": listing,
+                                "reason": reason
+                            })
+                        log_info("ai_select", f"Добавлено {needed} вариантов через fallback, всего: {len(selected_with_reasons)}")
+                    
+                    return selected_with_reasons[:max_results]
+                else:
+                    log_warning("ai_select", f"Провайдер {provider_name} вернул пустой результат, пробую следующий...")
+                    await valuator.close_session()
+                    continue
+                    
+            except Exception as e:
+                log_warning("ai_select", f"Ошибка при использовании {provider_name}: {e}, пробую следующий провайдер...")
+                await valuator.close_session()
+                continue
+            finally:
+                await valuator.close_session()
                 
-                selected_with_reasons.append({
-                    "listing": listing,
-                    "reason": reason
-                })
-            log_info("ai_select", f"Добавлено {needed} вариантов через fallback, всего: {len(selected_with_reasons)}")
-        
-        return selected_with_reasons[:max_results]
-        
-    except Exception as e:
-        log_error("ai_select", f"Ошибка при выборе лучших вариантов", e)
-        return [{"listing": l, "reason": "Ошибка анализа"} for l in listings[:max_results]]
+        except Exception as e:
+            log_warning("ai_select", f"Не удалось инициализировать {provider_name}: {e}, пробую следующий...")
+            continue
+    
+    # Если все провайдеры не сработали, возвращаем первые варианты
+    log_warning("ai_select", "Все провайдеры не сработали, возвращаю первые варианты")
+    return [{"listing": l["listing"], "reason": "Ошибка анализа, автоматический выбор"} for l in listings_for_prompt[:max_results]]
 
 
 def _prepare_selection_prompt_detailed(
