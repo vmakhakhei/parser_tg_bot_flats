@@ -323,7 +323,14 @@ async def get_user_filters(user_id: int) -> Optional[Dict[str, Any]]:
         cursor = await db.execute("SELECT * FROM user_filters WHERE user_id = ?", (user_id,))
         row = await cursor.fetchone()
         if row:
-            return dict(row)
+            filters = dict(row)
+            # Конвертируем BOOLEAN из SQLite (0/1) в Python bool
+            # SQLite хранит BOOLEAN как INTEGER, поэтому нужно явно конвертировать
+            if 'is_active' in filters:
+                filters['is_active'] = bool(filters['is_active'])
+            if 'ai_mode' in filters:
+                filters['ai_mode'] = bool(filters['ai_mode'])
+            return filters
         return None
 
 
