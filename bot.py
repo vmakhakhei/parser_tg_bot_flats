@@ -1083,8 +1083,8 @@ async def cb_filters_done(callback: CallbackQuery):
                 sent_count += 1
                 await asyncio.sleep(2)
         
-        # Показываем финальное меню действий
-        await show_actions_menu(callback.bot, user_id, sent_count, "Обычный режим")
+        # Показываем меню ИИ-режима после отправки
+        await show_actions_menu(callback.bot, user_id, sent_count, "ИИ-режим")
     else:
         await status_msg.edit_text(
             "😔 <b>Объявлений не найдено</b>\n\n"
@@ -1149,8 +1149,8 @@ async def cb_check_now(callback: CallbackQuery):
             "Все подходящие объявления уже были отправлены ранее.",
             parse_mode=ParseMode.HTML
         )
-        # Показываем меню действий даже если объявлений нет
-        await show_actions_menu(callback.bot, user_id, 0, "Обычный режим")
+        # Показываем меню ИИ-режима даже если объявлений нет
+        await show_actions_menu(callback.bot, user_id, 0, "ИИ-режим")
 
 
 @router.callback_query(F.data == "check_now_from_ai")
