@@ -63,6 +63,72 @@ class PriceStates(StatesGroup):
     waiting_for_min_price = State()
     waiting_for_max_price = State()
 
+# FSM состояния для ввода города
+class CityStates(StatesGroup):
+    waiting_for_city = State()
+
+# FSM состояния для пошаговой настройки фильтров
+class SetupStates(StatesGroup):
+    waiting_for_city = State()
+    waiting_for_rooms = State()
+    waiting_for_price_min = State()
+    waiting_for_price_max = State()
+    waiting_for_mode = State()
+
+# Список областных центров и крупных городов Беларуси
+BELARUS_CITIES = [
+    # Областные центры
+    ("Минск", "минск"),
+    ("Гомель", "гомель"),
+    ("Могилёв", "могилёв"),
+    ("Витебск", "витебск"),
+    ("Гродно", "гродно"),
+    ("Брест", "брест"),
+    # Крупные города
+    ("Барановичи", "барановичи"),
+    ("Бобруйск", "бобруйск"),
+    ("Пинск", "пинск"),
+    ("Орша", "орша"),
+    ("Мозырь", "мозырь"),
+    ("Солигорск", "солигорск"),
+    ("Новополоцк", "новополоцк"),
+    ("Лида", "лида"),
+    ("Полоцк", "полоцк"),
+    ("Молодечно", "молодечно"),
+    ("Борисов", "борисов"),
+    ("Жлобин", "жлобин"),
+    ("Слуцк", "слуцк"),
+    ("Кобрин", "кобрин"),
+]
+
+def normalize_city_name(city: str) -> str:
+    """Нормализует название города для сравнения"""
+    return city.lower().strip().replace("ё", "е").replace("й", "и")
+
+def validate_city(city: str) -> tuple[bool, Optional[str]]:
+    """
+    Валидирует название города.
+    Возвращает (is_valid, normalized_city_name)
+    """
+    normalized = normalize_city_name(city)
+    
+    # Проверяем точное совпадение
+    for display_name, normalized_name in BELARUS_CITIES:
+        if normalized == normalized_name:
+            return True, normalized_name
+    
+    # Проверяем частичное совпадение (для опечаток)
+    for display_name, normalized_name in BELARUS_CITIES:
+        if normalized_name.startswith(normalized) or normalized.startswith(normalized_name):
+            if len(normalized) >= 3:  # Минимум 3 символа для частичного совпадения
+                return True, normalized_name
+    
+    # Если не найдено, разрешаем ввод вручную (но предупреждаем)
+    if len(normalized) >= 2:  # Минимум 2 символа
+        return True, normalized
+    
+    return False, None
+
 # Список источников по умолчанию (работающие парсеры)
 # kufar - Kufar.by API (30 объявлений)
 # hata - Hata.by HTML парсинг (3-5 объявлений)
@@ -228,19 +294,6 @@ async def check_new_listings(bot: Bot):
     
     logger.info(f"Активных пользователей: {len(active_users)}")
     
-    # Получаем все объявления со всех источников (без фильтров)
-    aggregator = ListingsAggregator(enabled_sources=DEFAULT_SOURCES)
-    
-    all_listings = await aggregator.fetch_all_listings(
-        city="барановичи",
-        min_rooms=1,
-        max_rooms=5,
-        min_price=0,
-        max_price=1000000,  # Широкий диапазон для всех пользователей
-    )
-    
-    logger.info(f"Всего найдено объявлений: {len(all_listings)}")
-    
     total_sent = 0
     
     # Для каждого пользователя проверяем объявления по его фильтрам
@@ -248,6 +301,21 @@ async def check_new_listings(bot: Bot):
         user_filters = await get_user_filters(user_id)
         if not user_filters or not user_filters.get("is_active"):
             continue
+        
+        # Получаем город пользователя
+        user_city = user_filters.get("city", "барановичи")
+        
+        # Получаем объявления для города пользователя
+        aggregator = ListingsAggregator(enabled_sources=DEFAULT_SOURCES)
+        all_listings = await aggregator.fetch_all_listings(
+            city=user_city,
+            min_rooms=1,
+            max_rooms=5,
+            min_price=0,
+            max_price=1000000,  # Широкий диапазон для всех пользователей
+        )
+        
+        logger.info(f"Для пользователя {user_id} (город: {user_city}) найдено объявлений: {len(all_listings)}")
         
         # Проверяем режим работы пользователя
         ai_mode = user_filters.get("ai_mode", False)
@@ -657,29 +725,29 @@ def _matches_user_filters(listing: Listing, filters: Dict[str, Any]) -> bool:
 # ============ КОМАНДЫ БОТА ============
 
 @router.message(CommandStart())
-async def cmd_start(message: Message):
-    """Обработчик команды /start - запрашивает фильтры если их нет"""
+async def cmd_start(message: Message, state: FSMContext):
+    """Обработчик команды /start - пошаговая настройка фильтров"""
     user_id = message.from_user.id
     
     # Проверяем, есть ли у пользователя фильтры
     user_filters = await get_user_filters(user_id)
     
     if not user_filters:
-        # Первый запуск - запрашиваем фильтры
-        builder = InlineKeyboardBuilder()
-        builder.button(text="🚪 Настроить фильтры", callback_data="setup_filters")
-        
+        # Первый запуск - начинаем пошаговую настройку
         await message.answer(
             "👋 <b>Добро пожаловать!</b>\n\n"
-            "Я помогу вам найти квартиру в Барановичах.\n\n"
-            "📋 <b>Как это работает:</b>\n"
-            "1️⃣ Настройте фильтры (комнаты, цена)\n"
-            "2️⃣ Я найду подходящие объявления\n"
-            "3️⃣ Автоматически буду присылать новые объявления\n\n"
-            "Нажмите кнопку ниже, чтобы начать:",
-            parse_mode=ParseMode.HTML,
-            reply_markup=builder.as_markup()
+            "Я помогу вам найти квартиру.\n\n"
+            "📋 <b>Давайте настроим фильтры пошагово:</b>\n"
+            "1️⃣ Выберите город\n"
+            "2️⃣ Выберите диапазон комнат\n"
+            "3️⃣ Укажите диапазон цен\n"
+            "4️⃣ Выберите режим работы\n\n"
+            "Начнем с выбора города:",
+            parse_mode=ParseMode.HTML
         )
+        
+        # Показываем меню выбора города
+        await show_city_selection_menu(message, state)
     else:
         # Фильтры уже установлены - показываем их и предлагаем изменить
         status = "✅ Активен" if user_filters.get("is_active") else "❌ Отключен"
@@ -695,8 +763,10 @@ async def cmd_start(message: Message):
         builder.button(text="📊 Статистика", callback_data="show_stats")
         builder.button(text=mode_text, callback_data="toggle_ai_mode")
         
+        city_name = user_filters.get('city', 'барановичи').title()
         await message.answer(
             f"🏠 <b>Ваши фильтры</b>\n\n"
+            f"📍 <b>Город:</b> {city_name}\n"
             f"🚪 <b>Комнат:</b> от {user_filters.get('min_rooms', 1)} до {user_filters.get('max_rooms', 4)}\n"
             f"💰 <b>Цена:</b> ${user_filters.get('min_price', 0):,} - ${user_filters.get('max_price', 100000):,}\n\n"
             f"📡 <b>Статус:</b> {status}\n"
@@ -705,6 +775,47 @@ async def cmd_start(message: Message):
             parse_mode=ParseMode.HTML,
             reply_markup=builder.as_markup()
         )
+
+
+async def show_city_selection_menu(message: Message, state: FSMContext):
+    """Показывает меню выбора города для пошаговой настройки"""
+    builder = InlineKeyboardBuilder()
+    
+    # Областные центры (первые 6)
+    builder.button(text="🏛 Минск", callback_data="setup_city_минск")
+    builder.button(text="🏛 Гомель", callback_data="setup_city_гомель")
+    builder.button(text="🏛 Могилёв", callback_data="setup_city_могилёв")
+    builder.button(text="🏛 Витебск", callback_data="setup_city_витебск")
+    builder.button(text="🏛 Гродно", callback_data="setup_city_гродно")
+    builder.button(text="🏛 Брест", callback_data="setup_city_брест")
+    builder.row()
+    
+    # Крупные города (следующие 6)
+    builder.button(text="🏘 Барановичи", callback_data="setup_city_барановичи")
+    builder.button(text="🏘 Бобруйск", callback_data="setup_city_бобруйск")
+    builder.button(text="🏘 Пинск", callback_data="setup_city_пинск")
+    builder.button(text="🏘 Орша", callback_data="setup_city_орша")
+    builder.button(text="🏘 Мозырь", callback_data="setup_city_мозырь")
+    builder.button(text="🏘 Солигорск", callback_data="setup_city_солигорск")
+    builder.row()
+    
+    # Еще города
+    builder.button(text="🏘 Новополоцк", callback_data="setup_city_новополоцк")
+    builder.button(text="🏘 Лида", callback_data="setup_city_лида")
+    builder.button(text="🏘 Полоцк", callback_data="setup_city_полоцк")
+    builder.button(text="🏘 Молодечно", callback_data="setup_city_молодечно")
+    builder.row()
+    
+    # Кнопка для ввода вручную
+    builder.button(text="✏️ Ввести вручную", callback_data="setup_city_manual")
+    
+    await message.answer(
+        "📍 <b>Шаг 1 из 4: Выберите город</b>\n\n"
+        "Выберите город из списка или введите название вручную.",
+        parse_mode=ParseMode.HTML,
+        reply_markup=builder.as_markup()
+    )
+    await state.set_state(SetupStates.waiting_for_city)
 
 
 @router.message(Command("help"))
@@ -807,6 +918,7 @@ async def cb_setup_filters(callback: CallbackQuery):
     user_filters = await get_user_filters(user_id)
     
     builder = InlineKeyboardBuilder()
+    builder.button(text="📍 Город", callback_data="user_filter_city")
     builder.button(text="🚪 Комнаты", callback_data="user_filter_rooms")
     builder.button(text="💰 Цена", callback_data="user_filter_price")
     builder.row()
@@ -818,15 +930,17 @@ async def cb_setup_filters(callback: CallbackQuery):
     
     # Показываем текущие значения если они есть
     if user_filters:
+        city_text = user_filters.get('city', 'барановичи').title()
         rooms_text = f"{user_filters.get('min_rooms', 1)}-{user_filters.get('max_rooms', 4)}"
         price_text = f"${user_filters.get('min_price', 0):,} - ${user_filters.get('max_price', 100000):,}".replace(",", " ")
-        current_info = f"\n\n<b>Текущие настройки:</b>\n🚪 Комнаты: {rooms_text}\n💰 Цена: {price_text}"
+        current_info = f"\n\n<b>Текущие настройки:</b>\n📍 Город: {city_text}\n🚪 Комнаты: {rooms_text}\n💰 Цена: {price_text}"
     else:
         current_info = ""
     
     await callback.message.edit_text(
         "⚙️ <b>Настройка фильтров</b>\n\n"
         "Выберите параметры поиска:\n\n"
+        "📍 <b>Город</b> — выбор города для поиска\n"
         "🚪 <b>Комнаты</b> — диапазон комнат (1-2, 2-3, 3-4, 4+)\n"
         "💰 <b>Цена</b> — цена от и до в USD\n\n"
         "После настройки я найду подходящие объявления и буду присылать новые автоматически."
@@ -931,10 +1045,11 @@ async def cb_check_now(callback: CallbackQuery):
             parse_mode=ParseMode.HTML
         )
         
-        # Получаем все объявления
+        # Получаем все объявления для города пользователя
+        user_city = user_filters.get("city", "барановичи")
         aggregator = ListingsAggregator(enabled_sources=DEFAULT_SOURCES)
         all_listings = await aggregator.fetch_all_listings(
-            city="барановичи",
+            city=user_city,
             min_rooms=1,
             max_rooms=5,
             min_price=0,
@@ -956,11 +1071,12 @@ async def cb_check_now(callback: CallbackQuery):
             parse_mode=ParseMode.HTML
         )
         
-        # Ищем новые объявления
+        # Ищем новые объявления для города пользователя
+        user_city = user_filters.get("city", "барановичи")
         aggregator = ListingsAggregator(enabled_sources=DEFAULT_SOURCES)
         
         all_listings = await aggregator.fetch_all_listings(
-            city="барановичи",
+            city=user_city,
             min_rooms=1,
             max_rooms=5,
             min_price=0,
@@ -1065,10 +1181,11 @@ async def cb_toggle_ai_mode(callback: CallbackQuery):
             parse_mode=ParseMode.HTML
         )
         
-        # Получаем все объявления
+        # Получаем все объявления для города пользователя
+        user_city = user_filters.get("city", "барановичи")
         aggregator = ListingsAggregator(enabled_sources=DEFAULT_SOURCES)
         all_listings = await aggregator.fetch_all_listings(
-            city="барановичи",
+            city=user_city,
             min_rooms=1,
             max_rooms=5,
             min_price=0,
@@ -1200,6 +1317,561 @@ async def cb_user_price_max(callback: CallbackQuery, state: FSMContext):
     )
     await state.set_state(PriceStates.waiting_for_max_price)
     await callback.answer("Введите число или используйте /priceto")
+
+
+@router.callback_query(F.data == "user_filter_city")
+async def cb_user_filter_city(callback: CallbackQuery):
+    """Показывает меню выбора города"""
+    builder = InlineKeyboardBuilder()
+    
+    # Областные центры (первые 6)
+    builder.button(text="🏛 Минск", callback_data="city_минск")
+    builder.button(text="🏛 Гомель", callback_data="city_гомель")
+    builder.button(text="🏛 Могилёв", callback_data="city_могилёв")
+    builder.button(text="🏛 Витебск", callback_data="city_витебск")
+    builder.button(text="🏛 Гродно", callback_data="city_гродно")
+    builder.button(text="🏛 Брест", callback_data="city_брест")
+    builder.row()
+    
+    # Крупные города (следующие 6)
+    builder.button(text="🏘 Барановичи", callback_data="city_барановичи")
+    builder.button(text="🏘 Бобруйск", callback_data="city_бобруйск")
+    builder.button(text="🏘 Пинск", callback_data="city_пинск")
+    builder.button(text="🏘 Орша", callback_data="city_орша")
+    builder.button(text="🏘 Мозырь", callback_data="city_мозырь")
+    builder.button(text="🏘 Солигорск", callback_data="city_солигорск")
+    builder.row()
+    
+    # Еще города
+    builder.button(text="🏘 Новополоцк", callback_data="city_новополоцк")
+    builder.button(text="🏘 Лида", callback_data="city_лида")
+    builder.button(text="🏘 Полоцк", callback_data="city_полоцк")
+    builder.button(text="🏘 Молодечно", callback_data="city_молодечно")
+    builder.button(text="🏘 Борисов", callback_data="city_борисов")
+    builder.button(text="🏘 Жлобин", callback_data="city_жлобин")
+    builder.row()
+    
+    # Остальные города
+    builder.button(text="🏘 Слуцк", callback_data="city_слуцк")
+    builder.button(text="🏘 Кобрин", callback_data="city_кобрин")
+    builder.row()
+    
+    # Кнопка для ввода вручную
+    builder.button(text="✏️ Ввести вручную", callback_data="city_manual")
+    builder.button(text="🔙 Назад", callback_data="setup_filters")
+    
+    await callback.message.edit_text(
+        "📍 <b>Выберите город для поиска</b>\n\n"
+        "Выберите город из списка или введите название вручную.\n\n"
+        "<i>Если вашего города нет в списке, используйте кнопку \"Ввести вручную\"</i>",
+        parse_mode=ParseMode.HTML,
+        reply_markup=builder.as_markup()
+    )
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("setup_city_"))
+async def cb_setup_city_step(callback: CallbackQuery, state: FSMContext):
+    """Обработчик выбора города в пошаговой настройке"""
+    city_data = callback.data.replace("setup_city_", "")
+    
+    if city_data == "manual":
+        # Запрашиваем ввод города вручную
+        await callback.message.edit_text(
+            "✏️ <b>Введите название города</b>\n\n"
+            "Просто напишите название города, например:\n"
+            "• <code>минск</code>\n"
+            "• <code>гомель</code>\n"
+            "• <code>барановичи</code>",
+            parse_mode=ParseMode.HTML
+        )
+        await state.set_state(SetupStates.waiting_for_city)
+        await callback.answer("Введите название города")
+        return
+    
+    # Сохраняем город в FSM
+    await state.update_data(city=city_data)
+    
+    # Переходим к следующему шагу - выбор комнат
+    await show_rooms_selection_menu(callback.message, state, city_data.title())
+    await callback.answer()
+
+
+@router.message(SetupStates.waiting_for_city)
+async def process_setup_city_input(message: Message, state: FSMContext):
+    """Обрабатывает ввод города в пошаговой настройке"""
+    city_input = message.text.strip()
+    
+    # Валидируем город
+    is_valid, normalized_city = validate_city(city_input)
+    
+    if not is_valid:
+        await message.answer(
+            "❌ <b>Неверный формат города</b>\n\n"
+            "Пожалуйста, введите название города заново.\n"
+            "Название должно содержать минимум 2 символа.\n\n"
+            "<i>Примеры: минск, гомель, барановичи</i>",
+            parse_mode=ParseMode.HTML
+        )
+        return
+    
+    # Проверяем, есть ли город в списке известных
+    display_name = normalized_city.title()
+    for display, normalized in BELARUS_CITIES:
+        if normalized == normalized_city:
+            display_name = display
+            break
+    
+    # Сохраняем город в FSM
+    await state.update_data(city=normalized_city)
+    
+    # Переходим к следующему шагу - выбор комнат
+    await show_rooms_selection_menu(message, state, display_name)
+
+
+async def show_rooms_selection_menu(message: Message, state: FSMContext, city_name: str):
+    """Показывает меню выбора комнат"""
+    builder = InlineKeyboardBuilder()
+    
+    builder.button(text="1-2 комнаты", callback_data="setup_rooms_1_2")
+    builder.button(text="2-3 комнаты", callback_data="setup_rooms_2_3")
+    builder.button(text="3-4 комнаты", callback_data="setup_rooms_3_4")
+    builder.button(text="4+ комнат", callback_data="setup_rooms_4_5")
+    builder.row()
+    builder.button(text="Все (1-5)", callback_data="setup_rooms_1_5")
+    
+    await message.answer(
+        f"✅ Город выбран: <b>{city_name}</b>\n\n"
+        f"🚪 <b>Шаг 2 из 4: Выберите диапазон комнат</b>\n\n"
+        f"Выберите количество комнат:",
+        parse_mode=ParseMode.HTML,
+        reply_markup=builder.as_markup()
+    )
+    await state.set_state(SetupStates.waiting_for_rooms)
+
+
+@router.callback_query(F.data.startswith("setup_rooms_"))
+async def cb_setup_rooms_step(callback: CallbackQuery, state: FSMContext):
+    """Обработчик выбора комнат в пошаговой настройке"""
+    rooms_data = callback.data.replace("setup_rooms_", "")
+    parts = rooms_data.split("_")
+    min_rooms = int(parts[0])
+    max_rooms = int(parts[1])
+    
+    # Сохраняем комнаты в FSM
+    await state.update_data(min_rooms=min_rooms, max_rooms=max_rooms)
+    
+    # Переходим к следующему шагу - выбор цены
+    rooms_text = f"{min_rooms}-{max_rooms}" if min_rooms != max_rooms else f"{min_rooms}"
+    await show_price_selection_menu(callback.message, state, rooms_text)
+    await callback.answer()
+
+
+async def show_price_selection_menu(message: Message, state: FSMContext, rooms_text: str):
+    """Показывает меню выбора цены"""
+    builder = InlineKeyboardBuilder()
+    builder.button(text="💰 От", callback_data="setup_price_min")
+    builder.button(text="💰 До", callback_data="setup_price_max")
+    builder.row()
+    builder.button(text="✅ Продолжить", callback_data="setup_price_continue")
+    
+    await message.answer(
+        f"✅ Комнаты выбраны: <b>{rooms_text}</b>\n\n"
+        f"💰 <b>Шаг 3 из 4: Укажите диапазон цен (USD)</b>\n\n"
+        f"Нажмите кнопки для ввода минимальной и максимальной цены.\n"
+        f"Или используйте команды:\n"
+        f"• <code>/pricefrom 20000</code> — цена от $20,000\n"
+        f"• <code>/priceto 50000</code> — цена до $50,000\n\n"
+        f"<i>По умолчанию: от $0 до $100,000</i>",
+        parse_mode=ParseMode.HTML,
+        reply_markup=builder.as_markup()
+    )
+    await state.set_state(SetupStates.waiting_for_price_min)
+
+
+@router.callback_query(F.data == "setup_price_min")
+async def cb_setup_price_min(callback: CallbackQuery, state: FSMContext):
+    """Запрашивает минимальную цену"""
+    await callback.message.edit_text(
+        "💰 <b>Введите минимальную цену (USD)</b>\n\n"
+        "Просто введите число, например:\n"
+        "• <code>0</code> — без ограничения снизу\n"
+        "• <code>20000</code> — от $20,000\n"
+        "• <code>30000</code> — от $30,000",
+        parse_mode=ParseMode.HTML
+    )
+    await state.set_state(SetupStates.waiting_for_price_min)
+    await callback.answer("Введите число")
+
+
+@router.callback_query(F.data == "setup_price_max")
+async def cb_setup_price_max(callback: CallbackQuery, state: FSMContext):
+    """Запрашивает максимальную цену"""
+    await callback.message.edit_text(
+        "💰 <b>Введите максимальную цену (USD)</b>\n\n"
+        "Просто введите число, например:\n"
+        "• <code>50000</code> — до $50,000\n"
+        "• <code>80000</code> — до $80,000\n"
+        "• <code>100000</code> — до $100,000",
+        parse_mode=ParseMode.HTML
+    )
+    await state.set_state(SetupStates.waiting_for_price_max)
+    await callback.answer("Введите число")
+
+
+@router.callback_query(F.data == "setup_price_continue")
+async def cb_setup_price_continue(callback: CallbackQuery, state: FSMContext):
+    """Продолжает настройку с ценами по умолчанию"""
+    # Используем цены по умолчанию
+    await state.update_data(min_price=0, max_price=100000)
+    
+    # Переходим к выбору режима
+    await show_mode_selection_menu(callback.message, state)
+    await callback.answer()
+
+
+@router.message(SetupStates.waiting_for_price_min)
+async def process_setup_price_min(message: Message, state: FSMContext):
+    """Обрабатывает ввод минимальной цены"""
+    try:
+        price_text = message.text.strip().replace(" ", "").replace(",", "").replace("$", "")
+        min_price = int(price_text)
+        
+        if min_price < 0:
+            await message.answer("❌ Цена не может быть отрицательной. Попробуйте снова.")
+            return
+        
+        await state.update_data(min_price=min_price)
+        
+        # Запрашиваем максимальную цену
+        builder = InlineKeyboardBuilder()
+        builder.button(text="💰 До", callback_data="setup_price_max")
+        builder.button(text="✅ Продолжить", callback_data="setup_price_continue")
+        
+        await message.answer(
+            f"✅ Минимальная цена установлена: <b>${min_price:,}</b>\n\n"
+            f"Теперь укажите максимальную цену или нажмите \"Продолжить\" для значения по умолчанию ($100,000).",
+            parse_mode=ParseMode.HTML,
+            reply_markup=builder.as_markup()
+        )
+        await state.set_state(SetupStates.waiting_for_price_max)
+        
+    except ValueError:
+        await message.answer(
+            "❌ <b>Неверный формат</b>\n\n"
+            "Введите число, например:\n"
+            "• <code>0</code>\n"
+            "• <code>20000</code>\n"
+            "• <code>30000</code>",
+            parse_mode=ParseMode.HTML
+        )
+
+
+@router.message(SetupStates.waiting_for_price_max)
+async def process_setup_price_max(message: Message, state: FSMContext):
+    """Обрабатывает ввод максимальной цены"""
+    try:
+        price_text = message.text.strip().replace(" ", "").replace(",", "").replace("$", "")
+        max_price = int(price_text)
+        
+        if max_price < 0:
+            await message.answer("❌ Цена не может быть отрицательной. Попробуйте снова.")
+            return
+        
+        # Получаем минимальную цену из состояния
+        data = await state.get_data()
+        min_price = data.get("min_price", 0)
+        
+        if max_price < min_price:
+            await message.answer(
+                f"❌ Максимальная цена ({max_price:,}) не может быть меньше минимальной ({min_price:,}).\n"
+                f"Попробуйте снова.",
+                parse_mode=ParseMode.HTML
+            )
+            return
+        
+        await state.update_data(max_price=max_price)
+        
+        # Переходим к выбору режима
+        await show_mode_selection_menu(message, state)
+        
+    except ValueError:
+        await message.answer(
+            "❌ <b>Неверный формат</b>\n\n"
+            "Введите число, например:\n"
+            "• <code>50000</code>\n"
+            "• <code>80000</code>\n"
+            "• <code>100000</code>",
+            parse_mode=ParseMode.HTML
+        )
+
+
+async def show_mode_selection_menu(message: Message, state: FSMContext):
+    """Показывает меню выбора режима работы"""
+    builder = InlineKeyboardBuilder()
+    builder.button(text="📋 Обычный режим", callback_data="setup_mode_normal")
+    builder.button(text="🤖 ИИ-режим", callback_data="setup_mode_ai")
+    
+    # Получаем данные из состояния
+    data = await state.get_data()
+    city_name = data.get("city", "барановичи").title()
+    min_rooms = data.get("min_rooms", 1)
+    max_rooms = data.get("max_rooms", 4)
+    min_price = data.get("min_price", 0)
+    max_price = data.get("max_price", 100000)
+    
+    await message.answer(
+        f"✅ Цена установлена: <b>${min_price:,} - ${max_price:,}</b>\n\n"
+        f"🤖 <b>Шаг 4 из 4: Выберите режим работы</b>\n\n"
+        f"<b>📋 Обычный режим:</b>\n"
+        f"Присылаю все объявления, которые соответствуют вашим фильтрам.\n\n"
+        f"<b>🤖 ИИ-режим:</b>\n"
+        f"ИИ анализирует все найденные объявления и выбирает лучшие по соотношению цена-качество (обычно 3-5 вариантов).\n\n"
+        f"<b>Ваши настройки:</b>\n"
+        f"📍 Город: {city_name}\n"
+        f"🚪 Комнаты: {min_rooms}-{max_rooms}\n"
+        f"💰 Цена: ${min_price:,} - ${max_price:,}",
+        parse_mode=ParseMode.HTML,
+        reply_markup=builder.as_markup()
+    )
+    await state.set_state(SetupStates.waiting_for_mode)
+
+
+@router.callback_query(F.data.startswith("setup_mode_"))
+async def cb_setup_mode_step(callback: CallbackQuery, state: FSMContext):
+    """Обработчик выбора режима в пошаговой настройке"""
+    mode_data = callback.data.replace("setup_mode_", "")
+    ai_mode = (mode_data == "ai")
+    
+    # Получаем все данные из состояния
+    data = await state.get_data()
+    city = data.get("city", "барановичи")
+    min_rooms = data.get("min_rooms", 1)
+    max_rooms = data.get("max_rooms", 4)
+    min_price = data.get("min_price", 0)
+    max_price = data.get("max_price", 100000)
+    
+    user_id = callback.from_user.id
+    
+    # Сохраняем фильтры пользователя
+    await set_user_filters(
+        user_id,
+        city=city,
+        min_rooms=min_rooms,
+        max_rooms=max_rooms,
+        min_price=min_price,
+        max_price=max_price,
+        is_active=True,
+        ai_mode=ai_mode
+    )
+    
+    # Очищаем состояние
+    await state.clear()
+    
+    # Показываем финальное сообщение и запускаем поиск
+    mode_text = "ИИ-режим" if ai_mode else "Обычный режим"
+    mode_desc = "ИИ выберет лучшие варианты" if ai_mode else "Пришлю все подходящие объявления"
+    
+    status_msg = await callback.message.answer(
+        f"✅ <b>Настройка завершена!</b>\n\n"
+        f"📍 Город: <b>{city.title()}</b>\n"
+        f"🚪 Комнаты: <b>{min_rooms}-{max_rooms}</b>\n"
+        f"💰 Цена: <b>${min_price:,} - ${max_price:,}</b>\n"
+        f"🤖 Режим: <b>{mode_text}</b>\n\n"
+        f"🔍 <b>Ищу подходящие объявления...</b>\n\n"
+        f"{mode_desc}.",
+        parse_mode=ParseMode.HTML
+    )
+    
+    await callback.answer("Ищу объявления...")
+    
+    # Запускаем поиск объявлений
+    await search_listings_after_setup(callback.bot, user_id, city, min_rooms, max_rooms, min_price, max_price, ai_mode, status_msg)
+
+
+async def search_listings_after_setup(
+    bot: Bot,
+    user_id: int,
+    city: str,
+    min_rooms: int,
+    max_rooms: int,
+    min_price: int,
+    max_price: int,
+    ai_mode: bool,
+    status_msg: Message
+):
+    """Ищет объявления после завершения настройки"""
+    try:
+        # Получаем объявления
+        aggregator = ListingsAggregator(enabled_sources=DEFAULT_SOURCES)
+        all_listings = await aggregator.fetch_all_listings(
+            city=city,
+            min_rooms=min_rooms,
+            max_rooms=max_rooms,
+            min_price=min_price,
+            max_price=max_price,
+        )
+        
+        user_filters = {
+            "city": city,
+            "min_rooms": min_rooms,
+            "max_rooms": max_rooms,
+            "min_price": min_price,
+            "max_price": max_price,
+            "ai_mode": ai_mode,
+            "is_active": True
+        }
+        
+        if ai_mode:
+            # ИИ-режим
+            await check_new_listings_ai_mode(bot, user_id, user_filters, all_listings)
+        else:
+            # Обычный режим
+            new_listings = []
+            for listing in all_listings:
+                if _matches_user_filters(listing, user_filters):
+                    if not await is_listing_sent_to_user(user_id, listing.id):
+                        dup_check = await is_duplicate_content(
+                            listing.rooms, listing.area, listing.address, listing.price
+                        )
+                        if not dup_check["is_duplicate"]:
+                            new_listings.append(listing)
+            
+            if new_listings:
+                await status_msg.edit_text(
+                    f"✅ <b>Найдено {len(new_listings)} объявлений</b>\n\nОтправляю...",
+                    parse_mode=ParseMode.HTML
+                )
+                
+                sent_count = 0
+                for listing in new_listings[:20]:
+                    if await send_listing_to_user(bot, user_id, listing):
+                        sent_count += 1
+                        await asyncio.sleep(2)
+                
+                await status_msg.edit_text(
+                    f"✅ <b>Готово!</b>\n\n"
+                    f"Отправлено <b>{sent_count}</b> объявлений.\n\n"
+                    f"Я буду автоматически присылать новые объявления каждые 12 часов, которые подходят под ваши фильтры.\n\n"
+                    f"Используйте /start чтобы изменить настройки.",
+                    parse_mode=ParseMode.HTML
+                )
+            else:
+                await status_msg.edit_text(
+                    "😔 <b>Объявлений не найдено</b>\n\n"
+                    "Попробуйте изменить фильтры:\n"
+                    "• Расширьте диапазон цен\n"
+                    "• Измените количество комнат\n\n"
+                    "Используйте /start для изменения настроек.",
+                    parse_mode=ParseMode.HTML
+                )
+    except Exception as e:
+        logger.error(f"Ошибка при поиске объявлений: {e}")
+        await status_msg.edit_text(
+            f"⚠️ <b>Ошибка при поиске объявлений</b>\n\n"
+            f"Попробуйте позже или измените фильтры через /start",
+            parse_mode=ParseMode.HTML
+        )
+
+
+@router.callback_query(F.data.startswith("city_"))
+async def cb_user_set_city(callback: CallbackQuery, state: FSMContext):
+    """Устанавливает город для пользователя"""
+    user_id = callback.from_user.id
+    city_data = callback.data.replace("city_", "")
+    
+    if city_data == "manual":
+        # Запрашиваем ввод города вручную
+        await callback.message.edit_text(
+            "✏️ <b>Введите название города</b>\n\n"
+            "Просто напишите название города, например:\n"
+            "• <code>минск</code>\n"
+            "• <code>гомель</code>\n"
+            "• <code>барановичи</code>\n\n"
+            "<i>Если город введен неправильно, я попрошу ввести еще раз.</i>",
+            parse_mode=ParseMode.HTML
+        )
+        await state.set_state(CityStates.waiting_for_city)
+        await callback.answer("Введите название города")
+        return
+    
+    # Устанавливаем город из списка
+    user_filters = await get_user_filters(user_id)
+    await set_user_filters(
+        user_id,
+        city=city_data,
+        min_rooms=user_filters.get("min_rooms", 1) if user_filters else 1,
+        max_rooms=user_filters.get("max_rooms", 4) if user_filters else 4,
+        min_price=user_filters.get("min_price", 0) if user_filters else 0,
+        max_price=user_filters.get("max_price", 100000) if user_filters else 100000,
+        is_active=True
+    )
+    
+    await callback.answer(f"✅ Город установлен: {city_data.title()}")
+    await cb_setup_filters(callback)
+
+
+@router.message(CityStates.waiting_for_city)
+async def process_city_input(message: Message, state: FSMContext):
+    """Обрабатывает ввод города пользователем"""
+    user_id = message.from_user.id
+    city_input = message.text.strip()
+    
+    # Валидируем город
+    is_valid, normalized_city = validate_city(city_input)
+    
+    if not is_valid:
+        await message.answer(
+            "❌ <b>Неверный формат города</b>\n\n"
+            "Пожалуйста, введите название города заново.\n"
+            "Название должно содержать минимум 2 символа.\n\n"
+            "<i>Примеры: минск, гомель, барановичи</i>",
+            parse_mode=ParseMode.HTML
+        )
+        return
+    
+    # Проверяем, есть ли город в списке известных
+    city_found = False
+    display_name = normalized_city.title()
+    for display, normalized in BELARUS_CITIES:
+        if normalized == normalized_city:
+            display_name = display
+            city_found = True
+            break
+    
+    # Если город не найден в списке, предупреждаем но разрешаем
+    if not city_found:
+        await message.answer(
+            f"⚠️ <b>Город \"{city_input}\" не найден в списке известных городов.</b>\n\n"
+            f"Я сохраню его как: <b>{normalized_city.title()}</b>\n\n"
+            f"Если название введено неправильно, вы можете изменить его позже в настройках.",
+            parse_mode=ParseMode.HTML
+        )
+    
+    # Сохраняем город
+    user_filters = await get_user_filters(user_id)
+    await set_user_filters(
+        user_id,
+        city=normalized_city,
+        min_rooms=user_filters.get("min_rooms", 1) if user_filters else 1,
+        max_rooms=user_filters.get("max_rooms", 4) if user_filters else 4,
+        min_price=user_filters.get("min_price", 0) if user_filters else 0,
+        max_price=user_filters.get("max_price", 100000) if user_filters else 100000,
+        is_active=True
+    )
+    
+    await state.clear()
+    
+    # Показываем подтверждение и возвращаемся в меню
+    builder = InlineKeyboardBuilder()
+    builder.button(text="🔙 Вернуться к настройкам", callback_data="setup_filters")
+    
+    await message.answer(
+        f"✅ <b>Город установлен: {display_name}</b>\n\n"
+        f"Теперь поиск будет выполняться в городе <b>{display_name}</b>.",
+        parse_mode=ParseMode.HTML,
+        reply_markup=builder.as_markup()
+    )
 
 
 @router.callback_query(F.data == "user_price_reset")
@@ -1702,21 +2374,76 @@ async def cmd_set_price(message: Message):
 
 
 @router.message(Command("setcity"))
-async def cmd_set_city(message: Message):
-    """Установка города"""
+async def cmd_set_city(message: Message, state: FSMContext):
+    """Установка города для пользователя"""
+    user_id = message.from_user.id
     try:
         args = message.text.split()[1:]
+        
         if not args:
+            # Показываем меню выбора города
+            builder = InlineKeyboardBuilder()
+            builder.button(text="📍 Выбрать город", callback_data="user_filter_city")
+            
             await message.answer(
-                "⚠️ Используйте: /setcity <город>\n"
-                "Пример: /setcity барановичи\n\n"
-                "Поддерживаемые города: барановичи"
+                "📍 <b>Настройка города</b>\n\n"
+                "Вы можете:\n"
+                "• Использовать кнопку ниже для выбора из списка\n"
+                "• Или ввести команду: <code>/setcity минск</code>\n\n"
+                "<b>Доступные города:</b>\n"
+                "🏛 Областные центры: Минск, Гомель, Могилёв, Витебск, Гродно, Брест\n"
+                "🏘 Крупные города: Барановичи, Бобруйск, Пинск, Орша, Мозырь, Солигорск и др.\n\n"
+                "Также можно ввести название города вручную.",
+                parse_mode=ParseMode.HTML,
+                reply_markup=builder.as_markup()
             )
             return
         
-        city = args[0].lower()
-        await update_filters(city=city)
-        await message.answer(f"✅ Город установлен: {city.title()}")
+        city_input = " ".join(args).lower().strip()
+        
+        # Валидируем город
+        is_valid, normalized_city = validate_city(city_input)
+        
+        if not is_valid:
+            await message.answer(
+                "❌ <b>Неверный формат города</b>\n\n"
+                "Пожалуйста, введите название города заново.\n"
+                "Название должно содержать минимум 2 символа.\n\n"
+                "<i>Примеры: /setcity минск, /setcity гомель, /setcity барановичи</i>",
+                parse_mode=ParseMode.HTML
+            )
+            return
+        
+        # Проверяем, есть ли город в списке известных
+        city_found = False
+        display_name = normalized_city.title()
+        for display, normalized in BELARUS_CITIES:
+            if normalized == normalized_city:
+                display_name = display
+                city_found = True
+                break
+        
+        # Сохраняем город для пользователя
+        user_filters = await get_user_filters(user_id)
+        await set_user_filters(
+            user_id,
+            city=normalized_city,
+            min_rooms=user_filters.get("min_rooms", 1) if user_filters else 1,
+            max_rooms=user_filters.get("max_rooms", 4) if user_filters else 4,
+            min_price=user_filters.get("min_price", 0) if user_filters else 0,
+            max_price=user_filters.get("max_price", 100000) if user_filters else 100000,
+            is_active=True
+        )
+        
+        if not city_found:
+            await message.answer(
+                f"⚠️ <b>Город \"{city_input}\" не найден в списке известных городов.</b>\n\n"
+                f"Я сохраню его как: <b>{display_name}</b>\n\n"
+                f"Если название введено неправильно, вы можете изменить его позже.",
+                parse_mode=ParseMode.HTML
+            )
+        else:
+            await message.answer(f"✅ Город установлен: {display_name}")
         
     except Exception as e:
         await message.answer(f"⚠️ Ошибка: {e}")

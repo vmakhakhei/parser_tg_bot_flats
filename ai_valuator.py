@@ -828,6 +828,15 @@ class AIValuator:
                 if resp.status == 200:
                     data = await resp.json()
                     models = []
+                    # Список проверенных стабильных моделей (приоритет)
+                    stable_models = [
+                        "gemini-1.5-flash-latest",
+                        "gemini-1.5-pro-latest",
+                        "gemini-1.5-flash",
+                        "gemini-1.5-pro",
+                        "gemini-pro"
+                    ]
+                    
                     for m in data.get("models", []):
                         name = m.get("name", "")
                         if name and "gemini" in name.lower():
@@ -836,10 +845,26 @@ class AIValuator:
                             # Проверяем что модель поддерживает generateContent
                             supported_methods = m.get("supportedGenerationMethods", [])
                             if "generateContent" in supported_methods:
-                                models.append(model_name)
-                    if models:
-                        log_info("ai_gemini", f"Найдено доступных моделей: {models[:5]}")
-                    return models[:5] if models else []
+                                # Фильтруем только стабильные модели (исключаем экспериментальные версии 2.0, 2.5)
+                                if any(stable in model_name for stable in ["gemini-1.5", "gemini-pro"]) and not any(exp in model_name for exp in ["2.0", "2.5", "exp"]):
+                                    models.append(model_name)
+                    
+                    # Сортируем: сначала стабильные модели из списка
+                    models_sorted = []
+                    for stable_model in stable_models:
+                        for model in models:
+                            if model == stable_model or model.startswith(stable_model.split("-latest")[0]):
+                                if model not in models_sorted:
+                                    models_sorted.append(model)
+                    
+                    # Добавляем остальные модели
+                    for model in models:
+                        if model not in models_sorted:
+                            models_sorted.append(model)
+                    
+                    if models_sorted:
+                        log_info("ai_gemini", f"Найдено доступных моделей: {models_sorted[:5]}")
+                    return models_sorted[:5] if models_sorted else []
         except Exception as e:
             log_warning("ai_gemini", f"Не удалось получить список моделей: {e}")
         return []
@@ -954,6 +979,12 @@ class AIValuator:
                         log_info("ai_gemini", f"  - Рекомендации: {result.get('recommendations', 'N/A')[:50]}...")
                         log_info("ai_gemini", f"  - Оценка: {result.get('value_score', 'N/A')}/10")
                     return result
+                elif resp.status == 429:
+                    # Rate limit - ждем и возвращаем None (не повторяем автоматически для оценки)
+                    error_text = await resp.text()
+                    log_warning("ai_gemini", f"Rate limit достигнут (429). Жду 60 секунд перед следующей попыткой...")
+                    await asyncio.sleep(60)  # Ждем минуту перед следующей попыткой
+                    return None
                 elif resp.status == 404:
                     # Если модель не найдена, получаем список доступных моделей и пробуем их
                     error_text = await resp.text()
@@ -983,6 +1014,11 @@ class AIValuator:
                                     if result:
                                         log_info("ai_gemini", f"Успешная оценка ({fallback_model}): ${result.get('fair_price_usd', 0):,}")
                                     return result
+                                elif fallback_resp.status == 429:
+                                    error_text_fallback = await fallback_resp.text()
+                                    log_warning("ai_gemini", f"Rate limit (429) для модели {fallback_model}. Жду 60 секунд...")
+                                    await asyncio.sleep(60)
+                                    continue
                                 elif fallback_resp.status != 404:
                                     error_text_fallback = await fallback_resp.text()
                                     log_warning("ai_gemini", f"Модель {fallback_model} вернула статус {fallback_resp.status}: {error_text_fallback[:100]}")
@@ -995,6 +1031,23 @@ class AIValuator:
                 else:
                     error_text = await resp.text()
                     log_error("ai_gemini", f"Gemini API вернул статус {resp.status}: {error_text[:200]}")
+        except aiohttp.ClientError as e:
+            if "Session is closed" in str(e):
+                log_warning("ai_gemini", "Сессия закрыта, пересоздаю...")
+                await self.close_session()
+                await self.start_session()
+                # Повторяем запрос один раз
+                try:
+                    timeout = aiohttp.ClientTimeout(total=20)
+                    async with self.session.post(url, json=payload, timeout=timeout) as resp:
+                        if resp.status == 200:
+                            data = await resp.json()
+                            content = data["candidates"][0]["content"]["parts"][0]["text"]
+                            return self._parse_ai_response(content)
+                except Exception as retry_e:
+                    log_error("ai_gemini", f"Ошибка при повторной попытке: {retry_e}")
+            else:
+                log_error("ai_gemini", f"Ошибка клиента: {e}")
         except asyncio.TimeoutError:
             log_error("ai_gemini", "Таймаут запроса к Gemini API (20 сек)")
         except Exception as e:
@@ -1143,14 +1196,39 @@ class AIValuator:
                         # Парсим JSON из ответа
                         selected_with_reasons = self._parse_selection_response_detailed(content, inspected_listings)
                         return selected_with_reasons
+                    elif resp.status == 429:
+                        # Rate limit - ждем и пробуем следующую модель
+                        error_text = await resp.text()
+                        log_warning("ai_select", f"Rate limit достигнут (429) для модели {model}. Жду 60 секунд...")
+                        await asyncio.sleep(60)  # Ждем минуту
+                        continue  # Пробуем следующую модель
                     elif resp.status == 404:
                         log_warning("ai_select", f"Модель {model} не найдена (404), пробую следующую...")
                         continue
                     else:
                         error_text = await resp.text()
                         log_error("ai_select", f"Gemini API вернул статус {resp.status}: {error_text[:200]}")
-                        if resp.status != 404:
-                            break  # Если не 404, прекращаем попытки
+                        if resp.status not in [404, 429]:
+                            break  # Если не 404 или 429, прекращаем попытки
+            except aiohttp.ClientError as e:
+                if "Session is closed" in str(e):
+                    log_warning("ai_select", "Сессия закрыта, пересоздаю...")
+                    await self.close_session()
+                    await self.start_session()
+                    # Повторяем запрос один раз
+                    try:
+                        timeout = aiohttp.ClientTimeout(total=120)
+                        async with self.session.post(url, json=payload, timeout=timeout) as resp:
+                            if resp.status == 200:
+                                data = await resp.json()
+                                content = data["candidates"][0]["content"]["parts"][0]["text"]
+                                selected_with_reasons = self._parse_selection_response_detailed(content, inspected_listings)
+                                return selected_with_reasons
+                    except Exception as retry_e:
+                        log_error("ai_select", f"Ошибка при повторной попытке: {retry_e}")
+                else:
+                    log_error("ai_select", f"Ошибка клиента: {e}")
+                continue
             except Exception as e:
                 log_error("ai_select", f"Ошибка запроса к Gemini API с моделью {model}", e)
                 continue

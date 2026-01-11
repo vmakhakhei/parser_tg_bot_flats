@@ -58,7 +58,7 @@ pip install -r requirements.txt
 BOT_TOKEN=1234567890:ABCdefGHIjklMNOpqrSTUvwxYZ
 
 # ID канала (с минусом!)
-CHANNEL_ID=-1001234567890
+CHANNEL_ID=-
 
 # Интервал проверки в минутах
 CHECK_INTERVAL=10
