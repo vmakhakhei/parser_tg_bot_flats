@@ -2318,8 +2318,8 @@ async def search_listings_after_setup(
                         "Попробуйте изменить фильтры или проверить позже.",
                         parse_mode=ParseMode.HTML
                     )
-                # Показываем меню действий даже если объявлений нет
-                await show_actions_menu(bot, user_id, 0, "Обычный режим")
+                # После настройки фильтров всегда показываем меню ИИ-режима
+                await show_actions_menu(bot, user_id, 0, "ИИ-режим")
     except Exception as e:
         logger.error(f"Ошибка при поиске объявлений: {e}")
         try:
