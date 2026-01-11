@@ -443,12 +443,17 @@ async def check_new_listings_ai_mode(
             if best_with_reasons and len(best_with_reasons) > 0:
                 logger.info(f"ИИ выбрал {len(best_with_reasons)} лучших вариантов для пользователя {user_id}")
                 
-                # Формируем одно сообщение со всеми результатами
-                results_text = f"✅ <b>ИИ выбрал {len(best_with_reasons)} лучших вариантов</b>\n\n"
-                results_text += f"Из {len(candidate_listings)} объявлений проанализированы все по ссылкам и отобраны лучшие по соотношению цена-качество.\n\n"
-                results_text += "━━━━━━━━━━━━━━━━━━━━\n\n"
+                # Формируем сообщения с результатами (разбиваем на части если слишком длинные)
+                TELEGRAM_MAX_LENGTH = 4000  # Оставляем запас от 4096
                 
-                # Добавляем каждую рекомендацию с описанием
+                # Заголовок
+                header_text = f"✅ <b>ИИ выбрал {len(best_with_reasons)} лучших вариантов</b>\n\n"
+                header_text += f"Из {len(candidate_listings)} объявлений проанализированы все по ссылкам и отобраны лучшие по соотношению цена-качество.\n\n"
+                
+                # Формируем части сообщений
+                messages_parts = []
+                current_message = header_text
+                
                 for i, item in enumerate(best_with_reasons, 1):
                     listing = item.get("listing")
                     reason = item.get("reason", "Хорошее соотношение цена-качество")
@@ -471,36 +476,73 @@ async def check_new_listings_ai_mode(
                     if listing.year_built:
                         year_info = f", {listing.year_built}г"
                     
-                    results_text += f"<b>{i}. {rooms_text}, {area_text}{year_info}</b>\n"
-                    results_text += f"💰 {listing.price_formatted}{price_per_sqm}\n"
-                    results_text += f"📍 {listing.address}\n"
-                    results_text += f"🔗 <a href=\"{listing.url}\">Открыть объявление</a>\n\n"
-                    results_text += f"<b>📋 Детальное обоснование выбора:</b>\n{reason}\n\n"
-                    results_text += "━━━━━━━━━━━━━━━━━━━━\n\n"
+                    # Формируем текст для варианта
+                    variant_text = f"━━━━━━━━━━━━━━━━━━━━\n\n"
+                    variant_text += f"<b>{i}. {rooms_text}, {area_text}{year_info}</b>\n"
+                    variant_text += f"💰 {listing.price_formatted}{price_per_sqm}\n"
+                    variant_text += f"📍 {listing.address}\n"
+                    variant_text += f"🔗 <a href=\"{listing.url}\">Открыть объявление</a>\n\n"
+                    
+                    # Ограничиваем длину обоснования (максимум 500 символов)
+                    if len(reason) > 500:
+                        reason = reason[:497] + "..."
+                    
+                    variant_text += f"<b>📋 Обоснование:</b>\n{reason}\n\n"
+                    
+                    # Проверяем, поместится ли вариант в текущее сообщение
+                    if len(current_message) + len(variant_text) > TELEGRAM_MAX_LENGTH:
+                        # Сохраняем текущее сообщение и начинаем новое
+                        messages_parts.append(current_message)
+                        current_message = f"<b>Продолжение ({i}/{len(best_with_reasons)}):</b>\n\n{variant_text}"
+                    else:
+                        current_message += variant_text
                 
-                # Редактируем статус-сообщение вместо отправки нового (чтобы избежать дублирования)
+                # Добавляем последнее сообщение
+                if current_message.strip() != header_text.strip():
+                    messages_parts.append(current_message)
+                
+                # Отправляем сообщения
                 try:
                     if status_msg:
-                        await status_msg.edit_text(
-                            results_text,
-                            parse_mode=ParseMode.HTML,
-                            disable_web_page_preview=False
-                        )
+                        # Первое сообщение редактируем статус
+                        if messages_parts:
+                            await status_msg.edit_text(
+                                messages_parts[0],
+                                parse_mode=ParseMode.HTML,
+                                disable_web_page_preview=False
+                            )
+                            # Остальные отправляем отдельными сообщениями
+                            for msg_part in messages_parts[1:]:
+                                await bot.send_message(
+                                    user_id,
+                                    msg_part,
+                                    parse_mode=ParseMode.HTML,
+                                    disable_web_page_preview=False
+                                )
                     else:
-                        # Если статус-сообщение не было создано, отправляем новое
-                        await bot.send_message(
-                            user_id,
-                            results_text,
-                            parse_mode=ParseMode.HTML,
-                            disable_web_page_preview=False
-                        )
+                        # Отправляем все сообщения отдельно
+                        for msg_part in messages_parts:
+                            await bot.send_message(
+                                user_id,
+                                msg_part,
+                                parse_mode=ParseMode.HTML,
+                                disable_web_page_preview=False
+                            )
                 except Exception as e:
                     log_error("ai_mode", f"Ошибка редактирования/отправки результатов пользователю {user_id}", e)
-                    # Fallback: отправляем новое сообщение
+                    # Fallback: отправляем сокращенную версию
                     try:
+                        short_text = f"✅ <b>ИИ выбрал {len(best_with_reasons)} лучших вариантов</b>\n\n"
+                        for i, item in enumerate(best_with_reasons[:3], 1):  # Только первые 3
+                            listing = item.get("listing")
+                            if listing:
+                                rooms_text = f"{listing.rooms}-комн." if listing.rooms > 0 else "?"
+                                area_text = f"{listing.area} м²" if listing.area > 0 else "?"
+                                short_text += f"{i}. {rooms_text}, {area_text} - {listing.price_formatted}\n"
+                                short_text += f"🔗 <a href=\"{listing.url}\">Открыть</a>\n\n"
                         await bot.send_message(
                             user_id,
-                            results_text,
+                            short_text,
                             parse_mode=ParseMode.HTML,
                             disable_web_page_preview=False
                         )
