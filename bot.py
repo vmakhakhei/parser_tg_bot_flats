@@ -2155,46 +2155,6 @@ async def show_price_selection_menu(message: Message, state: FSMContext, rooms_t
     await state.set_state(SetupStates.waiting_for_price_min)
 
 
-@router.callback_query(F.data == "setup_price_min")
-async def cb_setup_price_min(callback: CallbackQuery, state: FSMContext):
-    """Запрашивает минимальную цену"""
-    await callback.message.edit_text(
-        "💰 <b>Введите минимальную цену (USD)</b>\n\n"
-        "Просто введите число, например:\n"
-        "• <code>0</code> — без ограничения снизу\n"
-        "• <code>20000</code> — от $20,000\n"
-        "• <code>30000</code> — от $30,000",
-        parse_mode=ParseMode.HTML
-    )
-    await state.set_state(SetupStates.waiting_for_price_min)
-    await callback.answer("Введите число")
-
-
-@router.callback_query(F.data == "setup_price_max")
-async def cb_setup_price_max(callback: CallbackQuery, state: FSMContext):
-    """Запрашивает максимальную цену"""
-    await callback.message.edit_text(
-        "💰 <b>Введите максимальную цену (USD)</b>\n\n"
-        "Просто введите число, например:\n"
-        "• <code>50000</code> — до $50,000\n"
-        "• <code>80000</code> — до $80,000\n"
-        "• <code>100000</code> — до $100,000",
-        parse_mode=ParseMode.HTML
-    )
-    await state.set_state(SetupStates.waiting_for_price_max)
-    await callback.answer("Введите число")
-
-
-@router.callback_query(F.data == "setup_price_continue")
-async def cb_setup_price_continue(callback: CallbackQuery, state: FSMContext):
-    """Продолжает настройку с ценами по умолчанию"""
-    # Используем цены по умолчанию
-    await state.update_data(min_price=0, max_price=100000)
-    
-    await callback.answer()
-    
-    # Показываем меню выбора режима
-    await show_mode_selection_menu(callback.message, state)
 
 
 @router.message(SetupStates.waiting_for_price_min)
