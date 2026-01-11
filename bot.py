@@ -1157,44 +1157,16 @@ async def cb_check_now(callback: CallbackQuery):
 
 @router.callback_query(F.data == "check_now_ai")
 async def cb_check_now_ai(callback: CallbackQuery):
-    """ИИ-режим: анализирует объявления и выбирает лучшие варианты"""
-    user_id = callback.from_user.id
+    """Информация об ИИ-оценке"""
+    await callback.answer()
     
-    # Сразу отвечаем на callback
-    await callback.answer("Запускаю ИИ-анализ...")
-    
-    user_filters = await get_user_filters(user_id)
-    if not user_filters:
-        await callback.message.answer("Сначала настройте фильтры через /start")
-        return
-    
-    logger.info(f"Пользователь {user_id}: ручная проверка - ИИ-режим (анализ и выбор лучших)")
-    
-    status_msg = await callback.message.answer(
-        "🤖 <b>ИИ-анализ запущен...</b>\n\n"
-        "Собираю объявления и анализирую лучшие варианты.",
+    await callback.message.answer(
+        "🤖 <b>ИИ-оценка объявлений</b>\n\n"
+        "Для оценки конкретного объявления используйте кнопку <b>\"🤖 ИИ Оценка квартиры\"</b>, которая находится под каждым объявлением.\n\n"
+        "ИИ проанализирует объявление, проверит страницу и даст справедливую оценку с рекомендациями.\n\n"
+        "💡 <i>ИИ-оценка доступна только для уже отправленных вам объявлений.</i>",
         parse_mode=ParseMode.HTML
     )
-    
-    # Получаем все объявления для города пользователя
-    user_city = user_filters.get("city", "барановичи")
-    aggregator = ListingsAggregator(enabled_sources=DEFAULT_SOURCES)
-    all_listings = await aggregator.fetch_all_listings(
-        city=user_city,
-        min_rooms=1,
-        max_rooms=5,
-        min_price=0,
-        max_price=1000000,
-    )
-    
-    # Запускаем ИИ-режим
-    await check_new_listings_ai_mode(callback.bot, user_id, user_filters, all_listings)
-    
-    # Удаляем статус сообщение
-    try:
-        await status_msg.delete()
-    except Exception:
-        pass
 
 
 async def show_listings_list(bot: Bot, user_id: int, listings: List[Listing], status_msg: Message):
