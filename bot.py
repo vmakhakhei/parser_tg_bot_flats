@@ -596,6 +596,8 @@ async def check_new_listings_ai_mode(
                         f"Из {len(candidate_listings)} объявлений ни одно не соответствует критериям качества.",
                         parse_mode=ParseMode.HTML
                     )
+                    # Показываем меню действий даже если вариантов нет
+                    await show_actions_menu(bot, user_id, 0, "ИИ-режим")
                 except Exception:
                     pass
         except Exception as e:
@@ -1061,17 +1063,13 @@ async def cb_filters_done(callback: CallbackQuery):
         
         sent_count = 0
         for listing in filtered_listings[:20]:  # Максимум 20 за раз
-            if await send_listing_to_user(callback.bot, user_id, listing):
+            # Обычный режим - БЕЗ ИИ-оценки
+            if await send_listing_to_user(callback.bot, user_id, listing, use_ai_valuation=False):
                 sent_count += 1
                 await asyncio.sleep(2)
         
-        await status_msg.edit_text(
-            f"✅ <b>Готово!</b>\n\n"
-            f"Отправлено {sent_count} объявлений.\n\n"
-            f"Я буду автоматически присылать новые объявления каждые 12 часов, которые подходят под ваши фильтры.\n\n"
-            f"Используйте /start чтобы изменить настройки.",
-            parse_mode=ParseMode.HTML
-        )
+        # Показываем финальное меню действий
+        await show_actions_menu(callback.bot, user_id, sent_count, "Обычный режим")
     else:
         await status_msg.edit_text(
             "😔 <b>Объявлений не найдено</b>\n\n"
