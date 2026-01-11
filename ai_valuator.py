@@ -24,33 +24,7 @@ except ImportError:
     def log_info(source, msg):
         print(f"[INFO] [{source}] {msg}")
 
-# ========== ВАРИАНТ 1: Google Gemini API (РЕКОМЕНДУЕТСЯ - ОСНОВНОЙ) ==========
-# ✅ ПОЛНОСТЬЮ БЕСПЛАТНО: 60 запросов/минуту
-# ✅ Поддерживает анализ изображений (vision) - БЕСПЛАТНО
-# ✅ Не требует кредитной карты
-# ✅ Регистрация: https://aistudio.google.com/app/apikey
-# ✅ Получить API ключ: https://aistudio.google.com/app/apikey
-
-GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
-# Актуальные модели Gemini API (бесплатные):
-# Правильные названия для v1beta API (проверено через документацию):
-# Используем формат с суффиксом -latest или без него
-GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-1.5-flash-latest")  # По умолчанию пробуем flash-latest
-# Используем v1beta API
-GEMINI_API_URL = f"https://generativelanguage.googleapis.com/v1beta/models/{GEMINI_MODEL}:generateContent"
-
-# Список моделей для fallback (пробуем по очереди)
-GEMINI_FALLBACK_MODELS = [
-    "gemini-1.5-flash-latest",
-    "gemini-1.5-pro-latest",
-    "gemini-1.5-flash",
-    "gemini-1.5-pro",
-    "gemini-pro",
-    "gemini-1.0-pro-latest"
-]
-
-
-# ========== ВАРИАНТ 2: Groq API (АЛЬТЕРНАТИВА) ==========
+# ========== Groq API (РЕКОМЕНДУЕТСЯ) ==========
 # Бесплатно: 30 запросов/минуту, очень быстро
 # НЕ поддерживает анализ изображений
 # Регистрация: https://console.groq.com/
@@ -88,7 +62,7 @@ class AIValuator:
         Инициализация оценщика
         
         Args:
-            provider: "groq", "huggingface", "gemini", "ollama"
+            provider: "groq", "huggingface", "ollama"
         """
         self.provider = provider.lower()
         self.session: Optional[aiohttp.ClientSession] = None
@@ -860,7 +834,6 @@ class AIValuator:
         
         return None
     
-    async def _get_available_gemini_models(self) -> List[str]:
         """Получает список доступных моделей Gemini через API"""
         try:
             models_url = f"https://generativelanguage.googleapis.com/v1beta/models?key={GEMINI_API_KEY}"
@@ -909,7 +882,9 @@ class AIValuator:
             log_warning("ai_gemini", f"Не удалось получить список моделей: {e}")
         return []
     
-    async def valuate_gemini(self, listing: Listing) -> Optional[Dict[str, Any]]:
+    # Удалено: функция valuate_gemini - Gemini больше не используется
+    
+    async def valuate_gemini_removed(self, listing: Listing) -> Optional[Dict[str, Any]]:
         """Оценка через Google Gemini API с поддержкой анализа фото"""
         if not GEMINI_API_KEY:
             return None
@@ -1164,14 +1139,14 @@ class AIValuator:
             return await self.valuate_groq(listing)
         elif self.provider == "huggingface":
             return await self.valuate_huggingface(listing)
-        elif self.provider == "gemini":
-            return await self.valuate_gemini(listing)
         elif self.provider == "ollama":
             return await self.valuate_ollama(listing)
         
         return None
     
-    async def _select_best_gemini_detailed(self, prompt: str, inspected_listings: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    # Удалено: функция _select_best_gemini_detailed - Gemini больше не используется
+    
+    async def _select_best_gemini_detailed_removed(self, prompt: str, inspected_listings: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         """Выбирает лучшие варианты через Gemini API - Gemini сам просматривает ссылки"""
         if not GEMINI_API_KEY:
             log_error("ai_select", "GEMINI_API_KEY не установлен")
@@ -1458,7 +1433,9 @@ class AIValuator:
         log_warning("ai_select", "Не удалось распарсить ответ, возвращаю первые 3")
         return [{"listing": item["listing"], "reason": "Автоматический выбор"} for item in inspected_listings[:3]]
     
-    async def _select_best_gemini(self, prompt: str, listings: List[Listing]) -> List[str]:
+    # Удалено: функция _select_best_gemini - Gemini больше не используется
+    
+    async def _select_best_gemini_removed(self, prompt: str, listings: List[Listing]) -> List[str]:
         """Выбирает лучшие варианты через Gemini API"""
         if not GEMINI_API_KEY:
             return []
@@ -1597,13 +1574,10 @@ def get_valuator() -> Optional[AIValuator]:
             _valuator = AIValuator("ollama")
             log_info("ai", "Использую Ollama API (явно указан через AI_PROVIDER)")
         else:
-            # Автоматический выбор: приоритет Groq (без суточных лимитов), затем Gemini
+            # Автоматический выбор: только Groq
             if GROQ_API_KEY:
                 _valuator = AIValuator("groq")
                 log_info("ai", "Использую Groq API (30 запросов/минуту, без суточных лимитов)")
-            elif GEMINI_API_KEY:
-                _valuator = AIValuator("gemini")
-                log_info("ai", "Использую Gemini API (поддержка анализа фото, но есть суточные лимиты)")
             elif HF_API_KEY:
                 _valuator = AIValuator("huggingface")
                 log_info("ai", "Использую Hugging Face API")
@@ -1664,14 +1638,10 @@ async def select_best_listings(
     if forced_provider:
         if forced_provider == "groq" and GROQ_API_KEY:
             providers_to_try = [("groq", GROQ_API_KEY)]
-        elif forced_provider == "gemini" and GEMINI_API_KEY:
-            providers_to_try = [("gemini", GEMINI_API_KEY)]
     else:
-        # Автоматический fallback: сначала Groq, потом Gemini
+        # Используем только Groq
         if GROQ_API_KEY:
             providers_to_try.append(("groq", GROQ_API_KEY))
-        if GEMINI_API_KEY:
-            providers_to_try.append(("gemini", GEMINI_API_KEY))
     
     if not providers_to_try:
         log_warning("ai_select", "ИИ-оценщик недоступен, возвращаю все объявления")

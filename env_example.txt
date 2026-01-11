@@ -25,8 +25,8 @@ MAX_PHOTOS=3
 
 # ========== ВЫБОР ПРОВАЙДЕРА ИИ ==========
 # Можно явно указать провайдер через переменную AI_PROVIDER
-# Доступные значения: groq, gemini, huggingface, ollama
-# Если не указано, используется автоматический выбор (приоритет: Groq > Gemini)
+# Доступные значения: groq, huggingface, ollama
+# Если не указано, используется Groq
 # AI_PROVIDER=groq
 
 # Вариант 1: Groq API (РЕКОМЕНДУЕТСЯ - БЕЗ СУТОЧНЫХ ЛИМИТОВ)
@@ -37,24 +37,13 @@ MAX_PHOTOS=3
 # Получить ключ: https://console.groq.com/keys
 GROQ_API_KEY=your_groq_api_key_here
 
-# Вариант 2: Google Gemini API (АЛЬТЕРНАТИВА - ЕСТЬ СУТОЧНЫЕ ЛИМИТЫ)
-# ✅ ПОЛНОСТЬЮ БЕСПЛАТНО: 60 запросов/минуту (без кредитной карты)
-# ✅ Поддерживает анализ фотографий квартир (Gemini Vision) - БЕСПЛАТНО
-# ✅ Анализирует до 5 фото с каждого объявления для более точных оценок
-# ⚠️ ЕСТЬ СУТОЧНЫЕ ЛИМИТЫ (может вернуть ошибку 429)
-# Регистрация: https://aistudio.google.com/app/apikey
-# Получить API Key: https://aistudio.google.com/app/apikey
-# GEMINI_API_KEY=your_gemini_api_key_here
-# Optional: Использовать более качественную модель (тоже бесплатная)
-# GEMINI_MODEL=gemini-1.5-pro
-
-# Вариант 3: Hugging Face Inference API
+# Вариант 2: Hugging Face Inference API
 # Бесплатно: ограниченное количество запросов
 # Регистрация: https://huggingface.co/
 # Получить токен: https://huggingface.co/settings/tokens
 # HF_API_KEY=your_hf_api_key_here
 
-# Вариант 4: Ollama (локально)
+# Вариант 3: Ollama (локально)
 # Полностью бесплатно, но нужно запускать локально
 # Установка: https://ollama.ai/
 # OLLAMA_URL=http://localhost:11434/api/generate
