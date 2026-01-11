@@ -1341,7 +1341,8 @@ async def cb_check_now_ai(callback: CallbackQuery):
                 max_results=max_results
             )
             
-            logger.info(f"ИИ вернул {len(best_with_reasons) if best_with_reasons else 0} вариантов")
+            actual_count = len(best_with_reasons) if best_with_reasons else 0
+            logger.info(f"ИИ вернул {actual_count} вариантов (запрашивалось {max_results})")
             
             if best_with_reasons and len(best_with_reasons) > 0:
                 logger.info(f"ИИ выбрал {len(best_with_reasons)} лучших вариантов для пользователя {user_id}")
