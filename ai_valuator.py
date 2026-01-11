@@ -1702,14 +1702,28 @@ async def select_best_listings(
                         selected_ids = [item["listing"].id for item in selected_with_reasons]
                         remaining = [l["listing"] for l in listings_for_prompt if l["listing"].id not in selected_ids]
                         # Сортируем оставшиеся по цене за м² (лучшие первыми)
-                        remaining_sorted = sorted(
-                            remaining,
-                            key=lambda l: l.price / l.area if l.area > 0 else float('inf')
-                        )
+                        # Сортируем по цене за м² в USD
+                        def get_price_per_sqm_usd(l):
+                            if l.area <= 0:
+                                return float('inf')
+                            price_usd = l.price_usd if l.price_usd else (
+                                int(l.price_byn / 2.95) if l.price_byn else (
+                                    int(l.price / 2.95) if l.currency == "BYN" else l.price
+                                )
+                            )
+                            return price_usd / l.area if price_usd > 0 else float('inf')
+                        
+                        remaining_sorted = sorted(remaining, key=get_price_per_sqm_usd)
                         # Добавляем недостающие варианты
                         needed = min_required - len(selected_with_reasons)
                         for listing in remaining_sorted[:needed]:
-                            price_per_sqm = int(listing.price / listing.area) if listing.area > 0 else 0
+                            # Правильно вычисляем цену за м² в USD
+                            price_usd_for_calc = listing.price_usd if listing.price_usd else (
+                                int(listing.price_byn / 2.95) if listing.price_byn else (
+                                    int(listing.price / 2.95) if listing.currency == "BYN" else listing.price
+                                )
+                            )
+                            price_per_sqm = int(price_usd_for_calc / listing.area) if listing.area > 0 and price_usd_for_calc > 0 else 0
                             # Формируем более детальное объяснение для fallback вариантов
                             year_info = f" Год постройки: {listing.year_built}." if listing.year_built else ""
                             district_info = ""
@@ -1773,11 +1787,18 @@ def _prepare_selection_prompt_detailed(
         rooms_text = f"{listing.rooms}к" if listing.rooms > 0 else "?"
         area_text = f"{listing.area}м²" if listing.area > 0 else "?"
         
-        # Цена за м² (главный критерий)
+        # Цена за м² (главный критерий) - всегда в USD
         price_per_sqm = ""
-        if listing.area > 0 and listing.price > 0:
-            price_per_sqm_usd = int(listing.price / listing.area)
-            price_per_sqm = f" ${price_per_sqm_usd}/м²"
+        if listing.area > 0:
+            # Правильно вычисляем цену в USD для расчета цены за м²
+            price_usd_for_calc = listing.price_usd if listing.price_usd else (
+                int(listing.price_byn / 2.95) if listing.price_byn else (
+                    int(listing.price / 2.95) if listing.currency == "BYN" else listing.price
+                )
+            )
+            if price_usd_for_calc > 0:
+                price_per_sqm_usd = int(price_usd_for_calc / listing.area)
+                price_per_sqm = f" ${price_per_sqm_usd}/м²"
         
         # Год постройки (если есть)
         year_info = ""
@@ -1961,11 +1982,18 @@ def _prepare_selection_prompt(listings: List[Listing], user_filters: Dict[str, A
         area_text = f"{listing.area} м²" if listing.area > 0 else "?"
         price_text = listing.price_formatted
         
-        # Рассчитываем цену за м² если возможно
+        # Рассчитываем цену за м² если возможно (всегда в USD)
         price_per_sqm = ""
-        if listing.area > 0 and listing.price > 0:
-            price_per_sqm_usd = listing.price / listing.area
-            price_per_sqm = f" (${price_per_sqm_usd:.0f}/м²)"
+        if listing.area > 0:
+            # Определяем цену в USD для расчета цены за м²
+            price_usd_for_calc = listing.price_usd if listing.price_usd else (
+                int(listing.price_byn / 2.95) if listing.price_byn else (
+                    int(listing.price / 2.95) if listing.currency == "BYN" else listing.price
+                )
+            )
+            if price_usd_for_calc > 0:
+                price_per_sqm_usd = price_usd_for_calc / listing.area
+                price_per_sqm = f" (${price_per_sqm_usd:.0f}/м²)"
         
         listing_info = f"""
 {i}. ID: {listing.id}
