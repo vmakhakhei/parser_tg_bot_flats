@@ -2302,8 +2302,8 @@ async def search_listings_after_setup(
                         sent_count += 1
                         await asyncio.sleep(2)
                 
-                # Показываем финальное меню действий
-                await show_actions_menu(bot, user_id, sent_count, "Обычный режим")
+                # После настройки фильтров всегда показываем меню ИИ-режима (ИИ-мод, Парсер, Сброс фильтров)
+                await show_actions_menu(bot, user_id, sent_count, "ИИ-режим")
             else:
                 try:
                     await status_msg.edit_text(
