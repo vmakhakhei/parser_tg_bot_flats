@@ -300,23 +300,20 @@ async def send_listing_to_user(bot: Bot, user_id: int, listing: Listing, use_ai_
                 else:
                     media_group.append(InputMediaPhoto(media=photo_url))
             
-            # Для медиагруппы кнопки добавляются к первому сообщению
+            # Отправляем медиагруппу
+            await bot.send_media_group(
+                chat_id=user_id,
+                media=media_group
+            )
+            
+            # Если есть кнопка ИИ-оценки, отправляем её отдельным сообщением после медиагруппы
+            # (Telegram не поддерживает кнопки в медиагруппе напрямую)
             if reply_markup:
-                # Отправляем медиагруппу, затем отдельное сообщение с кнопкой
-                await bot.send_media_group(
-                    chat_id=user_id,
-                    media=media_group
-                )
                 await bot.send_message(
                     chat_id=user_id,
                     text="🤖 <b>Хотите получить ИИ-оценку этой квартиры?</b>",
                     parse_mode=ParseMode.HTML,
                     reply_markup=reply_markup
-                )
-            else:
-                await bot.send_media_group(
-                    chat_id=user_id,
-                    media=media_group
                 )
         else:
             # Без фотографий - просто текст с кнопкой
@@ -1216,10 +1213,14 @@ async def cb_check_now_ai(callback: CallbackQuery):
             await show_actions_menu(callback.bot, user_id, 0, "Обычный режим")
             return
         
-        # Определяем количество лучших вариантов в зависимости от общего количества
+        # Определяем количество лучших вариантов в зависимости от общего количества (от 1 до 5)
         total_count = len(candidate_listings)
-        if total_count <= 3:
-            max_results = total_count  # Если объявлений 3 или меньше, выбираем все
+        if total_count == 0:
+            max_results = 0
+        elif total_count == 1:
+            max_results = 1
+        elif total_count <= 3:
+            max_results = total_count  # Если объявлений 2-3, выбираем все
         elif total_count <= 10:
             max_results = 3  # Если объявлений 4-10, выбираем 3 лучших
         else:
@@ -1742,6 +1743,32 @@ async def cb_cancel_listings(callback: CallbackQuery):
     """Отменяет просмотр списка объявлений"""
     await callback.answer("Отменено")
     await show_actions_menu(callback.bot, callback.from_user.id, 0, "Обычный режим")
+
+
+@router.callback_query(F.data == "reset_filters")
+async def cb_reset_filters(callback: CallbackQuery, state: FSMContext):
+    """Сбрасывает фильтры и начинает настройку заново"""
+    user_id = callback.from_user.id
+    
+    await callback.answer("Сбрасываю фильтры...")
+    
+    # Удаляем фильтры пользователя из базы данных
+    async with aiosqlite.connect(DATABASE_PATH) as db:
+        await db.execute("DELETE FROM user_filters WHERE user_id = ?", (user_id,))
+        await db.commit()
+    
+    # Очищаем состояние FSM
+    await state.clear()
+    
+    # Начинаем настройку заново
+    await callback.message.answer(
+        "🔄 <b>Фильтры сброшены</b>\n\n"
+        "Начинаем настройку заново...",
+        parse_mode=ParseMode.HTML
+    )
+    
+    # Показываем меню выбора города
+    await show_city_selection_menu(callback.message, state)
 
 
 @router.callback_query(F.data == "show_stats")
