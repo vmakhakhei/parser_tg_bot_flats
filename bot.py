@@ -33,9 +33,11 @@ from database import (
     is_listing_sent_to_user,
     mark_listing_sent_to_user,
     get_active_users,
-    set_user_ai_mode,
     save_ai_selected_listings,
-    get_ai_selected_listings
+    get_ai_selected_listings,
+    is_listing_ai_valuated,
+    mark_listing_ai_valuated,
+    get_listing_by_id,
 )
 from scrapers.aggregator import ListingsAggregator
 from scrapers.base import Listing
@@ -271,31 +273,16 @@ async def send_listing_to_user(bot: Bot, user_id: int, listing: Listing, use_ai_
         message_text = format_listing_message(listing, ai_valuation)
         photos = listing.photos
         
-        # Создаем кнопку "ИИ Оценка квартиры" если ИИ доступен и оценка не была выполнена
+        # Создаем кнопку "ИИ Оценка квартиры" если ИИ доступен, оценка не была выполнена и объявление еще не оценено
         reply_markup = None
         if not use_ai_valuation and AI_VALUATOR_AVAILABLE and valuate_listing:
-            # Кодируем данные объявления в callback_data
-            # Используем base64 для безопасной передачи данных
-            listing_data = {
-                "id": listing.id,
-                "source": listing.source,
-                "url": listing.url,
-                "title": listing.title,
-                "price": listing.price,
-                "rooms": listing.rooms,
-                "area": listing.area,
-                "address": listing.address,
-                "description": listing.description[:500],  # Ограничиваем длину
-                "year_built": listing.year_built,
-                "created_at": listing.created_at
-            }
-            listing_json = json.dumps(listing_data, ensure_ascii=False)
-            listing_encoded = base64.b64encode(listing_json.encode('utf-8')).decode('utf-8')
-            
-            builder = InlineKeyboardBuilder()
-            builder.button(text="🤖 ИИ Оценка квартиры", callback_data=f"ai_valuate_{listing_encoded}")
-            builder.adjust(1)
-            reply_markup = builder.as_markup()
+            # Проверяем, было ли объявление уже оценено через ИИ
+            if not await is_listing_ai_valuated(user_id, listing.id):
+                # Используем только listing_id в callback_data (Telegram ограничивает до 64 байт)
+                builder = InlineKeyboardBuilder()
+                builder.button(text="🤖 ИИ Оценка квартиры", callback_data=f"ai_val_{listing.id}")
+                builder.adjust(1)
+                reply_markup = builder.as_markup()
         
         if photos:
             # Отправляем медиагруппу с фотографиями
@@ -390,19 +377,13 @@ async def check_new_listings(bot: Bot):
         logger.info(f"Для пользователя {user_id} (город: {user_city}) найдено объявлений: {len(all_listings)}")
         
         # Проверяем режим работы пользователя
-        ai_mode = user_filters.get("ai_mode", False)
+        # Обычный режим: отправляем все подходящие объявления (ИИ-оценка только по запросу через кнопку)
+        user_new_count = 0
         
-        if ai_mode:
-            # ИИ-режим: собираем все подходящие объявления и отправляем ИИ для выбора лучших
-            await check_new_listings_ai_mode(bot, user_id, user_filters, all_listings)
-        else:
-            # Обычный режим: отправляем все подходящие объявления
-            user_new_count = 0
-            
-            for listing in all_listings:
-                # Проверяем соответствие фильтрам пользователя
-                if not _matches_user_filters(listing, user_filters):
-                    continue
+        for listing in all_listings:
+            # Проверяем соответствие фильтрам пользователя
+            if not _matches_user_filters(listing, user_filters):
+                continue
                 
                 # Проверяем, не отправляли ли уже этому пользователю
                 if await is_listing_sent_to_user(user_id, listing.id):
@@ -880,7 +861,6 @@ async def cmd_start(message: Message, state: FSMContext):
         builder.button(text="🤖 ИИ-анализ", callback_data="check_now_ai")
         builder.button(text="⚙️ Изменить фильтры", callback_data="setup_filters")
         builder.button(text="📊 Статистика", callback_data="show_stats")
-        builder.button(text=mode_text, callback_data="toggle_ai_mode")
         
         # Принудительно размещаем по 1 кнопке в ряду
         builder.adjust(1)
@@ -1029,9 +1009,6 @@ async def cb_setup_filters(callback: CallbackQuery):
     builder.button(text="📍 Город", callback_data="user_filter_city")
     builder.button(text="🚪 Комнаты", callback_data="user_filter_rooms")
     builder.button(text="💰 Цена", callback_data="user_filter_price")
-    ai_mode = user_filters.get("ai_mode", False) if user_filters else False
-    mode_text = "🤖 ИИ-режим: ВКЛ" if ai_mode else "🤖 ИИ-режим: ВЫКЛ"
-    builder.button(text=mode_text, callback_data="toggle_ai_mode")
     builder.button(text="✅ Готово", callback_data="user_filters_done")
     
     # Принудительно размещаем по 1 кнопке в ряду
@@ -1330,41 +1307,77 @@ async def show_actions_menu(bot: Bot, user_id: int, listings_count: int, mode: s
         log_warning("bot", f"Не удалось отправить меню действий пользователю {user_id}: {e}")
 
 
-@router.callback_query(F.data.startswith("ai_valuate_"))
+@router.callback_query(F.data.startswith("ai_val_"))
 async def cb_ai_valuate_listing(callback: CallbackQuery):
     """Обработчик кнопки 'ИИ Оценка квартиры' - оценивает конкретное объявление"""
     user_id = callback.from_user.id
     
     await callback.answer("Оцениваю квартиру...")
     
-    # Декодируем данные объявления из callback_data
-    try:
-        listing_encoded = callback.data.replace("ai_valuate_", "")
-        listing_json = base64.b64decode(listing_encoded.encode('utf-8')).decode('utf-8')
-        listing_data = json.loads(listing_json)
-        
-        # Создаем объект Listing из данных
-        listing = Listing(
-            id=listing_data["id"],
-            source=listing_data["source"],
-            title=listing_data["title"],
-            price=listing_data["price"],
-            price_formatted=f"${listing_data['price']:,}".replace(",", " "),
-            rooms=listing_data["rooms"],
-            area=listing_data["area"],
-            address=listing_data["address"],
-            url=listing_data["url"],
-            description=listing_data.get("description", ""),
-            year_built=listing_data.get("year_built", ""),
-            created_at=listing_data.get("created_at", "")
-        )
-    except Exception as e:
-        log_error("ai_valuate", f"Ошибка декодирования данных объявления: {e}")
+    # Получаем listing_id из callback_data (используем только ID, не весь JSON)
+    listing_id = callback.data.replace("ai_val_", "")
+    
+    # Проверяем, было ли объявление уже оценено
+    if await is_listing_ai_valuated(user_id, listing_id):
         await callback.message.answer(
-            "❌ <b>Ошибка</b>\n\nНе удалось получить данные объявления. Попробуйте еще раз.",
+            "ℹ️ <b>Объявление уже оценено</b>\n\n"
+            "Это объявление уже было оценено через ИИ ранее.",
             parse_mode=ParseMode.HTML
         )
         return
+    
+    # Получаем данные объявления из базы или парсим заново
+    listing_data = await get_listing_by_id(listing_id)
+    
+    if not listing_data:
+        # Если нет в базе, получаем заново через агрегатор
+        user_filters = await get_user_filters(user_id)
+        if not user_filters:
+            await callback.message.answer(
+                "❌ <b>Ошибка</b>\n\nНе удалось получить данные объявления. Попробуйте позже.",
+                parse_mode=ParseMode.HTML
+            )
+            return
+        
+        user_city = user_filters.get("city", "барановичи")
+        aggregator = ListingsAggregator(enabled_sources=DEFAULT_SOURCES)
+        all_listings = await aggregator.fetch_all_listings(
+            city=user_city,
+            min_rooms=1,
+            max_rooms=5,
+            min_price=0,
+            max_price=1000000,
+        )
+        
+        # Ищем объявление по ID
+        listing = None
+        for l in all_listings:
+            if l.id == listing_id:
+                listing = l
+                break
+        
+        if not listing:
+            await callback.message.answer(
+                "❌ <b>Ошибка</b>\n\nОбъявление не найдено. Возможно, оно было удалено.",
+                parse_mode=ParseMode.HTML
+            )
+            return
+    else:
+        # Создаем объект Listing из данных базы
+        listing = Listing(
+            id=listing_data["id"],
+            source=listing_data["source"],
+            title=listing_data.get("title", ""),
+            price=listing_data.get("price", 0),
+            price_formatted=f"${listing_data.get('price', 0):,}".replace(",", " "),
+            rooms=listing_data.get("rooms", 0),
+            area=listing_data.get("area", 0.0),
+            address=listing_data.get("address", ""),
+            url=listing_data.get("url", ""),
+            description="",
+            year_built="",
+            created_at=""
+        )
     
     # Отправляем уведомление о начале оценки
     status_msg = await callback.message.answer(
@@ -1581,72 +1594,6 @@ async def cb_show_stats(callback: CallbackQuery):
         parse_mode=ParseMode.HTML
     )
     await callback.answer()
-
-
-@router.callback_query(F.data == "toggle_ai_mode")
-async def cb_toggle_ai_mode(callback: CallbackQuery):
-    """Переключает ИИ-режим пользователя и запускает проверку если включен"""
-    user_id = callback.from_user.id
-    
-    user_filters = await get_user_filters(user_id)
-    if not user_filters:
-        await callback.answer("Сначала настройте фильтры", show_alert=True)
-        return
-    
-    # Переключаем режим
-    current_mode = user_filters.get("ai_mode", False)
-    new_mode = not current_mode
-    
-    await set_user_ai_mode(user_id, new_mode)
-    
-    # Обновляем фильтры в памяти
-    user_filters["ai_mode"] = new_mode
-    
-    mode_text = "включен" if new_mode else "выключен"
-    mode_desc = "ИИ будет выбирать лучшие варианты из всех найденных" if new_mode else "Будут присылаться все подходящие объявления"
-    
-    await callback.answer(f"🤖 ИИ-режим {mode_text}")
-    
-    # Если ИИ-режим включен, сразу запускаем проверку
-    if new_mode:
-        status_msg = await callback.message.answer(
-            f"🤖 <b>ИИ-режим ВКЛЮЧЕН</b>\n\n"
-            f"{mode_desc}\n\n"
-            f"<b>Как это работает:</b>\n"
-            f"✅ ИИ анализирует все найденные объявления по ссылкам и выбирает лучшие по соотношению цена-качество (обычно 3-5 вариантов)\n\n"
-            f"<b>Запускаю анализ...</b>",
-            parse_mode=ParseMode.HTML
-        )
-        
-        # Получаем все объявления для города пользователя
-        user_city = user_filters.get("city", "барановичи")
-        aggregator = ListingsAggregator(enabled_sources=DEFAULT_SOURCES)
-        all_listings = await aggregator.fetch_all_listings(
-            city=user_city,
-            min_rooms=1,
-            max_rooms=5,
-            min_price=0,
-            max_price=1000000,
-        )
-        
-        # Запускаем ИИ-режим
-        await check_new_listings_ai_mode(callback.bot, user_id, user_filters, all_listings)
-        
-        # Удаляем статус сообщение
-        try:
-            await status_msg.delete()
-        except Exception:
-            pass
-    else:
-        # Обновляем сообщение
-        await callback.message.edit_text(
-            f"🤖 <b>ИИ-режим ВЫКЛЮЧЕН</b>\n\n"
-            f"{mode_desc}\n\n"
-            f"<b>Как это работает:</b>\n"
-            f"📋 Присылаются все объявления, которые соответствуют вашим фильтрам\n\n"
-            f"Вы можете переключить режим в любой момент.",
-            parse_mode=ParseMode.HTML
-        )
 
 
 @router.callback_query(F.data == "user_filter_rooms")
@@ -2018,8 +1965,39 @@ async def process_setup_price_max(message: Message, state: FSMContext):
         
         await state.update_data(max_price=max_price)
         
-        # Переходим к выбору режима
-        await show_mode_selection_menu(message, state)
+        # Сохраняем фильтры без выбора режима (всегда обычный режим, ИИ-оценка только по запросу)
+        data = await state.get_data()
+        city = data.get("city", "барановичи")
+        min_rooms = data.get("min_rooms", 1)
+        max_rooms = data.get("max_rooms", 4)
+        min_price = data.get("min_price", 0)
+        max_price = data.get("max_price", 100000)
+        
+        await set_user_filters(
+            user_id=message.from_user.id,
+            city=city,
+            min_rooms=min_rooms,
+            max_rooms=max_rooms,
+            min_price=min_price,
+            max_price=max_price,
+            is_active=True,
+            ai_mode=False  # Всегда обычный режим
+        )
+        
+        await state.clear()
+        
+        # Запускаем поиск
+        await search_listings_after_setup(
+            message.bot, 
+            message.from_user.id, 
+            city, 
+            min_rooms, 
+            max_rooms, 
+            min_price, 
+            max_price, 
+            False,  # ai_mode всегда False
+            None
+        )
         
     except ValueError:
         await message.answer(
@@ -2032,90 +2010,6 @@ async def process_setup_price_max(message: Message, state: FSMContext):
         )
 
 
-async def show_mode_selection_menu(message: Message, state: FSMContext):
-    """Показывает меню выбора режима работы"""
-    builder = InlineKeyboardBuilder()
-    builder.button(text="📋 Обычный режим", callback_data="setup_mode_normal")
-    builder.button(text="🤖 ИИ-режим", callback_data="setup_mode_ai")
-    
-    # Принудительно размещаем по 1 кнопке в ряду
-    builder.adjust(1)
-    
-    # Получаем данные из состояния
-    data = await state.get_data()
-    city_name = data.get("city", "барановичи").title()
-    min_rooms = data.get("min_rooms", 1)
-    max_rooms = data.get("max_rooms", 4)
-    min_price = data.get("min_price", 0)
-    max_price = data.get("max_price", 100000)
-    
-    await message.answer(
-        f"✅ Цена установлена: <b>${min_price:,} - ${max_price:,}</b>\n\n"
-        f"🤖 <b>Шаг 4 из 4: Выберите режим работы</b>\n\n"
-        f"<b>📋 Обычный режим:</b>\n"
-        f"Присылаю все объявления, которые соответствуют вашим фильтрам.\n\n"
-        f"<b>🤖 ИИ-режим:</b>\n"
-        f"ИИ анализирует все найденные объявления и выбирает лучшие по соотношению цена-качество (обычно 3-5 вариантов).\n\n"
-        f"<b>Ваши настройки:</b>\n"
-        f"📍 Город: {city_name}\n"
-        f"🚪 Комнаты: {min_rooms}-{max_rooms}\n"
-        f"💰 Цена: ${min_price:,} - ${max_price:,}",
-        parse_mode=ParseMode.HTML,
-        reply_markup=builder.as_markup()
-    )
-    await state.set_state(SetupStates.waiting_for_mode)
-
-
-@router.callback_query(F.data.startswith("setup_mode_"))
-async def cb_setup_mode_step(callback: CallbackQuery, state: FSMContext):
-    """Обработчик выбора режима в пошаговой настройке"""
-    mode_data = callback.data.replace("setup_mode_", "")
-    ai_mode = (mode_data == "ai")
-    
-    # Получаем все данные из состояния
-    data = await state.get_data()
-    city = data.get("city", "барановичи")
-    min_rooms = data.get("min_rooms", 1)
-    max_rooms = data.get("max_rooms", 4)
-    min_price = data.get("min_price", 0)
-    max_price = data.get("max_price", 100000)
-    
-    user_id = callback.from_user.id
-    
-    # Сохраняем фильтры пользователя
-    await set_user_filters(
-        user_id,
-        city=city,
-        min_rooms=min_rooms,
-        max_rooms=max_rooms,
-        min_price=min_price,
-        max_price=max_price,
-        is_active=True,
-        ai_mode=ai_mode
-    )
-    
-    # Очищаем состояние
-    await state.clear()
-    
-    # Показываем финальное сообщение и запускаем поиск
-    mode_text = "ИИ-режим" if ai_mode else "Обычный режим"
-    mode_desc = "ИИ выберет лучшие варианты" if ai_mode else "Пришлю все подходящие объявления"
-    
-    status_msg = await callback.message.answer(
-        f"✅ <b>Настройка завершена!</b>\n\n"
-        f"📍 Город: <b>{city.title()}</b>\n"
-        f"🚪 Комнаты: <b>{min_rooms}-{max_rooms}</b>\n"
-        f"💰 Цена: <b>${min_price:,} - ${max_price:,}</b>\n"
-        f"🤖 Режим: <b>{mode_text}</b>\n\n"
-        f"🔍 <b>Ищу подходящие объявления...</b>\n\n"
-        f"{mode_desc}.",
-        parse_mode=ParseMode.HTML
-    )
-    
-    await callback.answer("Ищу объявления...")
-    
-    # Запускаем поиск объявлений
-    await search_listings_after_setup(callback.bot, user_id, city, min_rooms, max_rooms, min_price, max_price, ai_mode, status_msg)
 
 
 async def search_listings_after_setup(
