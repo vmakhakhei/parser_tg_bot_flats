@@ -2156,12 +2156,12 @@ async def process_min_price_input(message: Message, state: FSMContext):
         
         builder = InlineKeyboardBuilder()
         builder.button(text="💰 От", callback_data="user_price_min")
-        builder.row()
         builder.button(text="💰 До", callback_data="user_price_max")
-        builder.row()
         builder.button(text="✅ Готово", callback_data="setup_filters")
-        builder.row()
         builder.button(text="🔄 Сброс", callback_data="user_price_reset")
+        
+        # Принудительно размещаем по 1 кнопке в ряду
+        builder.adjust(1)
         
         await message.answer(
             f"💰 <b>Настройка цены (USD)</b>\n\n"
@@ -2236,12 +2236,12 @@ async def process_max_price_input(message: Message, state: FSMContext):
         
         builder = InlineKeyboardBuilder()
         builder.button(text="💰 От", callback_data="user_price_min")
-        builder.row()
         builder.button(text="💰 До", callback_data="user_price_max")
-        builder.row()
         builder.button(text="✅ Готово", callback_data="setup_filters")
-        builder.row()
         builder.button(text="🔄 Сброс", callback_data="user_price_reset")
+        
+        # Принудительно размещаем по 1 кнопке в ряду
+        builder.adjust(1)
         
         await message.answer(
             f"💰 <b>Настройка цены (USD)</b>\n\n"
