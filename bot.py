@@ -1395,13 +1395,13 @@ async def cb_check_now_ai(callback: CallbackQuery):
                 await show_actions_menu(callback.bot, user_id, 0, "ИИ-режим")
     
     except Exception as e:
-        logger.error(f"Ошибка ИИ-анализа для пользователя {user_id}: {e}")
+        logger.error(f"Ошибка ИИ-анализа для пользователя {user_id}: {e}", exc_info=True)
         await status_msg.edit_text(
             "❌ <b>Ошибка ИИ-анализа</b>\n\n"
             "Произошла ошибка при попытке проанализировать объявления. Попробуйте позже.",
             parse_mode=ParseMode.HTML
         )
-        await show_actions_menu(callback.bot, user_id, 0, "Обычный режим")
+        await show_actions_menu(callback.bot, user_id, 0, "ИИ-режим")
 
 
 async def show_mode_selection_menu(message: Message, state: FSMContext):
