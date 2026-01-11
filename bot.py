@@ -1126,20 +1126,8 @@ async def cb_check_now(callback: CallbackQuery):
                     new_listings.append(listing)
     
     if new_listings:
-        await status_msg.edit_text(
-            f"✅ <b>Найдено {len(new_listings)} новых объявлений</b>\n\nОтправляю...",
-            parse_mode=ParseMode.HTML
-        )
-        
-        sent_count = 0
-        for listing in new_listings[:20]:
-            # Обычный режим - БЕЗ ИИ-оценки
-            if await send_listing_to_user(callback.bot, user_id, listing, use_ai_valuation=False):
-                sent_count += 1
-                await asyncio.sleep(2)
-        
-        # Показываем финальное меню действий
-        await show_actions_menu(callback.bot, user_id, sent_count, "Обычный режим")
+        # Показываем список всех найденных объявлений для выбора
+        await show_listings_list(callback.bot, user_id, new_listings, status_msg)
     else:
         await status_msg.edit_text(
             "📭 <b>Новых объявлений нет</b>\n\n"
