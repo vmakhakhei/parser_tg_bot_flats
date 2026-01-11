@@ -1330,6 +1330,166 @@ async def show_actions_menu(bot: Bot, user_id: int, listings_count: int, mode: s
         log_warning("bot", f"Не удалось отправить меню действий пользователю {user_id}: {e}")
 
 
+@router.callback_query(F.data.startswith("ai_valuate_"))
+async def cb_ai_valuate_listing(callback: CallbackQuery):
+    """Обработчик кнопки 'ИИ Оценка квартиры' - оценивает конкретное объявление"""
+    user_id = callback.from_user.id
+    
+    await callback.answer("Оцениваю квартиру...")
+    
+    # Декодируем данные объявления из callback_data
+    try:
+        listing_encoded = callback.data.replace("ai_valuate_", "")
+        listing_json = base64.b64decode(listing_encoded.encode('utf-8')).decode('utf-8')
+        listing_data = json.loads(listing_json)
+        
+        # Создаем объект Listing из данных
+        listing = Listing(
+            id=listing_data["id"],
+            source=listing_data["source"],
+            title=listing_data["title"],
+            price=listing_data["price"],
+            price_formatted=f"${listing_data['price']:,}".replace(",", " "),
+            rooms=listing_data["rooms"],
+            area=listing_data["area"],
+            address=listing_data["address"],
+            url=listing_data["url"],
+            description=listing_data.get("description", ""),
+            year_built=listing_data.get("year_built", ""),
+            created_at=listing_data.get("created_at", "")
+        )
+    except Exception as e:
+        log_error("ai_valuate", f"Ошибка декодирования данных объявления: {e}")
+        await callback.message.answer(
+            "❌ <b>Ошибка</b>\n\nНе удалось получить данные объявления. Попробуйте еще раз.",
+            parse_mode=ParseMode.HTML
+        )
+        return
+    
+    # Отправляем уведомление о начале оценки
+    status_msg = await callback.message.answer(
+        "🤖 <b>ИИ-оценка запущена...</b>\n\n"
+        f"Анализирую объявление: {listing.title[:50]}...\n"
+        f"Это может занять до 30 секунд.",
+        parse_mode=ParseMode.HTML
+    )
+    
+    # Выполняем ИИ-оценку
+    try:
+        if not AI_VALUATOR_AVAILABLE or not valuate_listing:
+            await status_msg.edit_text(
+                "❌ <b>ИИ-оценщик недоступен</b>\n\n"
+                "ИИ-оценка временно недоступна. Попробуйте позже.",
+                parse_mode=ParseMode.HTML
+            )
+            return
+        
+        # Таймаут для ИИ-оценки (максимум 30 секунд - включает инспекцию страницы)
+        ai_valuation = await asyncio.wait_for(valuate_listing(listing), timeout=30.0)
+        
+        if ai_valuation:
+            # Форматируем результат оценки
+            fair_price = ai_valuation.get("fair_price_usd", 0)
+            is_overpriced = ai_valuation.get("is_overpriced", False)
+            assessment = ai_valuation.get("assessment", "")
+            renovation_state = ai_valuation.get("renovation_state", "")
+            recommendations = ai_valuation.get("recommendations", "")
+            value_score = ai_valuation.get("value_score", 0)
+            
+            # Формируем сообщение с оценкой
+            evaluation_text = f"🤖 <b>ИИ-оценка квартиры</b>\n\n"
+            evaluation_text += f"🏠 <b>{listing.title}</b>\n"
+            evaluation_text += f"📍 {listing.address}\n"
+            evaluation_text += f"💰 Текущая цена: {listing.price_formatted}\n\n"
+            
+            if fair_price > 0:
+                price_status = "🔴 Завышена" if is_overpriced else "🟢 Справедлива"
+                price_diff = listing.price - fair_price
+                price_diff_percent = abs((price_diff / fair_price) * 100) if fair_price > 0 else 0
+                
+                evaluation_text += f"💵 <b>Справедливая цена:</b> ${fair_price:,} {price_status}\n".replace(",", " ")
+                
+                if price_diff != 0:
+                    diff_text = f"${abs(price_diff):,}" if price_diff > 0 else f"-${abs(price_diff):,}"
+                    evaluation_text += f"📊 Разница: {diff_text} ({price_diff_percent:.1f}%)\n\n"
+                
+                # Оценка соотношения цена/качество
+                if value_score > 0:
+                    score_emoji = "⭐" * min(value_score, 5)
+                    evaluation_text += f"⭐ <b>Оценка:</b> {value_score}/10 {score_emoji}\n\n"
+                
+                # Состояние ремонта
+                if renovation_state:
+                    renovation_emoji = {
+                        "отличное": "✨",
+                        "хорошее": "✅",
+                        "среднее": "⚪",
+                        "требует ремонта": "⚠️",
+                        "плохое": "❌"
+                    }.get(renovation_state.lower(), "📋")
+                    evaluation_text += f"{renovation_emoji} <b>Ремонт:</b> {renovation_state}\n\n"
+                
+                # Детальная оценка
+                if assessment:
+                    evaluation_text += f"💡 <b>Оценка:</b>\n<i>{assessment}</i>\n\n"
+                
+                # Рекомендации
+                if recommendations:
+                    evaluation_text += f"📋 <b>Рекомендации:</b>\n<i>{recommendations}</i>\n\n"
+                
+                evaluation_text += f"🔗 <a href=\"{listing.url}\">Открыть объявление</a>"
+                
+                # Отправляем оценку (разбиваем на части если слишком длинная)
+                try:
+                    await status_msg.edit_text(
+                        evaluation_text,
+                        parse_mode=ParseMode.HTML,
+                        disable_web_page_preview=False
+                    )
+                except Exception as e:
+                    # Если сообщение слишком длинное, отправляем сокращенную версию
+                    log_warning("ai_valuate", f"Сообщение слишком длинное, отправляю сокращенную версию: {e}")
+                    short_text = f"🤖 <b>ИИ-оценка квартиры</b>\n\n"
+                    short_text += f"💵 <b>Справедливая цена:</b> ${fair_price:,} {price_status}\n".replace(",", " ")
+                    if value_score > 0:
+                        short_text += f"⭐ <b>Оценка:</b> {value_score}/10\n"
+                    if assessment:
+                        short_text += f"\n💡 {assessment[:200]}...\n"
+                    short_text += f"\n🔗 <a href=\"{listing.url}\">Открыть объявление</a>"
+                    await status_msg.edit_text(
+                        short_text,
+                        parse_mode=ParseMode.HTML,
+                        disable_web_page_preview=False
+                    )
+            else:
+                await status_msg.edit_text(
+                    "⚠️ <b>ИИ не смог оценить квартиру</b>\n\n"
+                    "Попробуйте позже или проверьте объявление вручную.",
+                    parse_mode=ParseMode.HTML
+                )
+        else:
+            await status_msg.edit_text(
+                "⚠️ <b>ИИ не смог оценить квартиру</b>\n\n"
+                "Попробуйте позже или проверьте объявление вручную.",
+                parse_mode=ParseMode.HTML
+            )
+            
+    except asyncio.TimeoutError:
+        await status_msg.edit_text(
+            "⏱️ <b>Таймаут ИИ-оценки</b>\n\n"
+            "Оценка заняла слишком много времени. Попробуйте позже.",
+            parse_mode=ParseMode.HTML
+        )
+        log_warning("ai_valuate", f"Таймаут ИИ-оценки для {listing.id}")
+    except Exception as e:
+        log_error("ai_valuate", f"Ошибка ИИ-оценки для {listing.id}", e)
+        await status_msg.edit_text(
+            "❌ <b>Ошибка ИИ-оценки</b>\n\n"
+            "Произошла ошибка при оценке квартиры. Попробуйте позже.",
+            parse_mode=ParseMode.HTML
+        )
+
+
 @router.callback_query(F.data == "send_all_listings")
 async def cb_send_all_listings(callback: CallbackQuery):
     """Отправляет все найденные объявления пользователю"""
