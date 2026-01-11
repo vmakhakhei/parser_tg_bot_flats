@@ -136,6 +136,35 @@ class OnlinerRealtScraper(BaseScraper):
                 address_parts.append(location["user_address"])
             address = ", ".join(address_parts) if address_parts else "Барановичи"
             
+            # Год постройки из API
+            year_built = ""
+            # Пробуем разные варианты полей года в API Onliner
+            year_val = apt.get("year", "") or apt.get("build_year", "") or apt.get("year_built", "")
+            if year_val:
+                try:
+                    year_int = int(year_val)
+                    if 1900 <= year_int <= 2025:
+                        year_built = str(year_int)
+                except:
+                    pass
+            
+            # Если не нашли в основных полях, ищем в параметрах
+            if not year_built:
+                params = apt.get("params", [])
+                for param in params:
+                    if isinstance(param, dict):
+                        param_name = param.get("name", "").lower()
+                        if "год" in param_name or "year" in param_name or "постройки" in param_name:
+                            param_value = param.get("value", "")
+                            if param_value:
+                                try:
+                                    year_int = int(param_value)
+                                    if 1900 <= year_int <= 2025:
+                                        year_built = str(year_int)
+                                        break
+                                except:
+                                    pass
+            
             # Фото
             photos = []
             photo_data = apt.get("photo", [])
@@ -164,6 +193,7 @@ class OnlinerRealtScraper(BaseScraper):
                 address=address,
                 photos=photos,
                 url=url,
+                year_built=year_built,
             )
             
         except Exception as e:
@@ -200,6 +230,26 @@ class OnlinerRealtScraper(BaseScraper):
             if price_match:
                 price = self._parse_price(price_match.group(1))
             
+            # Год постройки - улучшенный парсинг из HTML
+            year_built = ""
+            year_patterns = [
+                r'год\s+постройки[:\s]+(\d{4})',
+                r'построен\s+в\s+(\d{4})',
+                r'(\d{4})\s+г\.',
+                r'(\d{4})\s+год',
+                r'год[:\s]+(\d{4})'
+            ]
+            for pattern in year_patterns:
+                year_match = re.search(pattern, text, re.IGNORECASE)
+                if year_match:
+                    try:
+                        year_int = int(year_match.group(1))
+                        if 1900 <= year_int <= 2025:
+                            year_built = str(year_int)
+                            break
+                    except:
+                        pass
+            
             # Фото
             photos = []
             img = item.find('img', src=True)
@@ -219,6 +269,7 @@ class OnlinerRealtScraper(BaseScraper):
                 address="Барановичи",
                 photos=photos,
                 url=url,
+                year_built=year_built,
             )
             
         except Exception as e:

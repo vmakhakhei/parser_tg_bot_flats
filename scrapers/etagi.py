@@ -142,6 +142,28 @@ class EtagiScraper(BaseScraper):
             if floor_match:
                 floor = f"{floor_match.group(1)}/{floor_match.group(2)}"
             
+            # Год постройки - улучшенный парсинг
+            year_built = ""
+            # Ищем различные варианты: "1967 г.", "год постройки: 1967", "построен в 1967", "1967 год"
+            year_patterns = [
+                r'год\s+постройки[:\s]+(\d{4})',
+                r'построен\s+в\s+(\d{4})',
+                r'(\d{4})\s+г\.',
+                r'(\d{4})\s+год',
+                r'год[:\s]+(\d{4})'
+            ]
+            for pattern in year_patterns:
+                year_match = re.search(pattern, text, re.IGNORECASE)
+                if year_match:
+                    try:
+                        year_int = int(year_match.group(1))
+                        # Проверяем разумность года (1900-2025)
+                        if 1900 <= year_int <= 2025:
+                            year_built = str(year_int)
+                            break
+                    except:
+                        pass
+            
             # Адрес - ищем "ул. XXX"
             address = "Барановичи"
             addr_match = re.search(r'ул\.\s*([^,\d]+)', text)
@@ -185,6 +207,7 @@ class EtagiScraper(BaseScraper):
                 price_byn=price_byn,
                 price_per_sqm=price_per_sqm,
                 price_per_sqm_formatted=f"{price_per_sqm:,} BYN/м²".replace(",", " ") if price_per_sqm else "",
+                year_built=year_built,
             )
             
         except Exception as e:

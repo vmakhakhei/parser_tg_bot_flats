@@ -195,11 +195,27 @@ class HataScraper(BaseScraper):
             if floor_match:
                 floor = f"{floor_match.group(1)}/{floor_match.group(2)}"
             
-            # Год постройки
+            # Год постройки - улучшенный парсинг
             year_built = ""
-            year_match = re.search(r'(\d{4})\s*год', text)
-            if year_match:
-                year_built = year_match.group(1)
+            # Ищем различные варианты: "1967 г.", "год постройки: 1967", "построен в 1967", "1967 год"
+            year_patterns = [
+                r'год\s+постройки[:\s]+(\d{4})',
+                r'построен\s+в\s+(\d{4})',
+                r'(\d{4})\s+г\.',
+                r'(\d{4})\s+год',
+                r'год[:\s]+(\d{4})'
+            ]
+            for pattern in year_patterns:
+                year_match = re.search(pattern, text, re.IGNORECASE)
+                if year_match:
+                    try:
+                        year_int = int(year_match.group(1))
+                        # Проверяем разумность года (1900-2025)
+                        if 1900 <= year_int <= 2025:
+                            year_built = str(year_int)
+                            break
+                    except:
+                        pass
             
             # Фото - ищем img в контейнере
             photos = []
