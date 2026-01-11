@@ -2047,10 +2047,18 @@ async def search_listings_after_setup(
     min_price: int,
     max_price: int,
     ai_mode: bool,
-    status_msg: Message
+    status_msg: Optional[Message] = None
 ):
     """Ищет объявления после завершения настройки"""
     try:
+        # Создаем статус сообщение, если оно не передано
+        if status_msg is None:
+            status_msg = await bot.send_message(
+                user_id,
+                "🔍 <b>Ищу подходящие объявления...</b>",
+                parse_mode=ParseMode.HTML
+            )
+        
         # Получаем объявления
         aggregator = ListingsAggregator(enabled_sources=DEFAULT_SOURCES)
         all_listings = await aggregator.fetch_all_listings(
@@ -2087,10 +2095,18 @@ async def search_listings_after_setup(
                             new_listings.append(listing)
             
             if new_listings:
-                await status_msg.edit_text(
-                    f"✅ <b>Найдено {len(new_listings)} объявлений</b>\n\nОтправляю...",
-                    parse_mode=ParseMode.HTML
-                )
+                try:
+                    await status_msg.edit_text(
+                        f"✅ <b>Найдено {len(new_listings)} объявлений</b>\n\nОтправляю...",
+                        parse_mode=ParseMode.HTML
+                    )
+                except Exception:
+                    # Если не удалось отредактировать, отправляем новое сообщение
+                    await bot.send_message(
+                        user_id,
+                        f"✅ <b>Найдено {len(new_listings)} объявлений</b>\n\nОтправляю...",
+                        parse_mode=ParseMode.HTML
+                    )
                 
                 sent_count = 0
                 for listing in new_listings[:20]:
@@ -2102,15 +2118,40 @@ async def search_listings_after_setup(
                 # Показываем финальное меню действий
                 await show_actions_menu(bot, user_id, sent_count, "Обычный режим")
             else:
+                try:
+                    await status_msg.edit_text(
+                        "📭 <b>Объявлений не найдено</b>\n\n"
+                        "Попробуйте изменить фильтры или проверить позже.",
+                        parse_mode=ParseMode.HTML
+                    )
+                except Exception:
+                    await bot.send_message(
+                        user_id,
+                        "📭 <b>Объявлений не найдено</b>\n\n"
+                        "Попробуйте изменить фильтры или проверить позже.",
+                        parse_mode=ParseMode.HTML
+                    )
                 # Показываем меню действий даже если объявлений нет
                 await show_actions_menu(bot, user_id, 0, "Обычный режим")
     except Exception as e:
         logger.error(f"Ошибка при поиске объявлений: {e}")
-        await status_msg.edit_text(
-            f"⚠️ <b>Ошибка при поиске объявлений</b>\n\n"
-            f"Попробуйте позже или измените фильтры через /start",
-            parse_mode=ParseMode.HTML
-        )
+        try:
+            if status_msg:
+                await status_msg.edit_text(
+                    f"⚠️ <b>Ошибка при поиске объявлений</b>\n\n"
+                    f"Попробуйте позже или измените фильтры через /start",
+                    parse_mode=ParseMode.HTML
+                )
+            else:
+                await bot.send_message(
+                    user_id,
+                    f"⚠️ <b>Ошибка при поиске объявлений</b>\n\n"
+                    f"Попробуйте позже или измените фильтры через /start",
+                    parse_mode=ParseMode.HTML
+                )
+        except Exception:
+            # Если не удалось отправить сообщение об ошибке, просто логируем
+            log_error("search", f"Не удалось отправить сообщение об ошибке пользователю {user_id}", e)
 
 
 @router.callback_query(F.data.startswith("city_"))
