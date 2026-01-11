@@ -2132,25 +2132,16 @@ async def cb_setup_rooms_step(callback: CallbackQuery, state: FSMContext):
 
 
 async def show_price_selection_menu(message: Message, state: FSMContext, rooms_text: str):
-    """Показывает меню выбора цены"""
-    builder = InlineKeyboardBuilder()
-    builder.button(text="💰 От", callback_data="setup_price_min")
-    builder.button(text="💰 До", callback_data="setup_price_max")
-    builder.button(text="✅ Продолжить", callback_data="setup_price_continue")
-    
-    # Принудительно размещаем по 1 кнопке в ряду
-    builder.adjust(1)
-    
+    """Показывает запрос минимальной цены"""
     await message.answer(
         f"✅ Комнаты выбраны: <b>{rooms_text}</b>\n\n"
         f"💰 <b>Шаг 3 из 4: Укажите диапазон цен (USD)</b>\n\n"
-        f"Нажмите кнопки для ввода минимальной и максимальной цены.\n"
-        f"Или используйте команды:\n"
-        f"• <code>/pricefrom 20000</code> — цена от $20,000\n"
-        f"• <code>/priceto 50000</code> — цена до $50,000\n\n"
-        f"<i>По умолчанию: от $0 до $100,000</i>",
-        parse_mode=ParseMode.HTML,
-        reply_markup=builder.as_markup()
+        f"Введите минимальную цену (ОТ):\n\n"
+        f"Просто напишите число, например:\n"
+        f"• <code>0</code> — без ограничения снизу\n"
+        f"• <code>20000</code> — от $20,000\n"
+        f"• <code>30000</code> — от $30,000",
+        parse_mode=ParseMode.HTML
     )
     await state.set_state(SetupStates.waiting_for_price_min)
 
@@ -2170,19 +2161,15 @@ async def process_setup_price_min(message: Message, state: FSMContext):
         
         await state.update_data(min_price=min_price)
         
-        # Запрашиваем максимальную цену
-        builder = InlineKeyboardBuilder()
-        builder.button(text="💰 До", callback_data="setup_price_max")
-        builder.button(text="✅ Продолжить", callback_data="setup_price_continue")
-        
-        # Принудительно размещаем по 1 кнопке в ряду
-        builder.adjust(1)
-        
+        # Сразу запрашиваем максимальную цену
         await message.answer(
             f"✅ Минимальная цена установлена: <b>${min_price:,}</b>\n\n"
-            f"Теперь укажите максимальную цену или нажмите \"Продолжить\" для значения по умолчанию ($100,000).",
-            parse_mode=ParseMode.HTML,
-            reply_markup=builder.as_markup()
+            f"💰 Теперь введите максимальную цену (ДО):\n\n"
+            f"Просто напишите число, например:\n"
+            f"• <code>50000</code> — до $50,000\n"
+            f"• <code>80000</code> — до $80,000\n"
+            f"• <code>100000</code> — до $100,000",
+            parse_mode=ParseMode.HTML
         )
         await state.set_state(SetupStates.waiting_for_price_max)
         
