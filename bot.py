@@ -2339,6 +2339,9 @@ async def search_listings_after_setup(
         except Exception:
             # Если не удалось отправить сообщение об ошибке, просто логируем
             log_error("search", f"Не удалось отправить сообщение об ошибке пользователю {user_id}", e)
+        finally:
+            # После настройки фильтров всегда показываем меню ИИ-режима
+            await show_actions_menu(bot, user_id, 0, "ИИ-режим")
 
 
 @router.callback_query(F.data.startswith("city_"))
