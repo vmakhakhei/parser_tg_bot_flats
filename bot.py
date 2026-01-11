@@ -1171,16 +1171,21 @@ async def cb_check_now_from_ai(callback: CallbackQuery):
         parse_mode=ParseMode.HTML
     )
     
-    # Ищем все объявления для города пользователя
+    # Ищем все объявления для города пользователя с использованием фильтров пользователя
     user_city = user_filters.get("city", "барановичи")
+    min_rooms = user_filters.get("min_rooms", 1)
+    max_rooms = user_filters.get("max_rooms", 5)
+    min_price = user_filters.get("min_price", 0)
+    max_price = user_filters.get("max_price", 1000000)
+    
     aggregator = ListingsAggregator(enabled_sources=DEFAULT_SOURCES)
     
     all_listings = await aggregator.fetch_all_listings(
         city=user_city,
-        min_rooms=1,
-        max_rooms=5,
-        min_price=0,
-        max_price=1000000,
+        min_rooms=min_rooms,
+        max_rooms=max_rooms,
+        min_price=min_price,
+        max_price=max_price,
     )
     
     new_listings = []
