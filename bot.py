@@ -77,6 +77,7 @@ class SetupStates(StatesGroup):
     waiting_for_rooms = State()
     waiting_for_price_min = State()
     waiting_for_price_max = State()
+    waiting_for_mode = State()
 
 # Список областных центров и крупных городов Беларуси
 BELARUS_CITIES = [
@@ -1300,6 +1301,84 @@ async def cb_check_now_ai(callback: CallbackQuery):
         await show_actions_menu(callback.bot, user_id, 0, "Обычный режим")
 
 
+async def show_mode_selection_menu(message: Message, state: FSMContext):
+    """Показывает меню выбора режима работы после настройки фильтров"""
+    builder = InlineKeyboardBuilder()
+    
+    builder.button(text="🔍 Обычный парсер", callback_data="setup_mode_normal")
+    builder.button(text="🤖 ИИ-мод (лучшие варианты)", callback_data="setup_mode_ai")
+    
+    # Принудительно размещаем по 1 кнопке в ряду
+    builder.adjust(1)
+    
+    await message.answer(
+        "🎯 <b>Шаг 4 из 4: Выберите режим работы</b>\n\n"
+        "<b>🔍 Обычный парсер</b>\n"
+        "Бот будет присылать все найденные объявления, соответствующие вашим фильтрам.\n\n"
+        "<b>🤖 ИИ-мод</b>\n"
+        "ИИ проанализирует все объявления и выберет только лучшие варианты по соотношению цена-качество (3-5 вариантов).",
+        parse_mode=ParseMode.HTML,
+        reply_markup=builder.as_markup()
+    )
+    await state.set_state(SetupStates.waiting_for_mode)
+
+
+@router.callback_query(F.data.in_(["setup_mode_normal", "setup_mode_ai"]))
+async def cb_setup_mode(callback: CallbackQuery, state: FSMContext):
+    """Обработчик выбора режима работы"""
+    user_id = callback.from_user.id
+    ai_mode = callback.data == "setup_mode_ai"
+    
+    await callback.answer()
+    
+    # Получаем данные из состояния
+    data = await state.get_data()
+    city = data.get("city", "барановичи")
+    min_rooms = data.get("min_rooms", 1)
+    max_rooms = data.get("max_rooms", 4)
+    min_price = data.get("min_price", 0)
+    max_price = data.get("max_price", 100000)
+    
+    # Сохраняем фильтры с выбранным режимом
+    await set_user_filters(
+        user_id=user_id,
+        city=city,
+        min_rooms=min_rooms,
+        max_rooms=max_rooms,
+        min_price=min_price,
+        max_price=max_price,
+        is_active=True,
+        ai_mode=ai_mode
+    )
+    
+    await state.clear()
+    
+    # Отправляем сообщение о начале поиска
+    mode_text = "ИИ-мод" if ai_mode else "Обычный парсер"
+    status_msg = await callback.message.answer(
+        f"✅ <b>Фильтры настроены!</b>\n\n"
+        f"📍 Город: {city.title()}\n"
+        f"🚪 Комнаты: {min_rooms}-{max_rooms}\n"
+        f"💰 Цена: ${min_price:,} - ${max_price:,}\n"
+        f"🤖 Режим: {mode_text}\n\n"
+        f"🔍 Ищу подходящие объявления...",
+        parse_mode=ParseMode.HTML
+    )
+    
+    # Запускаем поиск
+    await search_listings_after_setup(
+        callback.bot,
+        user_id,
+        city,
+        min_rooms,
+        max_rooms,
+        min_price,
+        max_price,
+        ai_mode,
+        status_msg
+    )
+
+
 async def show_listings_list(bot: Bot, user_id: int, listings: List[Listing], status_msg: Message):
     """Показывает список всех найденных объявлений с краткой информацией"""
     if not listings:
@@ -2094,39 +2173,8 @@ async def process_setup_price_max(message: Message, state: FSMContext):
         
         await state.update_data(max_price=max_price)
         
-        # Сохраняем фильтры без выбора режима (всегда обычный режим, ИИ-оценка только по запросу)
-        data = await state.get_data()
-        city = data.get("city", "барановичи")
-        min_rooms = data.get("min_rooms", 1)
-        max_rooms = data.get("max_rooms", 4)
-        min_price = data.get("min_price", 0)
-        max_price = data.get("max_price", 100000)
-        
-        await set_user_filters(
-            user_id=message.from_user.id,
-            city=city,
-            min_rooms=min_rooms,
-            max_rooms=max_rooms,
-            min_price=min_price,
-            max_price=max_price,
-            is_active=True,
-            ai_mode=False  # Всегда обычный режим
-        )
-        
-        await state.clear()
-        
-        # Запускаем поиск
-        await search_listings_after_setup(
-            message.bot, 
-            message.from_user.id, 
-            city, 
-            min_rooms, 
-            max_rooms, 
-            min_price, 
-            max_price, 
-            False,  # ai_mode всегда False
-            None
-        )
+        # Показываем меню выбора режима
+        await show_mode_selection_menu(message, state)
         
     except ValueError:
         await message.answer(

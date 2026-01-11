@@ -304,6 +304,11 @@ class AIValuator:
                 district_price_info = f"\n- Район: {district} ({district_prices.get('тип', '')})\n"
                 district_price_info += f"  Средние цены в районе: ${min_price:,}-${max_price:,} (${min_sqm}-${max_sqm}/м²)"
         
+        # Формируем строку с ценой для промпта - явно указываем валюту
+        price_info = f"${current_price_usd:,} USD"
+        if listing.currency == "BYN" and listing.price_byn:
+            price_info += f" (оригинальная цена: {listing.price_byn:,} BYN)"
+        
         prompt = f"""Ты профессиональный оценщик недвижимости с 10+ летним опытом работы на рынке Барановичей, Беларусь.
 Твоя задача - помочь пользователю принять правильное решение о покупке квартиры на основе актуальных рыночных данных 2025-2026 годов.
 
@@ -314,7 +319,7 @@ class AIValuator:
 - Год постройки: {listing.year_built if listing.year_built else 'не указан'}{year_info}
 - Адрес: {listing.address}{district_price_info}
 - Цена за м²: {price_per_sqm_text}
-- Текущая цена: {listing.price_formatted} (≈${current_price_usd:,} USD)
+- Текущая цена: {price_info}
 - Состояние ремонта: {renovation_state}{description_analysis}
 {f'- Описание: {description_text[:500]}' if description_text else ''}
 
