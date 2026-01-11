@@ -1895,8 +1895,39 @@ async def cb_setup_price_continue(callback: CallbackQuery, state: FSMContext):
     # Используем цены по умолчанию
     await state.update_data(min_price=0, max_price=100000)
     
-    # Переходим к выбору режима
-    await show_mode_selection_menu(callback.message, state)
+    # Сохраняем фильтры без выбора режима (всегда обычный режим, ИИ-оценка только по запросу)
+    data = await state.get_data()
+    city = data.get("city", "барановичи")
+    min_rooms = data.get("min_rooms", 1)
+    max_rooms = data.get("max_rooms", 4)
+    min_price = data.get("min_price", 0)
+    max_price = data.get("max_price", 100000)
+    
+    await set_user_filters(
+        user_id=callback.from_user.id,
+        city=city,
+        min_rooms=min_rooms,
+        max_rooms=max_rooms,
+        min_price=min_price,
+        max_price=max_price,
+        is_active=True,
+        ai_mode=False  # Всегда обычный режим
+    )
+    
+    await state.clear()
+    
+    # Запускаем поиск
+    await search_listings_after_setup(
+        callback.bot, 
+        callback.from_user.id, 
+        city, 
+        min_rooms, 
+        max_rooms, 
+        min_price, 
+        max_price, 
+        False,  # ai_mode всегда False
+        None
+    )
     await callback.answer()
 
 
