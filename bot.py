@@ -999,6 +999,7 @@ async def cb_setup_filters(callback: CallbackQuery):
     builder.button(text=mode_text, callback_data="toggle_ai_mode")
     builder.row()
     builder.button(text="✅ Готово", callback_data="user_filters_done")
+    builder.row()
     
     # Показываем текущие значения если они есть
     if user_filters:
@@ -2295,7 +2296,7 @@ async def cb_filter_rooms(callback: CallbackQuery):
     builder.button(text="1-4 комн.", callback_data="rooms_1_4")
     builder.row()
     builder.button(text="🔙 Назад", callback_data="filter_back")
-    builder.adjust(3, 3, 1, 1)
+    builder.row()
     
     await callback.message.edit_text(
         "🚪 <b>Выберите количество комнат:</b>\n\n"
@@ -2349,7 +2350,7 @@ async def cb_filter_price(callback: CallbackQuery):
     builder.button(text="Любая цена", callback_data="price_0_500000")
     builder.row()
     builder.button(text="🔙 Назад", callback_data="filter_back")
-    builder.adjust(3, 2, 2, 1, 1)
+    builder.row()
     
     await callback.message.edit_text(
         "💰 <b>Выберите диапазон цены:</b>\n\n"
