@@ -822,9 +822,11 @@ async def cmd_start(message: Message, state: FSMContext):
         
         builder = InlineKeyboardBuilder()
         builder.button(text="🔍 Проверить сейчас", callback_data="check_now")
-        builder.button(text="⚙️ Изменить фильтры", callback_data="setup_filters")
+        builder.button(text="🤖 ИИ-анализ", callback_data="check_now_ai")
         builder.row()
+        builder.button(text="⚙️ Изменить фильтры", callback_data="setup_filters")
         builder.button(text="📊 Статистика", callback_data="show_stats")
+        builder.row()
         builder.button(text=mode_text, callback_data="toggle_ai_mode")
         
         city_name = user_filters.get('city', 'барановичи').title()
