@@ -842,6 +842,7 @@ async def cmd_start(message: Message, state: FSMContext):
         builder.button(text="📊 Статистика", callback_data="show_stats")
         builder.row()
         builder.button(text=mode_text, callback_data="toggle_ai_mode")
+        builder.row()
         
         city_name = user_filters.get('city', 'барановичи').title()
         await message.answer(
