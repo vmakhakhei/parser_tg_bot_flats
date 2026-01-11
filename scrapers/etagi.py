@@ -28,7 +28,31 @@ class EtagiScraper(BaseScraper):
     """Парсер объявлений с baranovichi.etagi.com через API"""
     
     SOURCE_NAME = "etagi"
-    BASE_URL = "https://baranovichi.etagi.com"
+    BASE_URL = "https://baranovichi.etagi.com"  # По умолчанию для Барановичей
+    
+    def _get_city_url(self, city: str) -> str:
+        """Преобразует название города в URL для Etagi"""
+        city_lower = city.lower().strip()
+        
+        # Маппинг городов на поддомены Etagi
+        city_mapping = {
+            "барановичи": "baranovichi.etagi.com",
+            "брест": "brest.etagi.com",
+            "минск": "minsk.etagi.com",
+            "гомель": "gomel.etagi.com",
+            "гродно": "grodno.etagi.com",
+            "витебск": "vitebsk.etagi.com",
+            "могилев": "mogilev.etagi.com",
+            "могилёв": "mogilev.etagi.com",
+        }
+        
+        # Если город найден в маппинге, используем его
+        if city_lower in city_mapping:
+            return f"https://{city_mapping[city_lower]}"
+        
+        # По умолчанию используем Барановичи
+        log_warning("etagi", f"Город '{city}' не найден в маппинге, используем Барановичи")
+        return f"https://{city_mapping['барановичи']}"
     
     async def fetch_listings(
         self,
@@ -40,7 +64,9 @@ class EtagiScraper(BaseScraper):
     ) -> List[Listing]:
         """Получает список объявлений через HTML парсинг"""
         
-        url = f"{self.BASE_URL}/realty/"
+        # Получаем URL для города
+        base_url = self._get_city_url(city)
+        url = f"{base_url}/realty/"
         
         html = await self._fetch_html(url)
         if not html:
@@ -55,7 +81,8 @@ class EtagiScraper(BaseScraper):
         min_rooms: int,
         max_rooms: int,
         min_price: int,
-        max_price: int
+        max_price: int,
+        base_url: str = None
     ) -> List[Listing]:
         """Парсит HTML страницу"""
         soup = BeautifulSoup(html, 'lxml')

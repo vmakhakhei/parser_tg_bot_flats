@@ -92,8 +92,12 @@ class HataScraper(BaseScraper):
             link_text = link.get_text(strip=True)
             
             # Проверяем что объявление НЕ из другого города (Брест, Минск и т.д.)
-            other_cities = ['брест', 'минск', 'гродно', 'витебск', 'могилев', 'гомель']
-            is_other_city = any(city in link_text.lower() for city in other_cities) and 'барановичи' not in link_text.lower()
+            # Используем переданный параметр city вместо жестко заданного "барановичи"
+            city_lower = city.lower().strip()
+            other_cities = ['брест', 'минск', 'гродно', 'витебск', 'могилев', 'могилёв', 'гомель', 'пинск', 'кобрин', 'береза']
+            # Убираем текущий город из списка других городов
+            other_cities_filtered = [c for c in other_cities if c != city_lower]
+            is_other_city = any(other_city in link_text.lower() for other_city in other_cities_filtered) and city_lower not in link_text.lower()
             
             if is_other_city:
                 log_warning("hata", f"Пропускаем из другого города: {link_text[:60]}")
