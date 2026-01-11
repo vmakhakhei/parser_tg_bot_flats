@@ -454,3 +454,38 @@ async def get_ai_selected_listings(user_id: int) -> List[Dict[str, Any]]:
         rows = await cursor.fetchall()
         return [dict(row) for row in rows]
 
+
+async def is_listing_ai_valuated(user_id: int, listing_id: str) -> bool:
+    """Проверяет, было ли объявление уже оценено через ИИ для пользователя"""
+    async with aiosqlite.connect(DATABASE_PATH) as db:
+        cursor = await db.execute(
+            "SELECT listing_id FROM ai_valuations WHERE user_id = ? AND listing_id = ?",
+            (user_id, listing_id)
+        )
+        result = await cursor.fetchone()
+        return result is not None
+
+
+async def mark_listing_ai_valuated(user_id: int, listing_id: str):
+    """Отмечает объявление как оцененное через ИИ"""
+    async with aiosqlite.connect(DATABASE_PATH) as db:
+        await db.execute("""
+            INSERT OR IGNORE INTO ai_valuations (user_id, listing_id, evaluated_at)
+            VALUES (?, ?, ?)
+        """, (user_id, listing_id, datetime.now().isoformat()))
+        await db.commit()
+
+
+async def get_listing_by_id(listing_id: str) -> Optional[Dict[str, Any]]:
+    """Получает объявление из базы данных по ID"""
+    async with aiosqlite.connect(DATABASE_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        cursor = await db.execute(
+            "SELECT * FROM sent_listings WHERE id = ?",
+            (listing_id,)
+        )
+        row = await cursor.fetchone()
+        if row:
+            return dict(row)
+        return None
+
