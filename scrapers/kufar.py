@@ -31,6 +31,30 @@ class KufarScraper(BaseScraper):
     BASE_URL = "https://re.kufar.by"
     API_URL = "https://api.kufar.by/search-api/v2/search/rendered-paginated"
     
+    def _get_city_gtsy(self, city: str) -> str:
+        """Преобразует название города в формат gtsy для Kufar API"""
+        city_lower = city.lower().strip()
+        
+        # Маппинг городов на формат Kufar API (gtsy)
+        city_mapping = {
+            "барановичи": "country-belarus~province-brestskaja_oblast~locality-baranovichi",
+            "брест": "country-belarus~province-brestskaja_oblast~locality-brest",
+            "минск": "country-belarus~locality-minsk",
+            "гомель": "country-belarus~province-gomelskaja_oblast~locality-gomel",
+            "гродно": "country-belarus~province-grodnenskaja_oblast~locality-grodno",
+            "витебск": "country-belarus~province-vitebskaja_oblast~locality-vitebsk",
+            "могилев": "country-belarus~province-mogilevskaja_oblast~locality-mogilev",
+            "могилёв": "country-belarus~province-mogilevskaja_oblast~locality-mogilev",
+        }
+        
+        # Если город найден в маппинге, используем его
+        if city_lower in city_mapping:
+            return city_mapping[city_lower]
+        
+        # По умолчанию используем Барановичи
+        log_warning("kufar", f"Город '{city}' не найден в маппинге, используем Барановичи")
+        return city_mapping["барановичи"]
+    
     async def fetch_listings(
         self,
         city: str = "барановичи",
@@ -41,13 +65,16 @@ class KufarScraper(BaseScraper):
     ) -> List[Listing]:
         """Получает список объявлений через API"""
         
+        # Получаем gtsy параметр для города
+        gtsy_param = self._get_city_gtsy(city)
+        
         # Базовые параметры запроса (работающий формат из браузера)
         # size=30 берем из пагинации сайта
         url = (
             f"{self.API_URL}"
             f"?cat=1010"  # Категория: квартиры
             f"&cur=USD"
-            f"&gtsy=country-belarus~province-brestskaja_oblast~locality-baranovichi"
+            f"&gtsy={gtsy_param}"
             f"&typ=sell"  # Продажа
             f"&sort=lst.d"  # Сортировка по дате (новые первые)
             f"&size=30"  # Количество объявлений на странице
