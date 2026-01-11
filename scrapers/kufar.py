@@ -162,18 +162,55 @@ class KufarScraper(BaseScraper):
             
             # Год постройки
             year_built = ""
-            year_val = params.get("year", "") or params.get("re_year", "")
+            # Пробуем разные варианты параметров года из API Kufar
+            year_val = params.get("year", "") or params.get("re_year", "") or params.get("re_build_year", "")
             if year_val:
                 try:
-                    year_built = str(int(year_val))
+                    # Если это число
+                    year_int = int(year_val)
+                    if 1900 <= year_int <= 2025:  # Проверяем разумность года
+                        year_built = str(year_int)
                 except:
                     # Пробуем из текстового значения
-                    year_text = params.get("year_text", "") or params.get("re_year_text", "")
+                    year_text = params.get("year_text", "") or params.get("re_year_text", "") or params.get("re_build_year_text", "")
                     if year_text:
                         # Извлекаем год из текста (например "1985" или "1985 г.")
                         year_match = re.search(r'(\d{4})', str(year_text))
                         if year_match:
-                            year_built = year_match.group(1)
+                            year_int = int(year_match.group(1))
+                            if 1900 <= year_int <= 2025:  # Проверяем разумность года
+                                year_built = str(year_int)
+            
+            # Если не нашли в параметрах, ищем в ad_parameters напрямую
+            if not year_built:
+                for param in ad.get("ad_parameters", []):
+                    param_name = param.get("p", "").lower()
+                    # Ищем параметры, связанные с годом постройки
+                    if "year" in param_name or "год" in param_name or "постройки" in param_name:
+                        param_value = param.get("v", "")
+                        param_text = param.get("vl", "")
+                        
+                        # Пробуем числовое значение
+                        if param_value:
+                            try:
+                                year_int = int(param_value)
+                                if 1900 <= year_int <= 2025:
+                                    year_built = str(year_int)
+                                    break
+                            except:
+                                pass
+                        
+                        # Пробуем текстовое значение
+                        if not year_built and param_text:
+                            year_match = re.search(r'(\d{4})', str(param_text))
+                            if year_match:
+                                try:
+                                    year_int = int(year_match.group(1))
+                                    if 1900 <= year_int <= 2025:
+                                        year_built = str(year_int)
+                                        break
+                                except:
+                                    pass
             
             # Цена
             price = 0
