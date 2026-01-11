@@ -1243,21 +1243,28 @@ async def cb_check_now_ai(callback: CallbackQuery):
     )
     
     try:
+        # Используем фильтры пользователя для получения объявлений
+        min_rooms = user_filters.get("min_rooms", 1)
+        max_rooms = user_filters.get("max_rooms", 5)
+        min_price = user_filters.get("min_price", 0)
+        max_price = user_filters.get("max_price", 1000000)
+        
         all_listings = await aggregator.fetch_all_listings(
             city=user_city,
-            min_rooms=1,
-            max_rooms=5,
-            min_price=0,
-            max_price=1000000,
+            min_rooms=min_rooms,
+            max_rooms=max_rooms,
+            min_price=min_price,
+            max_price=max_price,
         )
         
         # Собираем ВСЕ подходящие объявления (включая уже отправленные), применяя фильтры пользователя
+        # ВАЖНО: НЕ проверяем is_listing_sent_to_user - берем ВСЕ подходящие объявления
         candidate_listings = []
         filtered_out_by_filters = 0
         filtered_out_by_dup = 0
         
         for listing in all_listings:
-            # ВАЖНО: Всегда применяем фильтры пользователя
+            # ВАЖНО: Всегда применяем фильтры пользователя (дополнительная проверка)
             if not _matches_user_filters(listing, user_filters):
                 filtered_out_by_filters += 1
                 continue
@@ -1274,6 +1281,7 @@ async def cb_check_now_ai(callback: CallbackQuery):
                 filtered_out_by_dup += 1
                 continue
             
+            # ВАЖНО: Добавляем ВСЕ подходящие объявления, включая уже отправленные
             candidate_listings.append(listing)
         
         logger.info(f"ИИ-анализ для пользователя {user_id}: всего объявлений {len(all_listings)}, "
