@@ -77,7 +77,6 @@ class SetupStates(StatesGroup):
     waiting_for_rooms = State()
     waiting_for_price_min = State()
     waiting_for_price_max = State()
-    waiting_for_mode = State()
 
 # Список областных центров и крупных городов Беларуси
 BELARUS_CITIES = [
