@@ -834,15 +834,13 @@ async def cmd_start(message: Message, state: FSMContext):
         
         builder = InlineKeyboardBuilder()
         builder.button(text="🔍 Проверить сейчас", callback_data="check_now")
-        builder.row()
         builder.button(text="🤖 ИИ-анализ", callback_data="check_now_ai")
-        builder.row()
         builder.button(text="⚙️ Изменить фильтры", callback_data="setup_filters")
-        builder.row()
         builder.button(text="📊 Статистика", callback_data="show_stats")
-        builder.row()
         builder.button(text=mode_text, callback_data="toggle_ai_mode")
-        builder.row()
+        
+        # Принудительно размещаем по 1 кнопке в ряду
+        builder.adjust(1)
         
         city_name = user_filters.get('city', 'барановичи').title()
         await message.answer(
@@ -864,21 +862,15 @@ async def show_city_selection_menu(message: Message, state: FSMContext):
     
     # Все кнопки на отдельных строках для лучшей читаемости
     builder.button(text="Минск", callback_data="setup_city_минск")
-    builder.row()
     builder.button(text="Брест", callback_data="setup_city_брест")
-    builder.row()
     builder.button(text="Гродно", callback_data="setup_city_гродно")
-    builder.row()
     builder.button(text="Витебск", callback_data="setup_city_витебск")
-    builder.row()
     builder.button(text="Гомель", callback_data="setup_city_гомель")
-    builder.row()
     builder.button(text="Могилёв", callback_data="setup_city_могилёв")
-    builder.row()
-    
-    # Кнопка для ввода вручную
     builder.button(text="✏️ Ввести вручную", callback_data="setup_city_manual")
-    builder.row()
+    
+    # Принудительно размещаем по 1 кнопке в ряду
+    builder.adjust(1)
     
     await message.answer(
         "📍 <b>Шаг 1 из 4: Выберите город</b>\n\n"
@@ -991,17 +983,15 @@ async def cb_setup_filters(callback: CallbackQuery):
     
     builder = InlineKeyboardBuilder()
     builder.button(text="📍 Город", callback_data="user_filter_city")
-    builder.row()
     builder.button(text="🚪 Комнаты", callback_data="user_filter_rooms")
-    builder.row()
     builder.button(text="💰 Цена", callback_data="user_filter_price")
-    builder.row()
     ai_mode = user_filters.get("ai_mode", False) if user_filters else False
     mode_text = "🤖 ИИ-режим: ВКЛ" if ai_mode else "🤖 ИИ-режим: ВЫКЛ"
     builder.button(text=mode_text, callback_data="toggle_ai_mode")
-    builder.row()
     builder.button(text="✅ Готово", callback_data="user_filters_done")
-    builder.row()
+    
+    # Принудительно размещаем по 1 кнопке в ряду
+    builder.adjust(1)
     
     # Показываем текущие значения если они есть
     if user_filters:
@@ -1253,12 +1243,12 @@ async def show_actions_menu(bot: Bot, user_id: int, listings_count: int, mode: s
     builder = InlineKeyboardBuilder()
     
     builder.button(text="🔍 Проверить сейчас", callback_data="check_now")
-    builder.row()
     builder.button(text="🤖 ИИ-анализ", callback_data="check_now_ai")
-    builder.row()
     builder.button(text="⚙️ Изменить фильтры", callback_data="setup_filters")
-    builder.row()
     builder.button(text="📊 Статистика", callback_data="show_stats")
+    
+    # Принудительно размещаем по 1 кнопке в ряду
+    builder.adjust(1)
     
     mode_text = "ИИ-режим" if mode == "ИИ-режим" else "Обычный режим"
     if listings_count > 0:
@@ -1460,16 +1450,14 @@ async def cb_user_filter_rooms(callback: CallbackQuery):
     
     # Все кнопки на отдельных строках для лучшей читаемости
     builder.button(text="1-2 комн.", callback_data="user_rooms_1_2")
-    builder.row()
     builder.button(text="2-3 комн.", callback_data="user_rooms_2_3")
-    builder.row()
     builder.button(text="3-4 комн.", callback_data="user_rooms_3_4")
-    builder.row()
     builder.button(text="4+ комн.", callback_data="user_rooms_4_5")
-    builder.row()
     builder.button(text="Все (1-5)", callback_data="user_rooms_1_5")
-    builder.row()
     builder.button(text="Назад", callback_data="setup_filters")
+    
+    # Принудительно размещаем по 1 кнопке в ряду
+    builder.adjust(1)
     
     await callback.message.edit_text(
         "🚪 <b>Выберите диапазон комнат:</b>",
@@ -1573,23 +1561,16 @@ async def cb_user_filter_city(callback: CallbackQuery):
     
     # Все кнопки на отдельных строках для лучшей читаемости
     builder.button(text="Минск", callback_data="city_минск")
-    builder.row()
     builder.button(text="Брест", callback_data="city_брест")
-    builder.row()
     builder.button(text="Гродно", callback_data="city_гродно")
-    builder.row()
     builder.button(text="Витебск", callback_data="city_витебск")
-    builder.row()
     builder.button(text="Гомель", callback_data="city_гомель")
-    builder.row()
     builder.button(text="Могилёв", callback_data="city_могилёв")
-    builder.row()
-    
-    # Кнопка для ввода вручную
     builder.button(text="✏️ Ввести вручную", callback_data="city_manual")
-    builder.row()
     builder.button(text="🔙 Назад", callback_data="setup_filters")
-    builder.row()
+    
+    # Принудительно размещаем по 1 кнопке в ряду
+    builder.adjust(1)
     
     await callback.message.edit_text(
         "📍 <b>Выберите город для поиска</b>\n\n"
@@ -1666,15 +1647,13 @@ async def show_rooms_selection_menu(message: Message, state: FSMContext, city_na
     
     # Все кнопки на отдельных строках для лучшей читаемости
     builder.button(text="1-2 комн.", callback_data="setup_rooms_1_2")
-    builder.row()
     builder.button(text="2-3 комн.", callback_data="setup_rooms_2_3")
-    builder.row()
     builder.button(text="3-4 комн.", callback_data="setup_rooms_3_4")
-    builder.row()
     builder.button(text="4+ комн.", callback_data="setup_rooms_4_5")
-    builder.row()
     builder.button(text="Все (1-5)", callback_data="setup_rooms_1_5")
-    builder.row()
+    
+    # Принудительно размещаем по 1 кнопке в ряду
+    builder.adjust(1)
     
     await message.answer(
         f"✅ Город выбран: <b>{city_name}</b>\n\n"
