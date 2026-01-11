@@ -31,6 +31,7 @@ class Listing:
     price_per_sqm: int = 0  # Цена за м² (в основной валюте)
     price_per_sqm_formatted: str = ""  # Форматированная цена за м²
     year_built: str = ""  # Год постройки
+    created_at: str = ""  # Дата создания объявления (формат: YYYY-MM-DD или "сегодня", "вчера", "X дней назад")
     
     def __post_init__(self):
         """Вычисляем цену за м² если не указана"""
@@ -59,6 +60,7 @@ class Listing:
             "price_usd": self.price_usd,
             "price_per_sqm": self.price_per_sqm,
             "year_built": self.year_built,
+            "created_at": self.created_at,
         }
     
     @staticmethod

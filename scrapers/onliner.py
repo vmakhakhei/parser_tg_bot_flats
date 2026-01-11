@@ -165,6 +165,35 @@ class OnlinerRealtScraper(BaseScraper):
                                 except:
                                     pass
             
+            # Дата создания объявления из API
+            created_at = ""
+            # Пробуем разные варианты полей даты в API Onliner
+            created_timestamp = apt.get("created_at", "") or apt.get("published_at", "") or apt.get("date", "")
+            if created_timestamp:
+                try:
+                    from datetime import datetime
+                    # Если это timestamp в миллисекундах
+                    if len(str(created_timestamp)) > 10:
+                        timestamp = int(created_timestamp) / 1000
+                    else:
+                        timestamp = int(created_timestamp)
+                    dt = datetime.fromtimestamp(timestamp)
+                    created_at = dt.strftime("%Y-%m-%d")
+                except:
+                    # Если не timestamp, пробуем как строку даты
+                    try:
+                        from datetime import datetime
+                        # Пробуем разные форматы
+                        for fmt in ["%Y-%m-%d", "%Y-%m-%dT%H:%M:%S", "%d.%m.%Y"]:
+                            try:
+                                dt = datetime.strptime(str(created_timestamp)[:10], fmt)
+                                created_at = dt.strftime("%Y-%m-%d")
+                                break
+                            except:
+                                pass
+                    except:
+                        pass
+            
             # Фото
             photos = []
             photo_data = apt.get("photo", [])
@@ -194,6 +223,7 @@ class OnlinerRealtScraper(BaseScraper):
                 photos=photos,
                 url=url,
                 year_built=year_built,
+                created_at=created_at,
             )
             
         except Exception as e:
@@ -250,6 +280,39 @@ class OnlinerRealtScraper(BaseScraper):
                     except:
                         pass
             
+            # Дата создания объявления из HTML
+            created_at = ""
+            date_patterns = [
+                r'сегодня',
+                r'вчера',
+                r'(\d+)\s+дн[яей]\s+назад',
+                r'(\d{1,2})\.(\d{1,2})\.(\d{4})',  # DD.MM.YYYY
+                r'(\d{4})-(\d{1,2})-(\d{1,2})',  # YYYY-MM-DD
+            ]
+            for pattern in date_patterns:
+                date_match = re.search(pattern, text, re.IGNORECASE)
+                if date_match:
+                    if pattern == r'сегодня':
+                        from datetime import datetime
+                        created_at = datetime.now().strftime("%Y-%m-%d")
+                        break
+                    elif pattern == r'вчера':
+                        from datetime import datetime, timedelta
+                        created_at = (datetime.now() - timedelta(days=1)).strftime("%Y-%m-%d")
+                        break
+                    elif pattern == r'(\d+)\s+дн[яей]\s+назад':
+                        from datetime import datetime, timedelta
+                        days_ago = int(date_match.group(1))
+                        created_at = (datetime.now() - timedelta(days=days_ago)).strftime("%Y-%m-%d")
+                        break
+                    elif pattern == r'(\d{1,2})\.(\d{1,2})\.(\d{4})':
+                        day, month, year = date_match.groups()
+                        created_at = f"{year}-{month.zfill(2)}-{day.zfill(2)}"
+                        break
+                    elif pattern == r'(\d{4})-(\d{1,2})-(\d{1,2})':
+                        created_at = date_match.group(0)
+                        break
+            
             # Фото
             photos = []
             img = item.find('img', src=True)
@@ -270,6 +333,7 @@ class OnlinerRealtScraper(BaseScraper):
                 photos=photos,
                 url=url,
                 year_built=year_built,
+                created_at=created_at,
             )
             
         except Exception as e:

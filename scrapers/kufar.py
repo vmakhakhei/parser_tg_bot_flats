@@ -123,6 +123,29 @@ class KufarScraper(BaseScraper):
             if ad_link and not ad_link.startswith("http"):
                 ad_link = f"{self.BASE_URL}{ad_link}"
             
+            # Дата создания объявления
+            created_at = ""
+            # Пробуем разные варианты полей даты в API Kufar
+            list_time = ad.get("list_time", "")  # Unix timestamp
+            if list_time:
+                try:
+                    from datetime import datetime
+                    # Если это timestamp в миллисекундах
+                    if len(str(list_time)) > 10:
+                        timestamp = int(list_time) / 1000
+                    else:
+                        timestamp = int(list_time)
+                    dt = datetime.fromtimestamp(timestamp)
+                    created_at = dt.strftime("%Y-%m-%d")
+                except:
+                    pass
+            
+            # Если не нашли timestamp, пробуем текстовые поля
+            if not created_at:
+                date_text = ad.get("list_time_text", "") or ad.get("created_at", "") or ad.get("date", "")
+                if date_text:
+                    created_at = date_text
+            
             # Получаем параметры объявления
             params = {}
             for param in ad.get("ad_parameters", []):
@@ -310,6 +333,7 @@ class KufarScraper(BaseScraper):
                 price_usd=price_usd,
                 price_byn=price_byn,
                 year_built=year_built,
+                created_at=created_at,
             )
             
         except Exception as e:

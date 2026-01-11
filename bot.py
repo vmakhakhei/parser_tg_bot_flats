@@ -209,6 +209,28 @@ def format_listing_message(listing: Listing, ai_valuation: Optional[Dict[str, An
     if listing.year_built:
         lines.append(f"📅 <b>Год:</b> {listing.year_built}")
     
+    # Дата создания объявления
+    if listing.created_at:
+        # Форматируем дату для вывода
+        try:
+            from datetime import datetime
+            date_obj = datetime.strptime(listing.created_at, "%Y-%m-%d")
+            today = datetime.now()
+            days_diff = (today - date_obj).days
+            
+            if days_diff == 0:
+                date_display = "сегодня"
+            elif days_diff == 1:
+                date_display = "вчера"
+            elif days_diff < 7:
+                date_display = f"{days_diff} дн. назад"
+            else:
+                date_display = date_obj.strftime("%d.%m.%Y")
+        except:
+            date_display = listing.created_at
+        
+        lines.append(f"📆 <b>Опубликовано:</b> {date_display}")
+    
     lines.append(f"📍 <b>Адрес:</b> {listing.address}")
     lines.append(f"🌐 <b>Источник:</b> {listing.source}")
     lines.append("")
