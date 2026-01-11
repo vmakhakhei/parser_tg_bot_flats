@@ -823,41 +823,19 @@ async def show_city_selection_menu(message: Message, state: FSMContext):
     """Показывает меню выбора города для пошаговой настройки"""
     builder = InlineKeyboardBuilder()
     
-    # Областные центры (первые 6) - по 3 кнопки в ряду для большей ширины
+    # Только областные центры - по 2 кнопки в ряду для лучшей читаемости
     builder.button(text="Минск", callback_data="setup_city_минск")
+    builder.button(text="Брест", callback_data="setup_city_брест")
+    builder.row()
+    builder.button(text="Гродно", callback_data="setup_city_гродно")
+    builder.button(text="Витебск", callback_data="setup_city_витебск")
+    builder.row()
     builder.button(text="Гомель", callback_data="setup_city_гомель")
     builder.button(text="Могилёв", callback_data="setup_city_могилёв")
     builder.row()
-    builder.button(text="Витебск", callback_data="setup_city_витебск")
-    builder.button(text="Гродно", callback_data="setup_city_гродно")
-    builder.button(text="Брест", callback_data="setup_city_брест")
-    builder.row()
-    
-    # Крупные города - по 3 кнопки в ряду
-    builder.button(text="Барановичи", callback_data="setup_city_барановичи")
-    builder.button(text="Бобруйск", callback_data="setup_city_бобруйск")
-    builder.button(text="Пинск", callback_data="setup_city_пинск")
-    builder.row()
-    builder.button(text="Орша", callback_data="setup_city_орша")
-    builder.button(text="Мозырь", callback_data="setup_city_мозырь")
-    builder.button(text="Солигорск", callback_data="setup_city_солигорск")
-    builder.row()
-    
-    # Еще города - по 3 кнопки в ряду
-    builder.button(text="Новополоцк", callback_data="setup_city_новополоцк")
-    builder.button(text="Лида", callback_data="setup_city_лида")
-    builder.button(text="Полоцк", callback_data="setup_city_полоцк")
-    builder.row()
-    builder.button(text="Молодечно", callback_data="setup_city_молодечно")
-    builder.button(text="Борисов", callback_data="setup_city_борисов")
-    builder.button(text="Жлобин", callback_data="setup_city_жлобин")
-    builder.row()
-    builder.button(text="Слуцк", callback_data="setup_city_слуцк")
-    builder.button(text="Кобрин", callback_data="setup_city_кобрин")
-    builder.row()
     
     # Кнопка для ввода вручную
-    builder.button(text="✏️ Вручную", callback_data="setup_city_manual")
+    builder.button(text="✏️ Ввести вручную", callback_data="setup_city_manual")
     
     await message.answer(
         "📍 <b>Шаг 1 из 4: Выберите город</b>\n\n"
@@ -1267,11 +1245,12 @@ async def cb_user_filter_rooms(callback: CallbackQuery):
     """Показывает кнопки выбора комнат для пользователя"""
     builder = InlineKeyboardBuilder()
     
-    # Кнопки для выбора диапазонов комнат
-    builder.button(text="1-2 комнаты", callback_data="user_rooms_1_2")
-    builder.button(text="2-3 комнаты", callback_data="user_rooms_2_3")
-    builder.button(text="3-4 комнаты", callback_data="user_rooms_3_4")
-    builder.button(text="4+ комнат", callback_data="user_rooms_4_5")
+    # Кнопки для выбора диапазонов комнат - по 2 в ряду для лучшей читаемости
+    builder.button(text="1-2 комн.", callback_data="user_rooms_1_2")
+    builder.button(text="2-3 комн.", callback_data="user_rooms_2_3")
+    builder.row()
+    builder.button(text="3-4 комн.", callback_data="user_rooms_3_4")
+    builder.button(text="4+ комн.", callback_data="user_rooms_4_5")
     builder.row()
     builder.button(text="Все (1-5)", callback_data="user_rooms_1_5")
     builder.button(text="Назад", callback_data="setup_filters")
