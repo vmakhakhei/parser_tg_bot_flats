@@ -1311,12 +1311,36 @@ async def cb_check_now_ai(callback: CallbackQuery):
         )
         
         # Отправляем все объявления в ИИ для выбора лучших
-        if AI_VALUATOR_AVAILABLE and select_best_listings:
+        if not AI_VALUATOR_AVAILABLE:
+            logger.warning(f"ИИ-оценщик недоступен для пользователя {user_id}")
+            await status_msg.edit_text(
+                "❌ <b>ИИ-оценщик недоступен</b>\n\n"
+                "ИИ-анализ временно недоступен. Попробуйте позже.",
+                parse_mode=ParseMode.HTML
+            )
+            await show_actions_menu(callback.bot, user_id, 0, "ИИ-режим")
+            return
+        
+        if not select_best_listings:
+            logger.warning(f"Функция select_best_listings недоступна для пользователя {user_id}")
+            await status_msg.edit_text(
+                "❌ <b>ИИ-оценщик недоступен</b>\n\n"
+                "ИИ-анализ временно недоступен. Попробуйте позже.",
+                parse_mode=ParseMode.HTML
+            )
+            await show_actions_menu(callback.bot, user_id, 0, "ИИ-режим")
+            return
+        
+        logger.info(f"Запускаю ИИ-анализ для {len(candidate_listings)} объявлений, запрашиваю {max_results} лучших")
+        
+        try:
             best_with_reasons = await select_best_listings(
                 candidate_listings,
                 user_filters,
                 max_results=max_results
             )
+            
+            logger.info(f"ИИ вернул {len(best_with_reasons) if best_with_reasons else 0} вариантов")
             
             if best_with_reasons and len(best_with_reasons) > 0:
                 logger.info(f"ИИ выбрал {len(best_with_reasons)} лучших вариантов для пользователя {user_id}")
