@@ -1441,10 +1441,12 @@ async def show_rooms_selection_menu(message: Message, state: FSMContext, city_na
     """Показывает меню выбора комнат"""
     builder = InlineKeyboardBuilder()
     
-    builder.button(text="1-2 комнаты", callback_data="setup_rooms_1_2")
-    builder.button(text="2-3 комнаты", callback_data="setup_rooms_2_3")
-    builder.button(text="3-4 комнаты", callback_data="setup_rooms_3_4")
-    builder.button(text="4+ комнат", callback_data="setup_rooms_4_5")
+    # По 2 кнопки в ряду для лучшей читаемости
+    builder.button(text="1-2 комн.", callback_data="setup_rooms_1_2")
+    builder.button(text="2-3 комн.", callback_data="setup_rooms_2_3")
+    builder.row()
+    builder.button(text="3-4 комн.", callback_data="setup_rooms_3_4")
+    builder.button(text="4+ комн.", callback_data="setup_rooms_4_5")
     builder.row()
     builder.button(text="Все (1-5)", callback_data="setup_rooms_1_5")
     
