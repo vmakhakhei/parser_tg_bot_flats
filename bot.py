@@ -1277,7 +1277,7 @@ async def cb_check_now_ai(callback: CallbackQuery):
                 "Не найдено объявлений, соответствующих вашим фильтрам.",
                 parse_mode=ParseMode.HTML
             )
-            await show_actions_menu(callback.bot, user_id, 0, "Обычный режим")
+            await show_actions_menu(callback.bot, user_id, 0, "ИИ-режим")
             return
         
         # Определяем количество лучших вариантов в зависимости от общего количества (от 1 до 5)
@@ -1350,7 +1350,7 @@ async def cb_check_now_ai(callback: CallbackQuery):
                     "Попробуйте позже или используйте обычный поиск.",
                     parse_mode=ParseMode.HTML
                 )
-                await show_actions_menu(callback.bot, user_id, 0, "Обычный режим")
+                await show_actions_menu(callback.bot, user_id, 0, "ИИ-режим")
         else:
             await status_msg.edit_text(
                 "❌ <b>ИИ-оценщик недоступен</b>\n\n"
@@ -1454,7 +1454,7 @@ async def show_listings_list(bot: Bot, user_id: int, listings: List[Listing], st
             "📭 <b>Объявлений не найдено</b>",
             parse_mode=ParseMode.HTML
         )
-        await show_actions_menu(bot, user_id, 0, "Обычный режим")
+        await show_actions_menu(bot, user_id, 0, "ИИ-режим")
         return
     
     # Ограничиваем до 20 объявлений для удобства
@@ -1834,7 +1834,7 @@ async def cb_send_all_listings(callback: CallbackQuery):
 async def cb_cancel_listings(callback: CallbackQuery):
     """Отменяет просмотр списка объявлений"""
     await callback.answer("Отменено")
-    await show_actions_menu(callback.bot, callback.from_user.id, 0, "Обычный режим")
+    await show_actions_menu(callback.bot, callback.from_user.id, 0, "ИИ-режим")
 
 
 @router.callback_query(F.data == "reset_filters")
