@@ -1153,6 +1153,73 @@ async def cb_check_now(callback: CallbackQuery):
         await show_actions_menu(callback.bot, user_id, 0, "Обычный режим")
 
 
+@router.callback_query(F.data == "check_now_from_ai")
+async def cb_check_now_from_ai(callback: CallbackQuery):
+    """Обычный парсер из меню ИИ-режима - сразу отправляет все объявления без показа списка"""
+    user_id = callback.from_user.id
+    
+    await callback.answer("Отправляю все объявления...")
+    
+    user_filters = await get_user_filters(user_id)
+    if not user_filters:
+        await callback.message.answer("Сначала настройте фильтры через /start")
+        return
+    
+    status_msg = await callback.message.answer(
+        "🔍 <b>Проверяю объявления...</b>\n\n"
+        "Отправляю все найденные объявления...",
+        parse_mode=ParseMode.HTML
+    )
+    
+    # Ищем все объявления для города пользователя
+    user_city = user_filters.get("city", "барановичи")
+    aggregator = ListingsAggregator(enabled_sources=DEFAULT_SOURCES)
+    
+    all_listings = await aggregator.fetch_all_listings(
+        city=user_city,
+        min_rooms=1,
+        max_rooms=5,
+        min_price=0,
+        max_price=1000000,
+    )
+    
+    new_listings = []
+    for listing in all_listings:
+        if _matches_user_filters(listing, user_filters):
+            if not await is_listing_sent_to_user(user_id, listing.id):
+                dup_check = await is_duplicate_content(
+                    listing.rooms, listing.area, listing.address, listing.price
+                )
+                if not dup_check["is_duplicate"]:
+                    new_listings.append(listing)
+    
+    if new_listings:
+        try:
+            await status_msg.edit_text(
+                f"✅ <b>Найдено {len(new_listings)} объявлений</b>\n\nОтправляю...",
+                parse_mode=ParseMode.HTML
+            )
+        except Exception:
+            pass
+        
+        sent_count = 0
+        for listing in new_listings[:20]:  # Максимум 20 за раз
+            if await send_listing_to_user(callback.bot, user_id, listing, use_ai_valuation=False):
+                sent_count += 1
+                await asyncio.sleep(2)
+        
+        # Показываем меню ИИ-режима после отправки
+        await show_actions_menu(callback.bot, user_id, sent_count, "ИИ-режим")
+    else:
+        await status_msg.edit_text(
+            "📭 <b>Новых объявлений нет</b>\n\n"
+            "Все подходящие объявления уже были отправлены ранее.",
+            parse_mode=ParseMode.HTML
+        )
+        # Показываем меню ИИ-режима даже если объявлений нет
+        await show_actions_menu(callback.bot, user_id, 0, "ИИ-режим")
+
+
 @router.callback_query(F.data == "check_now_ai")
 async def cb_check_now_ai(callback: CallbackQuery):
     """ИИ-анализ: собирает все объявления и выбирает лучшие 3-5"""
@@ -1445,7 +1512,7 @@ async def show_actions_menu(bot: Bot, user_id: int, listings_count: int, mode: s
     
     # Если это ИИ-режим, показываем меню выбора режима + сброс фильтров
     if mode == "ИИ-режим":
-        builder.button(text="🔍 Обычный парсер", callback_data="check_now")
+        builder.button(text="🔍 Обычный парсер", callback_data="check_now_from_ai")
         builder.button(text="🤖 ИИ-мод", callback_data="check_now_ai")
         builder.button(text="🔄 Сбросить фильтры и начать заново", callback_data="reset_filters")
     else:
@@ -1753,14 +1820,14 @@ async def cb_send_all_listings(callback: CallbackQuery):
                 sent_count += 1
                 await asyncio.sleep(2)
         
-        # Показываем финальное меню действий
-        await show_actions_menu(callback.bot, user_id, sent_count, "Обычный режим")
+        # Показываем меню ИИ-режима после отправки (так как это было вызвано из меню после ИИ-мода)
+        await show_actions_menu(callback.bot, user_id, sent_count, "ИИ-режим")
     else:
         await callback.message.answer(
             "📭 <b>Новых объявлений нет</b>",
             parse_mode=ParseMode.HTML
         )
-        await show_actions_menu(callback.bot, user_id, 0, "Обычный режим")
+        await show_actions_menu(callback.bot, user_id, 0, "ИИ-режим")
 
 
 @router.callback_query(F.data == "cancel_listings")
