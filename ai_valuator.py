@@ -548,50 +548,90 @@ class AIValuator:
                             inspection_data["detailed_info"]["params_table"] = text[:500]
                     
                     # Извлекаем год постройки
+                    # Сначала используем год из API (если есть) - он более надежный
                     year_built = None
-                    # Ищем в тексте страницы паттерны типа "год постройки: 1985", "1985 г.", "построен в 1985"
-                    year_patterns = [
-                        r'год\s+постройки[:\s]+(\d{4})',
-                        r'построен\s+в\s+(\d{4})',
-                        r'(\d{4})\s+г\.',
-                        r'год[:\s]+(\d{4})',
-                        r'(\d{4})\s+год'
-                    ]
+                    if listing.year_built:
+                        try:
+                            year = int(listing.year_built)
+                            if 1900 <= year <= 2025:
+                                year_built = listing.year_built
+                                log_info("ai_inspect", f"Использую год постройки из API: {year_built}")
+                        except:
+                            pass
                     
-                    page_text = soup.get_text()
-                    for pattern in year_patterns:
-                        match = re.search(pattern, page_text, re.IGNORECASE)
-                        if match:
-                            year_str = match.group(1)
-                            try:
-                                year = int(year_str)
-                                # Проверяем что год разумный (1900-2025)
-                                if 1900 <= year <= 2025:
-                                    year_built = str(year)
-                                    break
-                            except:
-                                pass
-                    
-                    # Если не нашли через паттерны, ищем в параметрах объявления
+                    # Если года нет в API, ищем на странице
                     if not year_built:
-                        # Для Kufar: ищем в параметрах
-                        param_elements = soup.find_all(['div', 'span', 'td'], class_=re.compile(r'param|property|characteristic', re.I))
-                        for elem in param_elements:
-                            text = elem.get_text()
-                            if 'год' in text.lower() or 'постройки' in text.lower():
-                                year_match = re.search(r'(\d{4})', text)
+                        # Для Kufar: ищем в разделе "О доме" -> "Год постройки"
+                        # Ищем секции с информацией о доме
+                        house_sections = soup.find_all(['div', 'section'], class_=re.compile(r'house|дом|property|characteristic', re.I))
+                        
+                        # Также ищем в структурированных данных (data-атрибуты, метаданные)
+                        for section in house_sections:
+                            section_text = section.get_text()
+                            # Ищем "Год постройки" в контексте секции о доме
+                            if 'год' in section_text.lower() and 'постройки' in section_text.lower():
+                                year_match = re.search(r'год\s+постройки[:\s]+(\d{4})', section_text, re.IGNORECASE)
                                 if year_match:
                                     try:
                                         year = int(year_match.group(1))
                                         if 1900 <= year <= 2025:
                                             year_built = str(year)
+                                            log_info("ai_inspect", f"Найден год постройки в секции 'О доме': {year_built}")
+                                            break
+                                    except:
+                                        pass
+                        
+                        # Если не нашли в секциях, ищем в параметрах объявления
+                        if not year_built:
+                            # Ищем элементы с классом, содержащим "param", "property", "characteristic"
+                            param_elements = soup.find_all(['div', 'span', 'td', 'dt', 'dd'], 
+                                                          class_=re.compile(r'param|property|characteristic|info|detail', re.I))
+                            for elem in param_elements:
+                                text = elem.get_text()
+                                # Ищем только в элементах, где есть слова "год" и "постройки" вместе
+                                if 'год' in text.lower() and 'постройки' in text.lower():
+                                    year_match = re.search(r'(\d{4})', text)
+                                    if year_match:
+                                        try:
+                                            year = int(year_match.group(1))
+                                            if 1900 <= year <= 2025:
+                                                year_built = str(year)
+                                                log_info("ai_inspect", f"Найден год постройки в параметрах: {year_built}")
+                                                break
+                                        except:
+                                            pass
+                        
+                        # Последний вариант: ищем в тексте страницы, но только в контексте "год постройки"
+                        if not year_built:
+                            page_text = soup.get_text()
+                            # Более строгий паттерн: ищем "год постройки" с годом рядом
+                            strict_patterns = [
+                                r'год\s+постройки[:\s]+(\d{4})',
+                                r'построен\s+в\s+(\d{4})\s+г',
+                                r'год\s+постройки[:\s]*(\d{4})',
+                            ]
+                            for pattern in strict_patterns:
+                                match = re.search(pattern, page_text, re.IGNORECASE)
+                                if match:
+                                    year_str = match.group(1)
+                                    try:
+                                        year = int(year_str)
+                                        # Проверяем что год разумный (1900-2025)
+                                        if 1900 <= year <= 2025:
+                                            year_built = str(year)
+                                            log_info("ai_inspect", f"Найден год постройки через паттерн: {year_built}")
                                             break
                                     except:
                                         pass
                     
                     if year_built:
                         inspection_data["detailed_info"]["year_built"] = year_built
-                        log_info("ai_inspect", f"Найден год постройки: {year_built}")
+                        # Обновляем год в listing, если его там не было
+                        if not listing.year_built:
+                            listing.year_built = year_built
+                            log_info("ai_inspect", f"Обновлен год постройки в listing: {year_built}")
+                    else:
+                        log_info("ai_inspect", "Год постройки не найден на странице")
                     
                     # Анализируем адрес для определения центра и района
                     address_text = listing.address.lower()
