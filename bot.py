@@ -1253,9 +1253,13 @@ async def cb_check_now_ai(callback: CallbackQuery):
         
         # Собираем ВСЕ подходящие объявления (включая уже отправленные), применяя фильтры пользователя
         candidate_listings = []
+        filtered_out_by_filters = 0
+        filtered_out_by_dup = 0
+        
         for listing in all_listings:
             # ВАЖНО: Всегда применяем фильтры пользователя
             if not _matches_user_filters(listing, user_filters):
+                filtered_out_by_filters += 1
                 continue
             
             # Проверяем глобальную дедупликацию по контенту
@@ -1267,9 +1271,15 @@ async def cb_check_now_ai(callback: CallbackQuery):
             )
             
             if dup_check["is_duplicate"]:
+                filtered_out_by_dup += 1
                 continue
             
             candidate_listings.append(listing)
+        
+        logger.info(f"ИИ-анализ для пользователя {user_id}: всего объявлений {len(all_listings)}, "
+                   f"отфильтровано по фильтрам {filtered_out_by_filters}, "
+                   f"отфильтровано дубликатов {filtered_out_by_dup}, "
+                   f"кандидатов для анализа {len(candidate_listings)}")
         
         if not candidate_listings:
             await status_msg.edit_text(
