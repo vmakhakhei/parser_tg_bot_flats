@@ -962,9 +962,10 @@ async def cmd_filters(message: Message):
     # Создаем inline кнопки
     builder = InlineKeyboardBuilder()
     builder.button(text="🚪 Комнаты", callback_data="filter_rooms")
+    builder.row()
     builder.button(text="💰 Цена", callback_data="filter_price")
+    builder.row()
     builder.button(text="🔄 Сброс", callback_data="filter_reset")
-    builder.adjust(2, 1)
     
     await message.answer(
         f"⚙️ <b>Текущие фильтры</b>\n\n"
@@ -2406,9 +2407,10 @@ async def cb_filter_back(callback: CallbackQuery):
     
     builder = InlineKeyboardBuilder()
     builder.button(text="🚪 Комнаты", callback_data="filter_rooms")
+    builder.row()
     builder.button(text="💰 Цена", callback_data="filter_price")
+    builder.row()
     builder.button(text="🔄 Сброс", callback_data="filter_reset")
-    builder.adjust(2, 1)
     
     await callback.message.edit_text(
         f"⚙️ <b>Текущие фильтры</b>\n\n"
