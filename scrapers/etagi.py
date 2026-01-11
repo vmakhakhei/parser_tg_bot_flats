@@ -73,7 +73,7 @@ class EtagiScraper(BaseScraper):
             log_warning("etagi", "Не удалось загрузить страницу")
             return []
         
-        return self._parse_html(html, min_rooms, max_rooms, min_price, max_price)
+        return self._parse_html(html, min_rooms, max_rooms, min_price, max_price, base_url)
     
     def _parse_html(
         self, 
