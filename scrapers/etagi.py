@@ -110,7 +110,9 @@ class EtagiScraper(BaseScraper):
             if href.startswith('http'):
                 full_url = href
             else:
-                full_url = f"{self.BASE_URL}{href}"
+                # Используем переданный base_url или fallback на self.BASE_URL
+                url_base = base_url if base_url else self.BASE_URL
+                full_url = f"{url_base}{href}"
             
             # Ищем родительский контейнер с данными объявления
             container = link.find_parent(['div', 'article', 'li', 'generic'])
