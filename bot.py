@@ -877,6 +877,7 @@ async def show_city_selection_menu(message: Message, state: FSMContext):
     
     # Кнопка для ввода вручную
     builder.button(text="✏️ Ввести вручную", callback_data="setup_city_manual")
+    builder.row()
     
     await message.answer(
         "📍 <b>Шаг 1 из 4: Выберите город</b>\n\n"
@@ -1585,6 +1586,7 @@ async def cb_user_filter_city(callback: CallbackQuery):
     builder.button(text="✏️ Ввести вручную", callback_data="city_manual")
     builder.row()
     builder.button(text="🔙 Назад", callback_data="setup_filters")
+    builder.row()
     
     await callback.message.edit_text(
         "📍 <b>Выберите город для поиска</b>\n\n"
@@ -1669,6 +1671,7 @@ async def show_rooms_selection_menu(message: Message, state: FSMContext, city_na
     builder.button(text="4+ комн.", callback_data="setup_rooms_4_5")
     builder.row()
     builder.button(text="Все (1-5)", callback_data="setup_rooms_1_5")
+    builder.row()
     
     await message.answer(
         f"✅ Город выбран: <b>{city_name}</b>\n\n"
