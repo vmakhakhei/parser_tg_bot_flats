@@ -239,12 +239,19 @@ def format_listing_message(listing: Listing, ai_valuation: Optional[Dict[str, An
     return "\n".join(lines)
 
 
-async def send_listing_to_user(bot: Bot, user_id: int, listing: Listing) -> bool:
-    """Отправляет объявление пользователю"""
+async def send_listing_to_user(bot: Bot, user_id: int, listing: Listing, use_ai_valuation: bool = False) -> bool:
+    """Отправляет объявление пользователю
+    
+    Args:
+        bot: Экземпляр бота
+        user_id: ID пользователя
+        listing: Объявление для отправки
+        use_ai_valuation: Если True, будет выполнена ИИ-оценка (по умолчанию False - без оценки)
+    """
     try:
-        # Пытаемся получить ИИ-оценку (если доступна)
+        # ИИ-оценка выполняется ТОЛЬКО если явно запрошена
         ai_valuation = None
-        if AI_VALUATOR_AVAILABLE and valuate_listing:
+        if use_ai_valuation and AI_VALUATOR_AVAILABLE and valuate_listing:
             try:
                 # Задержка между запросами к ИИ (чтобы не превысить rate limit)
                 # Groq: 30 запросов/минуту = ~2 секунды между запросами
@@ -372,8 +379,8 @@ async def check_new_listings(bot: Bot):
                     )
                     continue
                 
-                # Отправляем объявление пользователю
-                if await send_listing_to_user(bot, user_id, listing):
+                # Отправляем объявление пользователю БЕЗ ИИ-оценки (обычный режим)
+                if await send_listing_to_user(bot, user_id, listing, use_ai_valuation=False):
                     user_new_count += 1
                     total_sent += 1
                     # Задержка между сообщениями чтобы не получить бан
@@ -576,6 +583,9 @@ async def check_new_listings_ai_mode(
                 
                 # Сохраняем выбранные варианты для будущего сравнения
                 await save_ai_selected_listings(user_id, best_with_reasons)
+                
+                # Показываем финальное меню действий после ИИ-анализа
+                await show_actions_menu(bot, user_id, len(best_with_reasons), "ИИ-режим")
                 
             else:
                 logger.warning(f"ИИ не выбрал ни одного варианта для пользователя {user_id}")
@@ -1125,20 +1135,21 @@ async def cb_check_now(callback: CallbackQuery):
         
         sent_count = 0
         for listing in new_listings[:20]:
-            if await send_listing_to_user(callback.bot, user_id, listing):
+            # Обычный режим - БЕЗ ИИ-оценки
+            if await send_listing_to_user(callback.bot, user_id, listing, use_ai_valuation=False):
                 sent_count += 1
                 await asyncio.sleep(2)
         
-        await status_msg.edit_text(
-            f"✅ <b>Отправлено {sent_count} новых объявлений</b>",
-            parse_mode=ParseMode.HTML
-        )
+        # Показываем финальное меню действий
+        await show_actions_menu(callback.bot, user_id, sent_count, "Обычный режим")
     else:
         await status_msg.edit_text(
             "📭 <b>Новых объявлений нет</b>\n\n"
             "Все подходящие объявления уже были отправлены ранее.",
             parse_mode=ParseMode.HTML
         )
+        # Показываем меню действий даже если объявлений нет
+        await show_actions_menu(callback.bot, user_id, 0, "Обычный режим")
 
 
 @router.callback_query(F.data == "check_now_ai")
@@ -1181,6 +1192,50 @@ async def cb_check_now_ai(callback: CallbackQuery):
         await status_msg.delete()
     except Exception:
         pass
+
+
+async def show_actions_menu(bot: Bot, user_id: int, listings_count: int, mode: str = "Обычный режим"):
+    """Показывает меню действий после отправки объявлений"""
+    builder = InlineKeyboardBuilder()
+    
+    builder.button(text="🔍 Проверить сейчас", callback_data="check_now")
+    builder.button(text="🤖 ИИ-анализ", callback_data="check_now_ai")
+    builder.row()
+    builder.button(text="⚙️ Изменить фильтры", callback_data="setup_filters")
+    builder.button(text="📊 Статистика", callback_data="show_stats")
+    
+    mode_text = "ИИ-режим" if mode == "ИИ-режим" else "Обычный режим"
+    if listings_count > 0:
+        message_text = (
+            f"✅ <b>Готово!</b>\n\n"
+            f"📨 Отправлено объявлений: <b>{listings_count}</b>\n"
+            f"🤖 Режим: <b>{mode_text}</b>\n\n"
+            f"<b>Что дальше?</b>\n"
+            f"• 🔍 Проверить сейчас - найти все новые объявления\n"
+            f"• 🤖 ИИ-анализ - выбрать лучшие варианты\n"
+            f"• ⚙️ Изменить фильтры - настроить поиск\n"
+            f"• 📊 Статистика - посмотреть историю"
+        )
+    else:
+        message_text = (
+            f"📭 <b>Новых объявлений нет</b>\n\n"
+            f"Все подходящие объявления уже были отправлены ранее.\n\n"
+            f"<b>Что дальше?</b>\n"
+            f"• 🔍 Проверить сейчас - найти все новые объявления\n"
+            f"• 🤖 ИИ-анализ - выбрать лучшие варианты\n"
+            f"• ⚙️ Изменить фильтры - настроить поиск\n"
+            f"• 📊 Статистика - посмотреть историю"
+        )
+    
+    try:
+        await bot.send_message(
+            user_id,
+            message_text,
+            parse_mode=ParseMode.HTML,
+            reply_markup=builder.as_markup()
+        )
+    except Exception as e:
+        log_warning("bot", f"Не удалось отправить меню действий пользователю {user_id}: {e}")
 
 
 @router.callback_query(F.data == "show_stats")
