@@ -955,10 +955,11 @@ async def cmd_filters(message: Message):
     # Создаем inline кнопки
     builder = InlineKeyboardBuilder()
     builder.button(text="🚪 Комнаты", callback_data="filter_rooms")
-    builder.row()
     builder.button(text="💰 Цена", callback_data="filter_price")
-    builder.row()
     builder.button(text="🔄 Сброс", callback_data="filter_reset")
+    
+    # Принудительно размещаем по 1 кнопке в ряду
+    builder.adjust(1)
     
     await message.answer(
         f"⚙️ <b>Текущие фильтры</b>\n\n"
@@ -1216,8 +1217,10 @@ async def show_listings_list(bot: Bot, user_id: int, listings: List[Listing], st
     
     builder = InlineKeyboardBuilder()
     builder.button(text="📤 Отправить все", callback_data="send_all_listings")
-    builder.row()
     builder.button(text="❌ Отмена", callback_data="cancel_listings")
+    
+    # Принудительно размещаем по 1 кнопке в ряду
+    builder.adjust(1)
     
     try:
         await status_msg.edit_text(
@@ -1501,12 +1504,12 @@ async def cb_user_filter_price(callback: CallbackQuery):
     
     builder = InlineKeyboardBuilder()
     builder.button(text="💰 От", callback_data="user_price_min")
-    builder.row()
     builder.button(text="💰 До", callback_data="user_price_max")
-    builder.row()
     builder.button(text="✅ Готово", callback_data="setup_filters")
-    builder.row()
     builder.button(text="🔄 Сброс", callback_data="user_price_reset")
+    
+    # Принудительно размещаем по 1 кнопке в ряду
+    builder.adjust(1)
     
     await callback.message.edit_text(
         f"💰 <b>Настройка цены (USD)</b>\n\n"
@@ -1686,10 +1689,11 @@ async def show_price_selection_menu(message: Message, state: FSMContext, rooms_t
     """Показывает меню выбора цены"""
     builder = InlineKeyboardBuilder()
     builder.button(text="💰 От", callback_data="setup_price_min")
-    builder.row()
     builder.button(text="💰 До", callback_data="setup_price_max")
-    builder.row()
     builder.button(text="✅ Продолжить", callback_data="setup_price_continue")
+    
+    # Принудительно размещаем по 1 кнопке в ряду
+    builder.adjust(1)
     
     await message.answer(
         f"✅ Комнаты выбраны: <b>{rooms_text}</b>\n\n"
@@ -1762,8 +1766,10 @@ async def process_setup_price_min(message: Message, state: FSMContext):
         # Запрашиваем максимальную цену
         builder = InlineKeyboardBuilder()
         builder.button(text="💰 До", callback_data="setup_price_max")
-        builder.row()
         builder.button(text="✅ Продолжить", callback_data="setup_price_continue")
+        
+        # Принудительно размещаем по 1 кнопке в ряду
+        builder.adjust(1)
         
         await message.answer(
             f"✅ Минимальная цена установлена: <b>${min_price:,}</b>\n\n"
@@ -1827,8 +1833,10 @@ async def show_mode_selection_menu(message: Message, state: FSMContext):
     """Показывает меню выбора режима работы"""
     builder = InlineKeyboardBuilder()
     builder.button(text="📋 Обычный режим", callback_data="setup_mode_normal")
-    builder.row()
     builder.button(text="🤖 ИИ-режим", callback_data="setup_mode_ai")
+    
+    # Принудительно размещаем по 1 кнопке в ряду
+    builder.adjust(1)
     
     # Получаем данные из состояния
     data = await state.get_data()
@@ -2074,6 +2082,9 @@ async def process_city_input(message: Message, state: FSMContext):
     builder = InlineKeyboardBuilder()
     builder.button(text="🔙 Вернуться к настройкам", callback_data="setup_filters")
     
+    # Принудительно размещаем по 1 кнопке в ряду
+    builder.adjust(1)
+    
     await message.answer(
         f"✅ <b>Город установлен: {display_name}</b>\n\n"
         f"Теперь поиск будет выполняться в городе <b>{display_name}</b>.",
@@ -2315,23 +2326,17 @@ async def cb_filter_price(callback: CallbackQuery):
     
     # Все кнопки на отдельных строках для лучшей читаемости
     builder.button(text="до $30,000", callback_data="price_0_30000")
-    builder.row()
     builder.button(text="до $40,000", callback_data="price_0_40000")
-    builder.row()
     builder.button(text="до $50,000", callback_data="price_0_50000")
-    builder.row()
     builder.button(text="$20k-$40k", callback_data="price_20000_40000")
-    builder.row()
     builder.button(text="$30k-$50k", callback_data="price_30000_50000")
-    builder.row()
     builder.button(text="$40k-$60k", callback_data="price_40000_60000")
-    builder.row()
     builder.button(text="$50k-$80k", callback_data="price_50000_80000")
-    builder.row()
     builder.button(text="Любая цена", callback_data="price_0_500000")
-    builder.row()
     builder.button(text="🔙 Назад", callback_data="filter_back")
-    builder.row()
+    
+    # Принудительно размещаем по 1 кнопке в ряду
+    builder.adjust(1)
     
     await callback.message.edit_text(
         "💰 <b>Выберите диапазон цены:</b>\n\n"
@@ -2387,10 +2392,11 @@ async def cb_filter_back(callback: CallbackQuery):
     
     builder = InlineKeyboardBuilder()
     builder.button(text="🚪 Комнаты", callback_data="filter_rooms")
-    builder.row()
     builder.button(text="💰 Цена", callback_data="filter_price")
-    builder.row()
     builder.button(text="🔄 Сброс", callback_data="filter_reset")
+    
+    # Принудительно размещаем по 1 кнопке в ряду
+    builder.adjust(1)
     
     await callback.message.edit_text(
         f"⚙️ <b>Текущие фильтры</b>\n\n"
