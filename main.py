@@ -112,10 +112,37 @@ async def main():
     logger.info("📱 Бот работает в режиме личных сообщений")
     
     try:
-        await dp.start_polling(bot)
+        # Пробуем запустить polling с обработкой конфликтов
+        retry_count = 0
+        max_retries = 3
+        
+        while retry_count < max_retries:
+            try:
+                await dp.start_polling(bot, allowed_updates=["message", "callback_query"])
+                break  # Успешный запуск
+            except Exception as e:
+                error_msg = str(e).lower()
+                if "conflict" in error_msg or "getupdates" in error_msg:
+                    retry_count += 1
+                    if retry_count < max_retries:
+                        wait_time = retry_count * 5
+                        logger.warning(f"⚠️ Конфликт с другим экземпляром бота. Ожидание {wait_time} секунд перед повтором...")
+                        logger.warning("💡 Убедитесь, что только один экземпляр бота запущен!")
+                        await asyncio.sleep(wait_time)
+                    else:
+                        logger.error("❌ Не удалось запустить бота из-за конфликта с другим экземпляром")
+                        logger.error("🔧 Решение:")
+                        logger.error("   1. Остановите все другие экземпляры бота")
+                        logger.error("   2. Проверьте, не запущен ли бот на другом сервере")
+                        logger.error("   3. Используйте скрипт: ./stop_bot.sh")
+                        raise
+                else:
+                    # Другая ошибка - пробрасываем дальше
+                    raise
     finally:
         scheduler.shutdown()
-        await bot.session.close()
+        if bot.session and not bot.session.closed:
+            await bot.session.close()
         logger.info("👋 Бот остановлен")
 
 
