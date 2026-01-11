@@ -2274,21 +2274,16 @@ async def cb_filter_rooms(callback: CallbackQuery):
     
     # Все кнопки на отдельных строках для лучшей читаемости
     builder.button(text="1 комната", callback_data="rooms_1_1")
-    builder.row()
     builder.button(text="2 комнаты", callback_data="rooms_2_2")
-    builder.row()
     builder.button(text="3 комнаты", callback_data="rooms_3_3")
-    builder.row()
     builder.button(text="1-2 комн.", callback_data="rooms_1_2")
-    builder.row()
     builder.button(text="2-3 комн.", callback_data="rooms_2_3")
-    builder.row()
     builder.button(text="1-3 комн.", callback_data="rooms_1_3")
-    builder.row()
     builder.button(text="1-4 комн.", callback_data="rooms_1_4")
-    builder.row()
     builder.button(text="🔙 Назад", callback_data="filter_back")
-    builder.row()
+    
+    # Принудительно размещаем по 1 кнопке в ряду
+    builder.adjust(1)
     
     await callback.message.edit_text(
         "🚪 <b>Выберите количество комнат:</b>\n\n"
