@@ -1086,6 +1086,13 @@ async def cb_check_now(callback: CallbackQuery):
     
     # Проверяем режим работы пользователя
     ai_mode = user_filters.get("ai_mode", False)
+    # Убеждаемся, что это булево значение (на случай если из БД пришло 0/1)
+    if isinstance(ai_mode, int):
+        ai_mode = bool(ai_mode)
+    elif not isinstance(ai_mode, bool):
+        ai_mode = False
+    
+    logger.info(f"Пользователь {user_id}: режим работы - {'ИИ' if ai_mode else 'Обычный'}")
     
     if ai_mode:
         # ИИ-режим: используем специальную функцию
