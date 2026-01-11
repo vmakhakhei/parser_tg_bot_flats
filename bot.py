@@ -1846,26 +1846,16 @@ async def search_listings_after_setup(
                 
                 sent_count = 0
                 for listing in new_listings[:20]:
-                    if await send_listing_to_user(bot, user_id, listing):
+                    # Обычный режим - БЕЗ ИИ-оценки
+                    if await send_listing_to_user(bot, user_id, listing, use_ai_valuation=False):
                         sent_count += 1
                         await asyncio.sleep(2)
                 
-                await status_msg.edit_text(
-                    f"✅ <b>Готово!</b>\n\n"
-                    f"Отправлено <b>{sent_count}</b> объявлений.\n\n"
-                    f"Я буду автоматически присылать новые объявления каждые 12 часов, которые подходят под ваши фильтры.\n\n"
-                    f"Используйте /start чтобы изменить настройки.",
-                    parse_mode=ParseMode.HTML
-                )
+                # Показываем финальное меню действий
+                await show_actions_menu(bot, user_id, sent_count, "Обычный режим")
             else:
-                await status_msg.edit_text(
-                    "😔 <b>Объявлений не найдено</b>\n\n"
-                    "Попробуйте изменить фильтры:\n"
-                    "• Расширьте диапазон цен\n"
-                    "• Измените количество комнат\n\n"
-                    "Используйте /start для изменения настроек.",
-                    parse_mode=ParseMode.HTML
-                )
+                # Показываем меню действий даже если объявлений нет
+                await show_actions_menu(bot, user_id, 0, "Обычный режим")
     except Exception as e:
         logger.error(f"Ошибка при поиске объявлений: {e}")
         await status_msg.edit_text(
