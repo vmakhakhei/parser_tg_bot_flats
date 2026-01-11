@@ -4,6 +4,8 @@ Telegram бот для мониторинга объявлений о кварт
 import asyncio
 import logging
 import aiosqlite
+import json
+import base64
 from typing import List, Dict, Any, Optional
 
 from aiogram import Bot, Dispatcher, Router, F
@@ -269,12 +271,38 @@ async def send_listing_to_user(bot: Bot, user_id: int, listing: Listing, use_ai_
         message_text = format_listing_message(listing, ai_valuation)
         photos = listing.photos
         
+        # Создаем кнопку "ИИ Оценка квартиры" если ИИ доступен и оценка не была выполнена
+        reply_markup = None
+        if not use_ai_valuation and AI_VALUATOR_AVAILABLE and valuate_listing:
+            # Кодируем данные объявления в callback_data
+            # Используем base64 для безопасной передачи данных
+            listing_data = {
+                "id": listing.id,
+                "source": listing.source,
+                "url": listing.url,
+                "title": listing.title,
+                "price": listing.price,
+                "rooms": listing.rooms,
+                "area": listing.area,
+                "address": listing.address,
+                "description": listing.description[:500],  # Ограничиваем длину
+                "year_built": listing.year_built,
+                "created_at": listing.created_at
+            }
+            listing_json = json.dumps(listing_data, ensure_ascii=False)
+            listing_encoded = base64.b64encode(listing_json.encode('utf-8')).decode('utf-8')
+            
+            builder = InlineKeyboardBuilder()
+            builder.button(text="🤖 ИИ Оценка квартиры", callback_data=f"ai_valuate_{listing_encoded}")
+            builder.adjust(1)
+            reply_markup = builder.as_markup()
+        
         if photos:
             # Отправляем медиагруппу с фотографиями
             media_group = []
             for i, photo_url in enumerate(photos[:MAX_PHOTOS]):
                 if i == 0:
-                    # Первое фото с подписью
+                    # Первое фото с подписью и кнопкой
                     media_group.append(
                         InputMediaPhoto(
                             media=photo_url,
@@ -285,17 +313,32 @@ async def send_listing_to_user(bot: Bot, user_id: int, listing: Listing, use_ai_
                 else:
                     media_group.append(InputMediaPhoto(media=photo_url))
             
-            await bot.send_media_group(
-                chat_id=user_id,
-                media=media_group
-            )
+            # Для медиагруппы кнопки добавляются к первому сообщению
+            if reply_markup:
+                # Отправляем медиагруппу, затем отдельное сообщение с кнопкой
+                await bot.send_media_group(
+                    chat_id=user_id,
+                    media=media_group
+                )
+                await bot.send_message(
+                    chat_id=user_id,
+                    text="🤖 <b>Хотите получить ИИ-оценку этой квартиры?</b>",
+                    parse_mode=ParseMode.HTML,
+                    reply_markup=reply_markup
+                )
+            else:
+                await bot.send_media_group(
+                    chat_id=user_id,
+                    media=media_group
+                )
         else:
-            # Без фотографий - просто текст
+            # Без фотографий - просто текст с кнопкой
             await bot.send_message(
                 chat_id=user_id,
                 text=message_text,
                 parse_mode=ParseMode.HTML,
-                disable_web_page_preview=False
+                disable_web_page_preview=False,
+                reply_markup=reply_markup
             )
         
         # Отмечаем как отправленное пользователю и глобально
