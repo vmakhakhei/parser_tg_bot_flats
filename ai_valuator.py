@@ -730,11 +730,6 @@ class AIValuator:
         if is_center:
             inspection_info += "\nРАСПОЛОЖЕНИЕ: Центральный район города (престижный, развитая инфраструктура)\n"
         
-        user_content.append({
-            "type": "text",
-            "text": prompt + photo_prompt + inspection_info
-        })
-        
         # Используем обычную модель (vision временно отключена)
         model_to_use = GROQ_MODEL
         
