@@ -156,7 +156,7 @@ class HataScraper(BaseScraper):
         log_info("hata", f"После фильтрации: {len(listings)} объявлений")
         return listings
     
-    def _parse_listing_from_link(self, link, listing_id: str, url: str) -> Optional[Listing]:
+    def _parse_listing_from_link(self, link, listing_id: str, url: str, city: str = "барановичи") -> Optional[Listing]:
         """Парсит объявление из ссылки и окружающего контекста"""
         try:
             title = link.get_text(strip=True)
