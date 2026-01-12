@@ -2330,6 +2330,49 @@ async def process_setup_price_max(message: Message, state: FSMContext):
 
 
 
+async def show_no_listings_message(bot: Bot, user_id: int, status_msg: Optional[Message] = None):
+    """Показывает сообщение об отсутствии объявлений с предложением обновить фильтры"""
+    message_text = (
+        "📭 <b>Объявлений не найдено</b>\n\n"
+        "Не найдено объявлений, соответствующих вашим фильтрам.\n\n"
+        "💡 <b>Попробуйте изменить фильтры:</b>\n"
+        "• Расширьте диапазон цен\n"
+        "• Измените количество комнат\n"
+        "• Выберите другой город\n\n"
+        "Используйте кнопку ниже для изменения фильтров."
+    )
+    
+    builder = InlineKeyboardBuilder()
+    builder.button(text="⚙️ Изменить фильтры", callback_data="setup_filters")
+    builder.adjust(1)
+    
+    try:
+        if status_msg:
+            await status_msg.edit_text(
+                message_text,
+                parse_mode=ParseMode.HTML,
+                reply_markup=builder.as_markup()
+            )
+        else:
+            await bot.send_message(
+                user_id,
+                message_text,
+                parse_mode=ParseMode.HTML,
+                reply_markup=builder.as_markup()
+            )
+    except Exception as e:
+        # Если не удалось отредактировать, отправляем новое сообщение
+        try:
+            await bot.send_message(
+                user_id,
+                message_text,
+                parse_mode=ParseMode.HTML,
+                reply_markup=builder.as_markup()
+            )
+        except Exception:
+            logger.error(f"Не удалось отправить сообщение об отсутствии объявлений пользователю {user_id}: {e}")
+
+
 async def search_listings_after_setup(
     bot: Bot,
     user_id: int,
@@ -2361,6 +2404,12 @@ async def search_listings_after_setup(
             max_price=max_price,
         )
         
+        # Проверяем, что вообще найдены какие-то объявления
+        if not all_listings:
+            await show_no_listings_message(bot, user_id, status_msg)
+            await show_actions_menu(bot, user_id, 0, "ИИ-режим")
+            return
+        
         user_filters = {
             "city": city,
             "min_rooms": min_rooms,
@@ -2373,7 +2422,7 @@ async def search_listings_after_setup(
         
         if ai_mode:
             # ИИ-режим
-            await check_new_listings_ai_mode(bot, user_id, user_filters, all_listings)
+            await check_new_listings_ai_mode(bot, user_id, user_filters, all_listings, status_msg)
         else:
             # Обычный режим
             new_listings = []
@@ -2404,6 +2453,14 @@ async def search_listings_after_setup(
                 for listing in new_listings[:20]:
                     # Обычный режим - БЕЗ ИИ-оценки
                     if await send_listing_to_user(bot, user_id, listing, use_ai_valuation=False):
+                        sent_count += 1
+                        await asyncio.sleep(2)  # Задержка между сообщениями
+                
+                # Показываем меню действий после отправки
+                await show_actions_menu(bot, user_id, sent_count, "ИИ-режим")
+            else:
+                # Не найдено ни одного объявления - показываем сообщение с предложением изменить фильтры
+                await show_no_listings_message(bot, user_id, status_msg)(bot, user_id, listing, use_ai_valuation=False):
                         sent_count += 1
                         await asyncio.sleep(2)
                 
