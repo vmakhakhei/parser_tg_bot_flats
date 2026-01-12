@@ -146,7 +146,7 @@ class HataScraper(BaseScraper):
                 continue
             
             # Парсим детали из ссылки и контекста
-            listing = self._parse_listing_from_link(link, listing_id, full_url)
+            listing = self._parse_listing_from_link(link, listing_id, full_url, city)
             if listing:
                 if self._matches_filters(listing, min_rooms, max_rooms, min_price, max_price):
                     listings.append(listing)
