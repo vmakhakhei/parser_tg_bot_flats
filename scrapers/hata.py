@@ -25,34 +25,35 @@ except ImportError:
 
 
 class HataScraper(BaseScraper):
-    """Парсер объявлений с baranovichi.hata.by"""
+    """Парсер объявлений с hata.by"""
     
     SOURCE_NAME = "hata"
-    BASE_URL = "https://baranovichi.hata.by"  # По умолчанию для Барановичей
+    BASE_URL = "https://www.hata.by"
     
-    def _get_city_url(self, city: str) -> str:
-        """Преобразует название города в URL для Hata"""
+    def _get_city_ckod(self, city: str) -> str:
+        """Преобразует название города в код ckod для Hata API"""
         city_lower = city.lower().strip()
         
-        # Маппинг городов на поддомены Hata
+        # Маппинг городов на коды ckod (коды городов в системе Hata)
+        # Источник: из URL видно, что для Минска ckod=5000000000, для Барановичей ckod=1410000000
         city_mapping = {
-            "барановичи": "baranovichi.hata.by",
-            "брест": "brest.hata.by",
-            "минск": "minsk.hata.by",
-            "гомель": "gomel.hata.by",
-            "гродно": "grodno.hata.by",
-            "витебск": "vitebsk.hata.by",
-            "могилев": "mogilev.hata.by",
-            "могилёв": "mogilev.hata.by",
+            "барановичи": "1410000000",
+            "брест": "1010000000",  # Предположительно
+            "минск": "5000000000",
+            "гомель": "3010000000",  # Предположительно
+            "гродно": "4010000000",  # Предположительно
+            "витебск": "2010000000",  # Предположительно
+            "могилев": "6010000000",  # Предположительно
+            "могилёв": "6010000000",
         }
         
         # Если город найден в маппинге, используем его
         if city_lower in city_mapping:
-            return f"https://{city_mapping[city_lower]}"
+            return city_mapping[city_lower]
         
         # По умолчанию используем Барановичи
         log_warning("hata", f"Город '{city}' не найден в маппинге, используем Барановичи")
-        return f"https://{city_mapping['барановичи']}"
+        return city_mapping["барановичи"]
     
     async def fetch_listings(
         self,
@@ -64,17 +65,26 @@ class HataScraper(BaseScraper):
     ) -> List[Listing]:
         """Получает список объявлений"""
         
-        # Получаем URL для города
-        base_url = self._get_city_url(city)
-        url = f"{base_url}/sale-flat/"
+        # Получаем код города
+        ckod = self._get_city_ckod(city)
         
-        log_info("hata", f"Загружаю страницу для города '{city}': {url}")
+        # Формируем URL в формате Hata: ~s_do=sale~s_what=flat~currency=840~rooms=1~ctype=ckod~ckod=XXXXX
+        # Важно: rooms указывается как массив, но в URL это просто число
+        # Формируем параметры для комнат (если указан диапазон, берем минимальное значение для URL)
+        rooms_param = min_rooms if min_rooms > 0 else 1
+        
+        # Формируем URL с параметрами в формате Hata (~ как разделитель)
+        # Формат: https://www.hata.by/search/~s_do=sale~s_what=flat~currency=840~rooms=1~ctype=ckod~ckod=XXXXX/page/1/
+        url = f"{self.BASE_URL}/search/~s_do=sale~s_what=flat~currency=840~rooms={rooms_param}~ctype=ckod~ckod={ckod}/page/1/"
+        
+        log_info("hata", f"Загружаю страницу для города '{city}' (ckod={ckod}): {url}")
         
         html = await self._fetch_html(url)
         if not html:
+            log_warning("hata", f"Не удалось загрузить страницу для города '{city}': {url}")
             return []
         
-        return self._parse_html(html, city, min_rooms, max_rooms, min_price, max_price, base_url)
+        return self._parse_html(html, city, min_rooms, max_rooms, min_price, max_price, self.BASE_URL)
     
     def _parse_html(
         self, 
