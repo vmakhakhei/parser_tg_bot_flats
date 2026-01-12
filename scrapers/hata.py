@@ -33,68 +33,82 @@ class HataScraper(BaseScraper):
     async def _get_city_ckod_dynamic(self, city: str) -> Optional[str]:
         """Динамически определяет код ckod для города через поиск на hata.by"""
         try:
-            # Пробуем найти код города через главную страницу hata.by
-            # На главной странице есть список городов с их кодами
-            main_url = f"{self.BASE_URL}/"
-            
             import aiohttp
+            city_lower = city.lower().strip()
+            
+            # Метод 1: Пробуем найти через поиск на сайте
+            # Отправляем запрос на поиск с названием города
+            search_url = f"{self.BASE_URL}/search/"
+            
             async with aiohttp.ClientSession() as session:
                 headers = {
                     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
                     "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+                    "Referer": f"{self.BASE_URL}/",
                 }
                 
+                # Пробуем POST запрос с параметрами поиска
+                data = aiohttp.FormData({
+                    "s_do": "sale",
+                    "s_what": "flat",
+                    "s_where": city,  # Название города
+                })
+                
+                async with session.post(search_url, data=data, headers=headers, allow_redirects=True, timeout=10) as resp:
+                    if resp.status == 200:
+                        final_url = str(resp.url)
+                        html = await resp.text()
+                        
+                        # Ищем ckod в URL редиректа
+                        ckod_match = re.search(r'ckod=(\d+)', final_url)
+                        if ckod_match:
+                            ckod = ckod_match.group(1)
+                            log_info("hata", f"✅ Найден код города '{city}' через поиск: {ckod}")
+                            return ckod
+                        
+                        # Ищем ckod в HTML страницы результатов
+                        ckod_matches = re.findall(r'ckod["\']?\s*[:=]\s*["\']?(\d+)', html, re.IGNORECASE)
+                        if ckod_matches:
+                            # Берем первый найденный код
+                            ckod = ckod_matches[0]
+                            log_info("hata", f"✅ Найден код города '{city}' в HTML результатов: {ckod}")
+                            return ckod
+                
+                # Метод 2: Пробуем найти через главную страницу
+                main_url = f"{self.BASE_URL}/"
                 async with session.get(main_url, headers=headers, timeout=10) as resp:
                     if resp.status == 200:
                         html = await resp.text()
                         
-                        # Ищем ссылки на города в формате /search/...ckod=XXXXX...
-                        # Или ищем название города рядом с кодом
-                        city_lower = city.lower().strip()
-                        
-                        # Паттерн 1: ищем ссылки вида /search/...ckod=XXXXX... и проверяем контекст вокруг
-                        ckod_patterns = [
-                            rf'{re.escape(city_lower)}[^<]*ckod["\']?\s*[:=]\s*["\']?(\d+)',
-                            rf'ckod["\']?\s*[:=]\s*["\']?(\d+)[^<]*{re.escape(city_lower)}',
-                            rf'/search/[^"]*ckod=(\d+)[^"]*{re.escape(city_lower)}',
-                            rf'{re.escape(city_lower)}[^"]*/search/[^"]*ckod=(\d+)',
-                        ]
-                        
-                        for pattern in ckod_patterns:
-                            match = re.search(pattern, html, re.IGNORECASE)
-                            if match:
-                                ckod = match.group(1)
-                                log_info("hata", f"Найден код города '{city}' на главной странице: {ckod}")
-                                return ckod
-                        
-                        # Паттерн 2: ищем все ссылки с ckod и проверяем, есть ли рядом название города
+                        # Ищем все ссылки с ckod и проверяем контекст
                         all_ckod_matches = re.finditer(r'ckod["\']?\s*[:=]\s*["\']?(\d+)', html, re.IGNORECASE)
                         for match in all_ckod_matches:
                             ckod = match.group(1)
-                            # Проверяем контекст вокруг кода (200 символов до и после)
-                            start = max(0, match.start() - 200)
-                            end = min(len(html), match.end() + 200)
+                            # Проверяем контекст вокруг кода (300 символов до и после)
+                            start = max(0, match.start() - 300)
+                            end = min(len(html), match.end() + 300)
                             context = html[start:end].lower()
                             
+                            # Проверяем, есть ли название города в контексте
                             if city_lower in context:
-                                log_info("hata", f"Найден код города '{city}' в контексте: {ckod}")
+                                log_info("hata", f"✅ Найден код города '{city}' на главной странице: {ckod}")
                                 return ckod
         except Exception as e:
             log_warning("hata", f"Ошибка при динамическом определении кода города '{city}': {e}")
         
         return None
     
-    def _get_city_ckod(self, city: str) -> str:
-        """Преобразует название города в код ckod для Hata API"""
+    def _get_city_ckod(self, city: str) -> Optional[str]:
+        """Преобразует название города в код ckod для Hata API (из кэша/маппинга)"""
         city_lower = city.lower().strip()
         
         # Маппинг городов на коды ckod (коды городов в системе Hata)
-        # Известные коды:
+        # Известные коды (подтвержденные):
         # - Минск: 5000000000 (из URL: https://www.hata.by/search/~s_do=sale~s_what=flat~currency=840~rooms=1~ctype=ckod~ckod=5000000000/page/1/)
         # - Барановичи: 1410000000 (из URL: https://baranovichi.hata.by/search/~s_do=sale~s_what=flat~currency=840~rooms=1~ctype=ckod~ckod=1410000000/page/1/)
         city_mapping = {
             "барановичи": "1410000000",
-            "брест": "1010000000",  # Предположительно (можно уточнить через динамический поиск)
+            "брест": "1010000000",  # Предположительно (будет уточнено через динамический поиск при первом использовании)
             "минск": "5000000000",
             "гомель": "3010000000",  # Предположительно
             "гродно": "4010000000",  # Предположительно
@@ -107,8 +121,7 @@ class HataScraper(BaseScraper):
         if city_lower in city_mapping:
             return city_mapping[city_lower]
         
-        # Если город не найден в маппинге, возвращаем None (будет использован fallback)
-        log_warning("hata", f"Город '{city}' не найден в маппинге")
+        # Если город не найден в маппинге, возвращаем None (будет использован динамический поиск)
         return None
     
     async def fetch_listings(
@@ -121,8 +134,20 @@ class HataScraper(BaseScraper):
     ) -> List[Listing]:
         """Получает список объявлений"""
         
-        # Получаем код города
+        # Получаем код города (сначала из маппинга, если нет - пробуем динамически)
         ckod = self._get_city_ckod(city)
+        
+        # Если код не найден в маппинге, пробуем определить динамически
+        if not ckod:
+            log_info("hata", f"Код города '{city}' не найден в маппинге, пробую определить динамически через поиск на hata.by...")
+            ckod = await self._get_city_ckod_dynamic(city)
+            
+            if not ckod:
+                log_error("hata", f"❌ Не удалось определить код города '{city}' на hata.by. Город может отсутствовать в базе данных сайта.")
+                # Не используем fallback - возвращаем пустой список, чтобы пользователь знал, что город не найден
+                return []
+            else:
+                log_info("hata", f"✅ Динамически определен код города '{city}': {ckod}")
         
         # Формируем URL в формате Hata: ~s_do=sale~s_what=flat~currency=840~rooms=1~ctype=ckod~ckod=XXXXX
         # Важно: rooms указывается как массив, но в URL это просто число
@@ -138,6 +163,11 @@ class HataScraper(BaseScraper):
         html = await self._fetch_html(url)
         if not html:
             log_warning("hata", f"Не удалось загрузить страницу для города '{city}': {url}")
+            return []
+        
+        # Проверяем, что на странице есть результаты (не пустая страница)
+        if "не найдено" in html.lower() or "нет результатов" in html.lower():
+            log_warning("hata", f"Для города '{city}' (ckod={ckod}) не найдено объявлений")
             return []
         
         return self._parse_html(html, city, min_rooms, max_rooms, min_price, max_price, self.BASE_URL)
