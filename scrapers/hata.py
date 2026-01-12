@@ -185,11 +185,20 @@ class HataScraper(BaseScraper):
             if rooms_match:
                 rooms = int(rooms_match.group(1))
             
-            # Адрес из заголовка: "X-комнатная квартира на ул. YYY ZZ, Барановичи"
-            address = "Барановичи"
-            addr_match = re.search(r'на\s+(ул\.\s*[^,]+(?:\s*\d+[^,]*)?),?\s*Барановичи', title, re.I)
-            if addr_match:
-                address = f"{addr_match.group(1)}, Барановичи"
+            # Адрес из заголовка: "X-комнатная квартира на ул. YYY ZZ, [Город]"
+            # Используем переданный город вместо жестко заданного "Барановичи"
+            address = city.title() if city else "Барановичи"
+            # Ищем адрес в формате "на ул. YYY ZZ, [Город]" или "на ул. YYY ZZ"
+            addr_patterns = [
+                rf'на\s+(ул\.\s*[^,]+(?:\s*\d+[^,]*)?),?\s*{city}',  # С указанием города
+                r'на\s+(ул\.\s*[^,]+(?:\s*\d+[^,]*)?)',  # Без указания города
+            ]
+            for pattern in addr_patterns:
+                addr_match = re.search(pattern, title, re.I)
+                if addr_match:
+                    street = addr_match.group(1)
+                    address = f"{street}, {city.title()}" if city else f"{street}, Барановичи"
+                    break
             
             # Цена - ищем в разных форматах
             price = 0
