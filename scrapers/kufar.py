@@ -80,7 +80,7 @@ class KufarScraper(BaseScraper):
             f"&size=30"  # Количество объявлений на странице
         )
         
-        log_info("kufar", f"Запрос API: {url}")
+        log_info("kufar", f"Запрос API для города '{city}': {url}")
         
         # Получаем JSON
         json_data = await self._fetch_json(url)

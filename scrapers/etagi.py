@@ -70,9 +70,10 @@ class EtagiScraper(BaseScraper):
         
         html = await self._fetch_html(url)
         if not html:
-            log_warning("etagi", "Не удалось загрузить страницу")
+            log_warning("etagi", f"Не удалось загрузить страницу для города {city}: {url}")
             return []
         
+        log_info("etagi", f"Загружена страница для города {city}: {url}")
         return self._parse_html(html, min_rooms, max_rooms, min_price, max_price, base_url)
     
     def _parse_html(

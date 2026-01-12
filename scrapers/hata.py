@@ -46,11 +46,12 @@ class HataScraper(BaseScraper):
         if not html:
             return []
         
-        return self._parse_html(html, min_rooms, max_rooms, min_price, max_price)
+        return self._parse_html(html, city, min_rooms, max_rooms, min_price, max_price)
     
     def _parse_html(
         self, 
         html: str,
+        city: str,
         min_rooms: int,
         max_rooms: int,
         min_price: int,
