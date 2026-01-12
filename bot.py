@@ -610,17 +610,8 @@ async def check_new_listings_ai_mode(
                 
             else:
                 logger.warning(f"ИИ не выбрал ни одного варианта для пользователя {user_id}")
-                try:
-                    await bot.send_message(
-                        user_id,
-                        f"❌ <b>ИИ не нашел подходящих вариантов</b>\n\n"
-                        f"Из {len(candidate_listings)} объявлений ни одно не соответствует критериям качества.",
-                        parse_mode=ParseMode.HTML
-                    )
-                    # Показываем меню действий даже если вариантов нет
-                    await show_actions_menu(bot, user_id, 0, "ИИ-режим")
-                except Exception:
-                    pass
+                # ИИ не выбрал ни одного варианта - показываем сообщение с предложением изменить фильтры
+                await show_no_listings_message(bot, user_id, status_msg)
         except Exception as e:
             log_error("ai_mode", f"Ошибка ИИ-анализа для пользователя {user_id}", e)
             # В ИИ-режиме НЕ отправляем объявления отдельно, только сообщение об ошибке
@@ -1283,12 +1274,8 @@ async def cb_check_now_ai(callback: CallbackQuery):
                    f"кандидатов для анализа {len(candidate_listings)}")
         
         if not candidate_listings:
-            await status_msg.edit_text(
-                "📭 <b>Объявлений не найдено</b>\n\n"
-                "Не найдено объявлений, соответствующих вашим фильтрам.",
-                parse_mode=ParseMode.HTML
-            )
-            await show_actions_menu(callback.bot, user_id, 0, "ИИ-режим")
+            # Не найдено ни одного объявления для анализа - показываем сообщение с предложением изменить фильтры
+            await show_no_listings_message(callback.bot, user_id, status_msg)
             return
         
         # Определяем количество лучших вариантов в зависимости от общего количества (от 1 до 5)
@@ -1449,12 +1436,8 @@ async def cb_check_now_ai(callback: CallbackQuery):
                 # Показываем меню действий
                 await show_actions_menu(callback.bot, user_id, len(best_with_reasons), "ИИ-режим")
             else:
-                await status_msg.edit_text(
-                    "⚠️ <b>ИИ не смог выбрать лучшие варианты</b>\n\n"
-                    "Попробуйте позже или используйте обычный поиск.",
-                    parse_mode=ParseMode.HTML
-                )
-                await show_actions_menu(callback.bot, user_id, 0, "ИИ-режим")
+                # ИИ не выбрал ни одного варианта - показываем сообщение с предложением изменить фильтры
+                await show_no_listings_message(callback.bot, user_id, status_msg)
         except Exception as e:
             logger.error(f"Ошибка при вызове select_best_listings для пользователя {user_id}: {e}", exc_info=True)
             await status_msg.edit_text(
@@ -2460,28 +2443,7 @@ async def search_listings_after_setup(
                 await show_actions_menu(bot, user_id, sent_count, "ИИ-режим")
             else:
                 # Не найдено ни одного объявления - показываем сообщение с предложением изменить фильтры
-                await show_no_listings_message(bot, user_id, status_msg)(bot, user_id, listing, use_ai_valuation=False):
-                        sent_count += 1
-                        await asyncio.sleep(2)
-                
-                # После настройки фильтров всегда показываем меню ИИ-режима (ИИ-мод, Парсер, Сброс фильтров)
-                await show_actions_menu(bot, user_id, sent_count, "ИИ-режим")
-            else:
-                try:
-                    await status_msg.edit_text(
-                        "📭 <b>Объявлений не найдено</b>\n\n"
-                        "Попробуйте изменить фильтры или проверить позже.",
-                        parse_mode=ParseMode.HTML
-                    )
-                except Exception:
-                    await bot.send_message(
-                        user_id,
-                        "📭 <b>Объявлений не найдено</b>\n\n"
-                        "Попробуйте изменить фильтры или проверить позже.",
-                        parse_mode=ParseMode.HTML
-                    )
-                # После настройки фильтров всегда показываем меню ИИ-режима
-                await show_actions_menu(bot, user_id, 0, "ИИ-режим")
+                await show_no_listings_message(bot, user_id, status_msg)
     except Exception as e:
         logger.error(f"Ошибка при поиске объявлений: {e}")
         try:
