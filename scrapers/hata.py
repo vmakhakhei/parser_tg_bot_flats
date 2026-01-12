@@ -28,7 +28,31 @@ class HataScraper(BaseScraper):
     """Парсер объявлений с baranovichi.hata.by"""
     
     SOURCE_NAME = "hata"
-    BASE_URL = "https://baranovichi.hata.by"
+    BASE_URL = "https://baranovichi.hata.by"  # По умолчанию для Барановичей
+    
+    def _get_city_url(self, city: str) -> str:
+        """Преобразует название города в URL для Hata"""
+        city_lower = city.lower().strip()
+        
+        # Маппинг городов на поддомены Hata
+        city_mapping = {
+            "барановичи": "baranovichi.hata.by",
+            "брест": "brest.hata.by",
+            "минск": "minsk.hata.by",
+            "гомель": "gomel.hata.by",
+            "гродно": "grodno.hata.by",
+            "витебск": "vitebsk.hata.by",
+            "могилев": "mogilev.hata.by",
+            "могилёв": "mogilev.hata.by",
+        }
+        
+        # Если город найден в маппинге, используем его
+        if city_lower in city_mapping:
+            return f"https://{city_mapping[city_lower]}"
+        
+        # По умолчанию используем Барановичи
+        log_warning("hata", f"Город '{city}' не найден в маппинге, используем Барановичи")
+        return f"https://{city_mapping['барановичи']}"
     
     async def fetch_listings(
         self,
@@ -40,13 +64,17 @@ class HataScraper(BaseScraper):
     ) -> List[Listing]:
         """Получает список объявлений"""
         
-        url = f"{self.BASE_URL}/sale-flat/"
+        # Получаем URL для города
+        base_url = self._get_city_url(city)
+        url = f"{base_url}/sale-flat/"
+        
+        log_info("hata", f"Загружаю страницу для города '{city}': {url}")
         
         html = await self._fetch_html(url)
         if not html:
             return []
         
-        return self._parse_html(html, city, min_rooms, max_rooms, min_price, max_price)
+        return self._parse_html(html, city, min_rooms, max_rooms, min_price, max_price, base_url)
     
     def _parse_html(
         self, 
@@ -55,7 +83,8 @@ class HataScraper(BaseScraper):
         min_rooms: int,
         max_rooms: int,
         min_price: int,
-        max_price: int
+        max_price: int,
+        base_url: str = None
     ) -> List[Listing]:
         """Парсит HTML страницу витрины"""
         soup = BeautifulSoup(html, 'lxml')

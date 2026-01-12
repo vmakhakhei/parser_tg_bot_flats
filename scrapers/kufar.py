@@ -36,10 +36,11 @@ class KufarScraper(BaseScraper):
         city_lower = city.lower().strip()
         
         # Маппинг городов на формат Kufar API (gtsy)
+        # Для Минска используется формат без провинции, так как это столица
         city_mapping = {
             "барановичи": "country-belarus~province-brestskaja_oblast~locality-baranovichi",
             "брест": "country-belarus~province-brestskaja_oblast~locality-brest",
-            "минск": "country-belarus~locality-minsk",
+            "минск": "country-belarus~locality-minsk",  # Минск - столица, без провинции
             "гомель": "country-belarus~province-gomelskaja_oblast~locality-gomel",
             "гродно": "country-belarus~province-grodnenskaja_oblast~locality-grodno",
             "витебск": "country-belarus~province-vitebskaja_oblast~locality-vitebsk",
