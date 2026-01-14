@@ -1554,7 +1554,7 @@ async def select_best_listings(
     # Формируем список для промпта (только базовые данные + ссылки)
     # Исключаем объявления без цены (договорная, 0, None)
     listings_for_prompt = []
-    for listing in listings[:15]:  # Максимум 15 объявлений
+    for listing in listings[:50]:  # Максимум 50 объявлений для анализа
         # Пропускаем объявления без цены
         if not listing.price or listing.price <= 0:
             log_info("ai_select", f"Пропускаю объявление {listing.id}: цена не указана или равна 0")

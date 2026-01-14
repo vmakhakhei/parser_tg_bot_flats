@@ -300,17 +300,8 @@ class HataScraper(BaseScraper):
             # Текст заголовка
             link_text = link.get_text(strip=True)
             
-            # Проверяем что объявление НЕ из другого города (Брест, Минск и т.д.)
-            # Используем переданный параметр city вместо жестко заданного "барановичи"
-            city_lower = city.lower().strip()
-            other_cities = ['брест', 'минск', 'гродно', 'витебск', 'могилев', 'могилёв', 'гомель', 'пинск', 'кобрин', 'береза']
-            # Убираем текущий город из списка других городов
-            other_cities_filtered = [c for c in other_cities if c != city_lower]
-            is_other_city = any(other_city in link_text.lower() for other_city in other_cities_filtered) and city_lower not in link_text.lower()
-            
-            if is_other_city:
-                log_warning("hata", f"Пропускаем из другого города: {link_text[:60]}")
-                continue
+            # Проверка на другой город НЕ нужна, т.к. мы уже фильтруем по ckod
+            # ckod гарантирует что все объявления из нужного города
             
             # Парсим детали из ссылки и контекста
             listing = self._parse_listing_from_link(link, listing_id, full_url, city)
