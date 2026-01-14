@@ -99,6 +99,7 @@ class KufarScraper(BaseScraper):
             # Получаем JSON
             json_data = await self._fetch_json(url)
             if not json_data:
+                log_warning("kufar", f"API вернул пустой ответ для города '{city}' на странице {current_page}")
                 break
             
             # Парсим объявления с текущей страницы
@@ -106,13 +107,13 @@ class KufarScraper(BaseScraper):
             all_listings.extend(page_listings)
             
             # Получаем токен для следующей страницы
-            pagination = json_data.get("pagination", {})
-            pages = pagination.get("pages", [])
+            pagination = json_data.get("pagination") or {}
+            pages = pagination.get("pages") or []
             
             # Ищем токен следующей страницы
             next_token = None
             for page in pages:
-                if page.get("label") == "next":
+                if page and isinstance(page, dict) and page.get("label") == "next":
                     next_token = page.get("token")
                     break
             
