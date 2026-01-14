@@ -36,9 +36,36 @@ class HataScraper(BaseScraper):
             import aiohttp
             city_lower = city.lower().strip()
             
-            # Метод 1: Пробуем найти через поиск на сайте
-            # Отправляем запрос на поиск с названием города
-            search_url = f"{self.BASE_URL}/search/"
+            # Маппинг городов на субдомены Hata.by
+            subdomain_mapping = {
+                "витебск": "vitebsk",
+                "гомель": "gomel",
+                "гродно": "grodno",
+                "брест": "brest",
+                "могилев": "mogilev",
+                "могилёв": "mogilev",
+                "бобруйск": "bobruisk",
+                "пинск": "pinsk",
+                "орша": "orsha",
+                "мозырь": "mozyr",
+                "новополоцк": "novopolotsk",
+                "лида": "lida",
+                "молодечно": "molodechno",
+                "полоцк": "polotsk",
+                "жлобин": "zhlobin",
+                "светлогорск": "svetlogorsk",
+                "речица": "rechitsa",
+                "слуцк": "slutsk",
+                "жодино": "zhodino",
+                "солигорск": "soligorsk",
+                "борисов": "borisov",
+            }
+            
+            # Метод 1: Используем субдомен для города
+            subdomain = subdomain_mapping.get(city_lower)
+            if subdomain:
+                subdomain_url = f"https://{subdomain}.hata.by/search/~s_do=sale~s_what=flat~currency=840/page/1/"
+                log_info("hata", f"Пробую субдомен для {city}: {subdomain_url}")
             
             async with aiohttp.ClientSession() as session:
                 headers = {
@@ -47,7 +74,29 @@ class HataScraper(BaseScraper):
                     "Referer": f"{self.BASE_URL}/",
                 }
                 
-                # Пробуем POST запрос с параметрами поиска
+                # Если есть субдомен, пробуем через него
+                if subdomain:
+                    async with session.get(subdomain_url, headers=headers, allow_redirects=True, timeout=10) as resp:
+                        if resp.status == 200:
+                            final_url = str(resp.url)
+                            html = await resp.text()
+                            
+                            # Ищем ckod в URL или HTML
+                            ckod_match = re.search(r'ckod=(\d+)', final_url)
+                            if ckod_match:
+                                ckod = ckod_match.group(1)
+                                log_info("hata", f"✅ Найден код города '{city}' через субдомен: {ckod}")
+                                return ckod
+                            
+                            # Ищем ckod в HTML
+                            ckod_matches = re.findall(r'ckod["\']?\s*[:=]\s*["\']?(\d+)', html, re.IGNORECASE)
+                            if ckod_matches:
+                                ckod = ckod_matches[0]
+                                log_info("hata", f"✅ Найден код города '{city}' в HTML субдомена: {ckod}")
+                                return ckod
+                
+                # Метод 2: Пробуем POST запрос с параметрами поиска (fallback)
+                search_url = f"{self.BASE_URL}/search/"
                 data = aiohttp.FormData({
                     "s_do": "sale",
                     "s_what": "flat",
@@ -103,18 +152,14 @@ class HataScraper(BaseScraper):
         city_lower = city.lower().strip()
         
         # Маппинг городов на коды ckod (коды городов в системе Hata)
-        # Известные коды (подтвержденные):
+        # ТОЛЬКО ПОДТВЕРЖДЁННЫЕ коды! Для остальных используется динамический поиск.
+        # Подтверждённые коды:
         # - Минск: 5000000000 (из URL: https://www.hata.by/search/~s_do=sale~s_what=flat~currency=840~rooms=1~ctype=ckod~ckod=5000000000/page/1/)
         # - Барановичи: 1410000000 (из URL: https://baranovichi.hata.by/search/~s_do=sale~s_what=flat~currency=840~rooms=1~ctype=ckod~ckod=1410000000/page/1/)
         city_mapping = {
             "барановичи": "1410000000",
-            "брест": "1010000000",  # Предположительно (будет уточнено через динамический поиск при первом использовании)
             "минск": "5000000000",
-            "гомель": "3010000000",  # Предположительно
-            "гродно": "4010000000",  # Предположительно
-            "витебск": "2010000000",  # Предположительно
-            "могилев": "6010000000",  # Предположительно
-            "могилёв": "6010000000",
+            # Остальные города определяются динамически через _get_city_ckod_dynamic()
         }
         
         # Если город найден в маппинге, используем его
