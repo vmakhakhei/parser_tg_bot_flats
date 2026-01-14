@@ -2331,6 +2331,22 @@ async def process_setup_price_max(message: Message, state: FSMContext):
             )
             return
         
+        # Валидация диапазона цен (максимум $20,000)
+        MAX_PRICE_RANGE = 20000
+        price_range = max_price - min_price
+        if price_range > MAX_PRICE_RANGE:
+            suggested_max = min_price + MAX_PRICE_RANGE
+            await message.answer(
+                f"❌ <b>Слишком большой диапазон цен!</b>\n\n"
+                f"Ваш диапазон: ${min_price:,} - ${max_price:,} = <b>${price_range:,}</b>\n"
+                f"Максимально допустимый: <b>${MAX_PRICE_RANGE:,}</b>\n\n"
+                f"💡 Уменьшите разбежку.\n"
+                f"Например: ${min_price:,} - ${suggested_max:,}\n\n"
+                f"Введите новую максимальную цену:",
+                parse_mode=ParseMode.HTML
+            )
+            return
+        
         await state.update_data(max_price=max_price)
         
         # Показываем меню выбора режима
