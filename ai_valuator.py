@@ -551,30 +551,30 @@ class AIValuator:
                             if 'год' in section_text.lower() and 'постройки' in section_text.lower():
                                 year_match = re.search(r'год\s+постройки[:\s]+(\d{4})', section_text, re.IGNORECASE)
                                 if year_match:
+                            try:
+                                        year = int(year_match.group(1))
+                                if 1900 <= year <= 2025:
+                                    year_built = str(year)
+                                            log_info("ai_inspect", f"Найден год постройки в секции 'О доме': {year_built}")
+                                    break
+                            except:
+                                pass
+                    
+                        # Если не нашли в секциях, ищем в параметрах объявления
+                    if not year_built:
+                            # Ищем элементы с классом, содержащим "param", "property", "characteristic"
+                            param_elements = soup.find_all(['div', 'span', 'td', 'dt', 'dd'], 
+                                                          class_=re.compile(r'param|property|characteristic|info|detail', re.I))
+                        for elem in param_elements:
+                            text = elem.get_text()
+                                # Ищем только в элементах, где есть слова "год" и "постройки" вместе
+                                if 'год' in text.lower() and 'постройки' in text.lower():
+                                year_match = re.search(r'(\d{4})', text)
+                                if year_match:
                                     try:
                                         year = int(year_match.group(1))
                                         if 1900 <= year <= 2025:
                                             year_built = str(year)
-                                            log_info("ai_inspect", f"Найден год постройки в секции 'О доме': {year_built}")
-                                            break
-                                    except:
-                                        pass
-                        
-                        # Если не нашли в секциях, ищем в параметрах объявления
-                        if not year_built:
-                            # Ищем элементы с классом, содержащим "param", "property", "characteristic"
-                            param_elements = soup.find_all(['div', 'span', 'td', 'dt', 'dd'], 
-                                                          class_=re.compile(r'param|property|characteristic|info|detail', re.I))
-                            for elem in param_elements:
-                                text = elem.get_text()
-                                # Ищем только в элементах, где есть слова "год" и "постройки" вместе
-                                if 'год' in text.lower() and 'постройки' in text.lower():
-                                    year_match = re.search(r'(\d{4})', text)
-                                    if year_match:
-                                        try:
-                                            year = int(year_match.group(1))
-                                            if 1900 <= year <= 2025:
-                                                year_built = str(year)
                                                 log_info("ai_inspect", f"Найден год постройки в параметрах: {year_built}")
                                                 break
                                         except:
@@ -860,7 +860,7 @@ class AIValuator:
                             if "generateContent" in supported_methods:
                                 # Фильтруем только стабильные модели (исключаем экспериментальные версии 2.0, 2.5)
                                 if any(stable in model_name for stable in ["gemini-1.5", "gemini-pro"]) and not any(exp in model_name for exp in ["2.0", "2.5", "exp"]):
-                                    models.append(model_name)
+                                models.append(model_name)
                     
                     # Сортируем: сначала стабильные модели из списка
                     models_sorted = []
@@ -1576,13 +1576,13 @@ def get_valuator() -> Optional[AIValuator]:
         else:
             # Автоматический выбор: только Groq
             if GROQ_API_KEY:
-                _valuator = AIValuator("groq")
+            _valuator = AIValuator("groq")
                 log_info("ai", "Использую Groq API (30 запросов/минуту, без суточных лимитов)")
-            elif HF_API_KEY:
-                _valuator = AIValuator("huggingface")
+        elif HF_API_KEY:
+            _valuator = AIValuator("huggingface")
                 log_info("ai", "Использую Hugging Face API")
-            elif os.getenv("OLLAMA_URL"):
-                _valuator = AIValuator("ollama")
+        elif os.getenv("OLLAMA_URL"):
+            _valuator = AIValuator("ollama")
                 log_info("ai", "Использую Ollama API")
     
     return _valuator
@@ -1610,26 +1610,26 @@ async def select_best_listings(
     """
     if not listings:
         return []
-    
-    # Формируем список для промпта (только базовые данные + ссылки)
-    # Исключаем объявления без цены (договорная, 0, None)
-    listings_for_prompt = []
-    for listing in listings[:15]:  # Максимум 15 объявлений
-        # Пропускаем объявления без цены
-        if not listing.price or listing.price <= 0:
-            log_info("ai_select", f"Пропускаю объявление {listing.id}: цена не указана или равна 0")
-            continue
         
-        listings_for_prompt.append({
-            "listing": listing,
+        # Формируем список для промпта (только базовые данные + ссылки)
+        # Исключаем объявления без цены (договорная, 0, None)
+        listings_for_prompt = []
+        for listing in listings[:15]:  # Максимум 15 объявлений
+            # Пропускаем объявления без цены
+            if not listing.price or listing.price <= 0:
+                log_info("ai_select", f"Пропускаю объявление {listing.id}: цена не указана или равна 0")
+                continue
+            
+            listings_for_prompt.append({
+                "listing": listing,
             "inspection": {}  # Пустая инспекция - ИИ сам посмотрит
-        })
-    
+            })
+        
     log_info("ai_select", f"Подготавливаю {len(listings_for_prompt)} объявлений для анализа...")
-    log_info("ai_select", f"Формирую минимальный промпт с ссылками...")
-    prompt = _prepare_selection_prompt_detailed(listings_for_prompt, user_filters, max_results)
-    log_info("ai_select", f"Промпт сформирован. Длина: {len(prompt)} символов")
-    
+        log_info("ai_select", f"Формирую минимальный промпт с ссылками...")
+        prompt = _prepare_selection_prompt_detailed(listings_for_prompt, user_filters, max_results)
+        log_info("ai_select", f"Промпт сформирован. Длина: {len(prompt)} символов")
+        
     # Список провайдеров для fallback (в порядке приоритета)
     providers_to_try = []
     
@@ -1657,26 +1657,26 @@ async def select_best_listings(
             
             try:
                 if provider_name == "gemini":
-                    selected_with_reasons = await valuator._select_best_gemini_detailed(prompt, listings_for_prompt)
+            selected_with_reasons = await valuator._select_best_gemini_detailed(prompt, listings_for_prompt)
                 elif provider_name == "groq":
-                    selected_with_reasons = await valuator._select_best_groq_detailed(prompt, listings_for_prompt)
-                else:
+            selected_with_reasons = await valuator._select_best_groq_detailed(prompt, listings_for_prompt)
+        else:
                     log_warning("ai_select", f"Провайдер {provider_name} не поддерживает детальный выбор")
                     continue
-                
+        
                 # Если получили результат, используем его
                 if selected_with_reasons and len(selected_with_reasons) > 0:
                     log_info("ai_select", f"✅ Успешно использован {provider_name.upper()}: выбрано {len(selected_with_reasons)} вариантов")
                     await valuator.close_session()
-                    
-                    # Проверяем, что выбрано минимум 5 вариантов (если есть столько кандидатов)
-                    min_required = min(5, max_results, len(listings))
-                    if len(selected_with_reasons) < min_required and len(listings) >= min_required:
-                        log_warning("ai_select", f"ИИ выбрал только {len(selected_with_reasons)} вариантов, требуется минимум {min_required}")
-                        # Если есть больше кандидатов, добавляем лучшие из оставшихся
-                        selected_ids = [item["listing"].id for item in selected_with_reasons]
-                        remaining = [l["listing"] for l in listings_for_prompt if l["listing"].id not in selected_ids]
-                        # Сортируем оставшиеся по цене за м² (лучшие первыми)
+        
+        # Проверяем, что выбрано минимум 5 вариантов (если есть столько кандидатов)
+        min_required = min(5, max_results, len(listings))
+        if len(selected_with_reasons) < min_required and len(listings) >= min_required:
+            log_warning("ai_select", f"ИИ выбрал только {len(selected_with_reasons)} вариантов, требуется минимум {min_required}")
+            # Если есть больше кандидатов, добавляем лучшие из оставшихся
+            selected_ids = [item["listing"].id for item in selected_with_reasons]
+            remaining = [l["listing"] for l in listings_for_prompt if l["listing"].id not in selected_ids]
+            # Сортируем оставшиеся по цене за м² (лучшие первыми)
                         # Сортируем по цене за м² в USD
                         def get_price_per_sqm_usd(l):
                             if l.area <= 0:
@@ -1689,9 +1689,9 @@ async def select_best_listings(
                             return price_usd / l.area if price_usd > 0 else float('inf')
                         
                         remaining_sorted = sorted(remaining, key=get_price_per_sqm_usd)
-                        # Добавляем недостающие варианты
-                        needed = min_required - len(selected_with_reasons)
-                        for listing in remaining_sorted[:needed]:
+            # Добавляем недостающие варианты
+            needed = min_required - len(selected_with_reasons)
+            for listing in remaining_sorted[:needed]:
                             # Правильно вычисляем цену за м² в USD
                             price_usd_for_calc = listing.price_usd if listing.price_usd else (
                                 int(listing.price_byn / 2.95) if listing.price_byn else (
@@ -1699,31 +1699,31 @@ async def select_best_listings(
                                 )
                             )
                             price_per_sqm = int(price_usd_for_calc / listing.area) if listing.area > 0 and price_usd_for_calc > 0 else 0
-                            # Формируем более детальное объяснение для fallback вариантов
-                            year_info = f" Год постройки: {listing.year_built}." if listing.year_built else ""
-                            district_info = ""
-                            if "советская" in listing.address.lower() or "брестская" in listing.address.lower() or "ленина" in listing.address.lower():
-                                district_info = " Район Центр - престижный район с развитой инфраструктурой."
-                            elif "волошина" in listing.address.lower() or "марфицкого" in listing.address.lower():
-                                district_info = " Район Боровки - современный район с новыми домами."
-                            elif "космонавтов" in listing.address.lower():
-                                district_info = " Район Текстильный - доступные цены, тихий район."
-                            
-                            reason = f"Хорошая цена за м²: ${price_per_sqm}/м², что соответствует среднерыночной стоимости.{year_info}{district_info} Квартира подходит под критерии поиска по цене и количеству комнат."
-                            
-                            selected_with_reasons.append({
-                                "listing": listing,
-                                "reason": reason
-                            })
-                        log_info("ai_select", f"Добавлено {needed} вариантов через fallback, всего: {len(selected_with_reasons)}")
-                    
-                    return selected_with_reasons[:max_results]
+                # Формируем более детальное объяснение для fallback вариантов
+                year_info = f" Год постройки: {listing.year_built}." if listing.year_built else ""
+                district_info = ""
+                if "советская" in listing.address.lower() or "брестская" in listing.address.lower() or "ленина" in listing.address.lower():
+                    district_info = " Район Центр - престижный район с развитой инфраструктурой."
+                elif "волошина" in listing.address.lower() or "марфицкого" in listing.address.lower():
+                    district_info = " Район Боровки - современный район с новыми домами."
+                elif "космонавтов" in listing.address.lower():
+                    district_info = " Район Текстильный - доступные цены, тихий район."
+                
+                reason = f"Хорошая цена за м²: ${price_per_sqm}/м², что соответствует среднерыночной стоимости.{year_info}{district_info} Квартира подходит под критерии поиска по цене и количеству комнат."
+                
+                selected_with_reasons.append({
+                    "listing": listing,
+                    "reason": reason
+                })
+            log_info("ai_select", f"Добавлено {needed} вариантов через fallback, всего: {len(selected_with_reasons)}")
+        
+        return selected_with_reasons[:max_results]
                 else:
                     log_warning("ai_select", f"Провайдер {provider_name} вернул пустой результат, пробую следующий...")
                     await valuator.close_session()
                     continue
-                    
-            except Exception as e:
+        
+    except Exception as e:
                 log_warning("ai_select", f"Ошибка при использовании {provider_name}: {e}, пробую следующий провайдер...")
                 await valuator.close_session()
                 continue
@@ -1773,7 +1773,7 @@ def _prepare_selection_prompt_detailed(
             )
             if price_usd_for_calc > 0:
                 price_per_sqm_usd = int(price_usd_for_calc / listing.area)
-                price_per_sqm = f" ${price_per_sqm_usd}/м²"
+            price_per_sqm = f" ${price_per_sqm_usd}/м²"
         
         # Год постройки (если есть)
         year_info = ""
@@ -1968,7 +1968,7 @@ def _prepare_selection_prompt(listings: List[Listing], user_filters: Dict[str, A
             )
             if price_usd_for_calc > 0:
                 price_per_sqm_usd = price_usd_for_calc / listing.area
-                price_per_sqm = f" (${price_per_sqm_usd:.0f}/м²)"
+            price_per_sqm = f" (${price_per_sqm_usd:.0f}/м²)"
         
         listing_info = f"""
 {i}. ID: {listing.id}

@@ -281,7 +281,7 @@ class HataScraper(BaseScraper):
             ]
             for pattern in addr_patterns:
                 addr_match = re.search(pattern, title, re.I)
-                if addr_match:
+            if addr_match:
                     street = addr_match.group(1)
                     address = f"{street}, {city.title()}" if city else f"{street}, Барановичи"
                     break
@@ -348,7 +348,7 @@ class HataScraper(BaseScraper):
             ]
             for pattern in year_patterns:
                 year_match = re.search(pattern, text, re.IGNORECASE)
-                if year_match:
+            if year_match:
                     try:
                         year_int = int(year_match.group(1))
                         # Проверяем разумность года (1900-2025)
