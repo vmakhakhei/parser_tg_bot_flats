@@ -164,8 +164,13 @@ class KufarScraper(BaseScraper):
         """Парсит ответ API"""
         listings = []
         
+        # Защита от None
+        if not data:
+            log_warning("kufar", "Получен пустой ответ от API")
+            return []
+        
         # Данные в ads
-        ads = data.get("ads", [])
+        ads = data.get("ads", []) or []
         
         parsed_count = 0
         filtered_out_rooms = 0
@@ -173,6 +178,8 @@ class KufarScraper(BaseScraper):
         logged_samples = 0  # Для логирования первых отфильтрованных объявлений
         
         for ad in ads:
+            if not ad:
+                continue
             listing = self._parse_ad(ad, city)
             if listing:
                 parsed_count += 1
