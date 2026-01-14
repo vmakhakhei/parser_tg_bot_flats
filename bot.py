@@ -2632,6 +2632,21 @@ async def process_min_price_input(message: Message, state: FSMContext):
         
         # Получаем текущие фильтры
         user_filters = await get_user_filters(user_id)
+        current_max = user_filters.get("max_price", 100000) if user_filters else 100000
+        
+        # Проверяем максимальную разбежку цены (не более $20,000)
+        MAX_PRICE_RANGE = 20000
+        price_range = current_max - min_price
+        if price_range > MAX_PRICE_RANGE:
+            suggested_max = min_price + MAX_PRICE_RANGE
+            await message.answer(
+                f"⚠️ <b>Внимание: большой диапазон цен!</b>\n\n"
+                f"Ваш диапазон: ${min_price:,} - ${current_max:,} = <b>${price_range:,}</b>\n"
+                f"Максимально допустимый: <b>${MAX_PRICE_RANGE:,}</b>\n\n"
+                f"💡 Рекомендуем также изменить максимальную цену.\n"
+                f"Например: ${min_price:,} - ${suggested_max:,}",
+                parse_mode=ParseMode.HTML
+            )
         
         # Обновляем минимальную цену
         await set_user_filters(
@@ -2709,6 +2724,20 @@ async def process_max_price_input(message: Message, state: FSMContext):
             await message.answer(
                 f"❌ Максимальная цена ({max_price:,}) не может быть меньше минимальной ({current_min:,}).\n"
                 f"Попробуйте снова.",
+                parse_mode=ParseMode.HTML
+            )
+            return
+        
+        # Проверяем максимальную разбежку цены (не более $20,000)
+        MAX_PRICE_RANGE = 20000
+        price_range = max_price - current_min
+        if price_range > MAX_PRICE_RANGE:
+            await message.answer(
+                f"❌ <b>Слишком большой диапазон цен!</b>\n\n"
+                f"Ваш диапазон: ${current_min:,} - ${max_price:,} = <b>${price_range:,}</b>\n"
+                f"Максимально допустимый: <b>${MAX_PRICE_RANGE:,}</b>\n\n"
+                f"💡 Уменьшите разбежку для более точного поиска.\n"
+                f"Например: ${current_min:,} - ${current_min + MAX_PRICE_RANGE:,}",
                 parse_mode=ParseMode.HTML
             )
             return
