@@ -142,7 +142,7 @@ async def main():
     finally:
         scheduler.shutdown()
         if bot.session and not bot.session.closed:
-        await bot.session.close()
+            await bot.session.close()
         logger.info("👋 Бот остановлен")
 
 
