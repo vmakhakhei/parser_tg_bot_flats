@@ -135,9 +135,9 @@ def validate_city(city: str) -> tuple[bool, Optional[str]]:
 
 # Список источников по умолчанию (работающие парсеры)
 # kufar - Kufar.by API (30 объявлений)
-# hata - Hata.by HTML парсинг (3-5 объявлений)
+# etagi - Etagi.com HTML парсинг
 # etagi - Etagi.com HTML парсинг (30 объявлений)
-DEFAULT_SOURCES = ["kufar", "hata", "etagi"]
+DEFAULT_SOURCES = ["kufar", "etagi"]
 
 
 def format_listing_message(listing: Listing, ai_valuation: Optional[Dict[str, Any]] = None) -> str:
@@ -938,7 +938,6 @@ async def cmd_sources(message: Message):
     
     sources = [
         ("Kufar.by", "kufar", "крупнейшая доска объявлений Беларуси"),
-        ("Hata.by", "hata", "региональные объявления"),
         ("Etagi.com", "etagi", "агентство недвижимости"),
         ("Realt.by", "realt", "портал недвижимости (SPA - не поддерживается)"),
         ("Domovita.by", "domovita", "недвижимость (нет данных для Барановичей)"),

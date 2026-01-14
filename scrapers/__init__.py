@@ -7,7 +7,6 @@ from scrapers.realt import RealtByScraper
 from scrapers.domovita import DomovitaScraper
 from scrapers.onliner import OnlinerRealtScraper
 from scrapers.gohome import GoHomeScraper
-from scrapers.hata import HataScraper
 from scrapers.etagi import EtagiScraper
 
 __all__ = [
@@ -18,7 +17,6 @@ __all__ = [
     'DomovitaScraper',
     'OnlinerRealtScraper',
     'GoHomeScraper',
-    'HataScraper',
     'EtagiScraper',
 ]
 

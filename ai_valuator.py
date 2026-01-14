@@ -416,14 +416,6 @@ JSON ответ:
                                 # Пропускаем другие изображения с kufar.by
                                 continue
                         
-                        # Для Hata: только фото из /img/ или pic.hata.by
-                        if 'hata.by' in img_src_lower:
-                            if '/img/' not in img_src_lower and 'pic.hata.by' not in img_src_lower:
-                                continue
-                            # Пропускаем маленькие превью
-                            if '120x100' in img_src_lower or '/100x' in img_src_lower:
-                                continue
-                        
                         # Для Etagi: только фото объявлений
                         if 'etagi.com' in img_src_lower:
                             if 'realty' not in img_src_lower and 'object' not in img_src_lower:
