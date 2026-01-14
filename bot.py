@@ -430,14 +430,19 @@ async def check_new_listings_ai_mode(
     
     # Собираем все подходящие объявления (еще не отправленные пользователю)
     candidate_listings = []
+    filtered_out = 0
+    already_sent = 0
+    duplicates = 0
     
     for listing in all_listings:
         # Проверяем соответствие фильтрам пользователя
         if not _matches_user_filters(listing, user_filters):
+            filtered_out += 1
             continue
         
         # Проверяем, не отправляли ли уже этому пользователю
         if await is_listing_sent_to_user(user_id, listing.id):
+            already_sent += 1
             continue
         
         # Проверяем глобальную дедупликацию по контенту
@@ -449,9 +454,12 @@ async def check_new_listings_ai_mode(
         )
         
         if dup_check["is_duplicate"]:
+            duplicates += 1
             continue
         
         candidate_listings.append(listing)
+    
+    logger.info(f"ИИ-режим: всего {len(all_listings)}, отфильтровано {filtered_out}, уже отправлено {already_sent}, дубликатов {duplicates}, кандидатов {len(candidate_listings)}")
     
     if not candidate_listings:
         logger.info(f"Пользователю {user_id} нет новых объявлений для ИИ-анализа")
