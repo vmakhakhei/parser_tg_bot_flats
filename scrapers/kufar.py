@@ -102,7 +102,7 @@ class KufarScraper(BaseScraper):
                 break
             
             # Парсим объявления с текущей страницы
-            page_listings = self._parse_api_response(json_data, min_rooms, max_rooms, min_price, max_price)
+            page_listings = self._parse_api_response(json_data, min_rooms, max_rooms, min_price, max_price, city)
             all_listings.extend(page_listings)
             
             # Получаем токен для следующей страницы
@@ -158,7 +158,8 @@ class KufarScraper(BaseScraper):
         min_rooms: int,
         max_rooms: int,
         min_price: int,
-        max_price: int
+        max_price: int,
+        city: str = "Минск"
     ) -> List[Listing]:
         """Парсит ответ API"""
         listings = []
@@ -172,7 +173,7 @@ class KufarScraper(BaseScraper):
         logged_samples = 0  # Для логирования первых отфильтрованных объявлений
         
         for ad in ads:
-            listing = self._parse_ad(ad)
+            listing = self._parse_ad(ad, city)
             if listing:
                 parsed_count += 1
                 if self._matches_filters(listing, min_rooms, max_rooms, min_price, max_price):
@@ -196,7 +197,7 @@ class KufarScraper(BaseScraper):
         
         return listings
     
-    def _parse_ad(self, ad: dict) -> Optional[Listing]:
+    def _parse_ad(self, ad: dict, city: str = "Минск") -> Optional[Listing]:
         """Парсит одно объявление из API"""
         try:
             # ID
@@ -358,24 +359,25 @@ class KufarScraper(BaseScraper):
                         except:
                             pass
             
-            # Адрес
-            address = "Барановичи"
+            # Адрес - используем переданный город
+            city_name = city.title()
+            address = city_name
             
             # Из account_parameters
             for acc_param in ad.get("account_parameters", []):
                 if acc_param.get("p") == "address":
-                    address = acc_param.get("v", "Барановичи")
+                    address = acc_param.get("v", city_name)
                     break
             
             # Или из параметров
-            if address == "Барановичи":
+            if address == city_name:
                 street = params.get("street_text", "") or params.get("street", "")
                 house = params.get("house", "")
                 if street:
                     address = street
                     if house:
                         address += f", {house}"
-                    address += ", Барановичи"
+                    address += f", {city_name}"
             
             # Фото - пока отключены из-за проблем с URL
             # Kufar использует CDN с токенами, поэтому напрямую ссылки не работают

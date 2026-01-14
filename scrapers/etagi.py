@@ -74,7 +74,7 @@ class EtagiScraper(BaseScraper):
             return []
         
         log_info("etagi", f"Загружена страница для города {city}: {url}")
-        return self._parse_html(html, min_rooms, max_rooms, min_price, max_price, base_url)
+        return self._parse_html(html, min_rooms, max_rooms, min_price, max_price, base_url, city)
     
     def _parse_html(
         self, 
@@ -83,7 +83,8 @@ class EtagiScraper(BaseScraper):
         max_rooms: int,
         min_price: int,
         max_price: int,
-        base_url: str = None
+        base_url: str = None,
+        city: str = "Минск"
     ) -> List[Listing]:
         """Парсит HTML страницу"""
         soup = BeautifulSoup(html, 'lxml')
@@ -229,10 +230,11 @@ class EtagiScraper(BaseScraper):
                         break
             
             # Адрес - ищем "ул. XXX"
-            address = "Барановичи"
+            city_name = city.title()
+            address = city_name
             addr_match = re.search(r'ул\.\s*([^,\d]+)', text)
             if addr_match:
-                address = f"ул. {addr_match.group(1).strip()}, Барановичи"
+                address = f"ул. {addr_match.group(1).strip()}, {city_name}"
             
             # Пропускаем если цена = 0
             if price_byn == 0:
