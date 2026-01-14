@@ -2410,14 +2410,29 @@ async def search_listings_after_setup(
         else:
             # Обычный режим
             new_listings = []
+            filtered_out = 0
+            already_sent = 0
+            duplicates = 0
+            
             for listing in all_listings:
-                if _matches_user_filters(listing, user_filters):
-                    if not await is_listing_sent_to_user(user_id, listing.id):
-                        dup_check = await is_duplicate_content(
-                            listing.rooms, listing.area, listing.address, listing.price
-                        )
-                        if not dup_check["is_duplicate"]:
-                            new_listings.append(listing)
+                if not _matches_user_filters(listing, user_filters):
+                    filtered_out += 1
+                    continue
+                    
+                if await is_listing_sent_to_user(user_id, listing.id):
+                    already_sent += 1
+                    continue
+                    
+                dup_check = await is_duplicate_content(
+                    listing.rooms, listing.area, listing.address, listing.price
+                )
+                if dup_check["is_duplicate"]:
+                    duplicates += 1
+                    continue
+                    
+                new_listings.append(listing)
+            
+            logger.info(f"Обычный режим: всего {len(all_listings)}, отфильтровано {filtered_out}, уже отправлено {already_sent}, дубликатов {duplicates}, новых {len(new_listings)}")
             
             if new_listings:
                 try:

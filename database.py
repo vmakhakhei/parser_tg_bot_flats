@@ -16,8 +16,18 @@ def generate_content_hash(rooms: int, area: float, address: str, price: int) -> 
     """
     # Нормализуем данные
     norm_address = address.lower().strip()
-    # Убираем "барановичи" из адреса для сравнения
-    norm_address = norm_address.replace("барановичи", "").replace(",", "").strip()
+    # Убираем названия городов из адреса для сравнения
+    cities_to_remove = [
+        "барановичи", "минск", "брест", "витебск", "гомель", "гродно", 
+        "могилев", "могилёв", "бобруйск", "пинск", "орша", "мозырь",
+        "лида", "борисов", "солигорск", "молодечно", "полоцк", "новополоцк"
+    ]
+    for city in cities_to_remove:
+        norm_address = norm_address.replace(city, "")
+    norm_address = norm_address.replace(",", "").strip()
+    # Убираем лишние пробелы
+    norm_address = " ".join(norm_address.split())
+    
     # Округляем площадь до целого
     norm_area = int(area)
     # Цена с погрешностью ±5%
