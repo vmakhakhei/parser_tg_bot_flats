@@ -62,15 +62,15 @@ class KufarScraper(BaseScraper):
         max_rooms: int = 4,
         min_price: int = 0,
         max_price: int = 100000,
+        max_pages: int = 5,  # Максимум страниц для загрузки
     ) -> List[Listing]:
-        """Получает список объявлений через API"""
+        """Получает список объявлений через API с пагинацией"""
         
         # Получаем gtsy параметр для города
         gtsy_param = self._get_city_gtsy(city)
         
         # Базовые параметры запроса (работающий формат из браузера)
-        # size=30 берем из пагинации сайта
-        url = (
+        base_url = (
             f"{self.API_URL}"
             f"?cat=1010"  # Категория: квартиры
             f"&cur=USD"
@@ -81,14 +81,50 @@ class KufarScraper(BaseScraper):
             f"&size=30"  # Количество объявлений на странице
         )
         
-        log_info("kufar", f"Запрос API для города '{city}': {url}")
+        all_listings = []
+        current_page = 1
+        next_token = None
         
-        # Получаем JSON
-        json_data = await self._fetch_json(url)
-        if not json_data:
-            return []
+        while current_page <= max_pages:
+            # Формируем URL с токеном пагинации
+            if next_token:
+                url = f"{base_url}&cursor={next_token}"
+            else:
+                url = base_url
+            
+            log_info("kufar", f"Запрос API для города '{city}', страница {current_page}: {url[:100]}...")
+            
+            # Получаем JSON
+            json_data = await self._fetch_json(url)
+            if not json_data:
+                break
+            
+            # Парсим объявления с текущей страницы
+            page_listings = self._parse_api_response(json_data, min_rooms, max_rooms, min_price, max_price)
+            all_listings.extend(page_listings)
+            
+            # Получаем токен для следующей страницы
+            pagination = json_data.get("pagination", {})
+            pages = pagination.get("pages", [])
+            
+            # Ищем токен следующей страницы
+            next_token = None
+            for page in pages:
+                if page.get("label") == "next":
+                    next_token = page.get("token")
+                    break
+            
+            # Если нет следующей страницы, выходим
+            if not next_token:
+                log_info("kufar", f"Достигнута последняя страница ({current_page})")
+                break
+            
+            current_page += 1
         
-        return self._parse_api_response(json_data, min_rooms, max_rooms, min_price, max_price)
+        total_found = json_data.get("total", 0) if json_data else 0
+        log_info("kufar", f"Загружено {len(all_listings)} объявлений с {current_page} страниц (всего на сайте: {total_found})")
+        
+        return all_listings
     
     async def _fetch_json(self, url: str) -> Optional[dict]:
         """Получает JSON от API"""
@@ -128,13 +164,12 @@ class KufarScraper(BaseScraper):
         # Данные в ads
         ads = data.get("ads", [])
         
-        for ad in ads[:30]:  # Берём первые 30
+        for ad in ads:
             listing = self._parse_ad(ad)
             if listing:
                 if self._matches_filters(listing, min_rooms, max_rooms, min_price, max_price):
                     listings.append(listing)
         
-        log_info("kufar", f"Найдено: {len(listings)} объявлений")
         return listings
     
     def _parse_ad(self, ad: dict) -> Optional[Listing]:
