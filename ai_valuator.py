@@ -1610,21 +1610,21 @@ async def select_best_listings(
     """
     if not listings:
         return []
+    
+    # Формируем список для промпта (только базовые данные + ссылки)
+    # Исключаем объявления без цены (договорная, 0, None)
+    listings_for_prompt = []
+    for listing in listings[:15]:  # Максимум 15 объявлений
+        # Пропускаем объявления без цены
+        if not listing.price or listing.price <= 0:
+            log_info("ai_select", f"Пропускаю объявление {listing.id}: цена не указана или равна 0")
+            continue
         
-        # Формируем список для промпта (только базовые данные + ссылки)
-        # Исключаем объявления без цены (договорная, 0, None)
-        listings_for_prompt = []
-        for listing in listings[:15]:  # Максимум 15 объявлений
-            # Пропускаем объявления без цены
-            if not listing.price or listing.price <= 0:
-                log_info("ai_select", f"Пропускаю объявление {listing.id}: цена не указана или равна 0")
-                continue
-            
-            listings_for_prompt.append({
-                "listing": listing,
+        listings_for_prompt.append({
+            "listing": listing,
             "inspection": {}  # Пустая инспекция - ИИ сам посмотрит
-            })
-        
+        })
+    
     log_info("ai_select", f"Подготавливаю {len(listings_for_prompt)} объявлений для анализа...")
     log_info("ai_select", f"Формирую минимальный промпт с ссылками...")
     prompt = _prepare_selection_prompt_detailed(listings_for_prompt, user_filters, max_results)
