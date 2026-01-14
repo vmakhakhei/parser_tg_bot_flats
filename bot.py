@@ -422,7 +422,8 @@ async def check_new_listings_ai_mode(
     bot: Bot, 
     user_id: int, 
     user_filters: Dict[str, Any], 
-    all_listings: List[Listing]
+    all_listings: List[Listing],
+    status_msg: Optional[Message] = None
 ):
     """ИИ-режим: собирает все подходящие объявления, отправляет ИИ для выбора лучших"""
     logger.info(f"🤖 ИИ-режим для пользователя {user_id}")
