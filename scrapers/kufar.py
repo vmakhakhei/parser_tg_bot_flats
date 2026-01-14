@@ -66,6 +66,8 @@ class KufarScraper(BaseScraper):
     ) -> List[Listing]:
         """Получает список объявлений через API с пагинацией"""
         
+        log_info("kufar", f"Фильтры: комнаты {min_rooms}-{max_rooms}, цена ${min_price}-${max_price}")
+        
         # Получаем gtsy параметр для города
         gtsy_param = self._get_city_gtsy(city)
         
@@ -164,11 +166,33 @@ class KufarScraper(BaseScraper):
         # Данные в ads
         ads = data.get("ads", [])
         
+        parsed_count = 0
+        filtered_out_rooms = 0
+        filtered_out_price = 0
+        logged_samples = 0  # Для логирования первых отфильтрованных объявлений
+        
         for ad in ads:
             listing = self._parse_ad(ad)
             if listing:
+                parsed_count += 1
                 if self._matches_filters(listing, min_rooms, max_rooms, min_price, max_price):
                     listings.append(listing)
+                else:
+                    # Логируем первые 3 отфильтрованных объявления для диагностики
+                    if logged_samples < 3:
+                        log_info("kufar", f"Отфильтровано: {listing.rooms}к, ${listing.price} (фильтр: {min_rooms}-{max_rooms}к, ${min_price}-${max_price})")
+                        logged_samples += 1
+                    
+                    # Считаем причины отсева
+                    if listing.rooms > 0 and (listing.rooms < min_rooms or listing.rooms > max_rooms):
+                        filtered_out_rooms += 1
+                    elif listing.price > 0 and (listing.price < min_price or listing.price > max_price):
+                        filtered_out_price += 1
+        
+        # Логируем статистику парсинга страницы
+        if ads:
+            log_info("kufar", f"Страница: {len(ads)} в ответе, {parsed_count} распарсено, "
+                     f"{len(listings)} прошло (отсеяно: {filtered_out_rooms} по комнатам, {filtered_out_price} по цене)")
         
         return listings
     
