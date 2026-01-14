@@ -76,24 +76,42 @@ class HataScraper(BaseScraper):
                 
                 # Если есть субдомен, пробуем через него
                 if subdomain:
-                    async with session.get(subdomain_url, headers=headers, allow_redirects=True, timeout=10) as resp:
-                        if resp.status == 200:
-                            final_url = str(resp.url)
-                            html = await resp.text()
-                            
-                            # Ищем ckod в URL или HTML
-                            ckod_match = re.search(r'ckod=(\d+)', final_url)
-                            if ckod_match:
-                                ckod = ckod_match.group(1)
-                                log_info("hata", f"✅ Найден код города '{city}' через субдомен: {ckod}")
-                                return ckod
-                            
-                            # Ищем ckod в HTML
-                            ckod_matches = re.findall(r'ckod["\']?\s*[:=]\s*["\']?(\d+)', html, re.IGNORECASE)
-                            if ckod_matches:
-                                ckod = ckod_matches[0]
-                                log_info("hata", f"✅ Найден код города '{city}' в HTML субдомена: {ckod}")
-                                return ckod
+                    # Пробуем сначала главную страницу субдомена
+                    main_subdomain_url = f"https://{subdomain}.hata.by/"
+                    log_info("hata", f"Пробую главную субдомена: {main_subdomain_url}")
+                    
+                    try:
+                        async with session.get(main_subdomain_url, headers=headers, allow_redirects=True, timeout=10) as resp:
+                            log_info("hata", f"Ответ субдомена: status={resp.status}, url={resp.url}")
+                            if resp.status == 200:
+                                final_url = str(resp.url)
+                                html = await resp.text()
+                                
+                                # Ищем ckod в URL
+                                ckod_match = re.search(r'ckod[=:](\d+)', final_url)
+                                if ckod_match:
+                                    ckod = ckod_match.group(1)
+                                    log_info("hata", f"✅ Найден код города '{city}' в URL субдомена: {ckod}")
+                                    return ckod
+                                
+                                # Ищем ckod в HTML (разные форматы)
+                                ckod_patterns = [
+                                    r'ckod["\']?\s*[:=]\s*["\']?(\d{10,})',  # ckod=1234567890 или ckod: "1234567890"
+                                    r'data-ckod["\']?\s*[:=]\s*["\']?(\d{10,})',  # data-ckod
+                                    r'"ckod"\s*:\s*"?(\d{10,})"?',  # JSON format
+                                    r'name="ckod"[^>]*value="(\d{10,})"',  # input hidden
+                                ]
+                                
+                                for pattern in ckod_patterns:
+                                    ckod_match = re.search(pattern, html, re.IGNORECASE)
+                                    if ckod_match:
+                                        ckod = ckod_match.group(1)
+                                        log_info("hata", f"✅ Найден код города '{city}' в HTML субдомена: {ckod}")
+                                        return ckod
+                                
+                                log_warning("hata", f"ckod не найден в HTML субдомена {subdomain}.hata.by (размер HTML: {len(html)} байт)")
+                    except Exception as e:
+                        log_warning("hata", f"Ошибка при запросе субдомена {subdomain}.hata.by: {e}")
                 
                 # Метод 2: Пробуем POST запрос с параметрами поиска (fallback)
                 search_url = f"{self.BASE_URL}/search/"
@@ -152,14 +170,32 @@ class HataScraper(BaseScraper):
         city_lower = city.lower().strip()
         
         # Маппинг городов на коды ckod (коды городов в системе Hata)
-        # ТОЛЬКО ПОДТВЕРЖДЁННЫЕ коды! Для остальных используется динамический поиск.
+        # Структура кода: первая цифра = область (1-Брест, 2-Витебск, 3-Гомель, 4-Гродно, 5-Минск, 6-Могилёв)
         # Подтверждённые коды:
-        # - Минск: 5000000000 (из URL: https://www.hata.by/search/~s_do=sale~s_what=flat~currency=840~rooms=1~ctype=ckod~ckod=5000000000/page/1/)
-        # - Барановичи: 1410000000 (из URL: https://baranovichi.hata.by/search/~s_do=sale~s_what=flat~currency=840~rooms=1~ctype=ckod~ckod=1410000000/page/1/)
+        # - Минск: 5000000000 (столица)
+        # - Барановичи: 1410000000 (Брестская обл.)
         city_mapping = {
-            "барановичи": "1410000000",
+            # Подтверждённые
             "минск": "5000000000",
-            # Остальные города определяются динамически через _get_city_ckod_dynamic()
+            "барановичи": "1410000000",
+            # Областные центры (структура: X010000000 где X = код области)
+            "брест": "1010000000",
+            "витебск": "2010000000",
+            "гомель": "3010000000",
+            "гродно": "4010000000",
+            "могилев": "6010000000",
+            "могилёв": "6010000000",
+            # Крупные города
+            "бобруйск": "6020000000",  # Могилёвская
+            "пинск": "1020000000",     # Брестская
+            "орша": "2020000000",      # Витебская
+            "мозырь": "3020000000",    # Гомельская
+            "лида": "4020000000",      # Гродненская
+            "борисов": "5020000000",   # Минская
+            "солигорск": "5030000000", # Минская
+            "молодечно": "5040000000", # Минская
+            "полоцк": "2030000000",    # Витебская
+            "новополоцк": "2040000000", # Витебская
         }
         
         # Если город найден в маппинге, используем его
