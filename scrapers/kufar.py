@@ -45,6 +45,7 @@ class KufarScraper(BaseScraper):
             "витебск": "country-belarus~province-vitebskaja_oblast~locality-vitebsk",
             "могилев": "country-belarus~province-mogilevskaja_oblast~locality-mogilev",
             "могилёв": "country-belarus~province-mogilevskaja_oblast~locality-mogilev",
+            "орша": "country-belarus~province-vitebskaja_oblast~locality-orsha",
         }
         
         # Если город найден в маппинге, используем его

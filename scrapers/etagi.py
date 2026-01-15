@@ -44,6 +44,7 @@ class EtagiScraper(BaseScraper):
             "витебск": "vitebsk.etagi.com",
             "могилев": "mogilev.etagi.com",
             "могилёв": "mogilev.etagi.com",
+            "орша": "orsha.etagi.com",
         }
         
         # Если город найден в маппинге, используем его
