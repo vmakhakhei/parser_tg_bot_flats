@@ -350,8 +350,13 @@ def _validate_user_filters(user_filters: Dict[str, Any]) -> tuple[bool, Optional
 
 async def check_new_listings(bot: Bot):
     """Проверяет новые объявления и отправляет их активным пользователям"""
+    global _filter_log_counters
+    
     logger.info("=" * 50)
     logger.info("Проверка новых объявлений со всех источников...")
+    
+    # Сбрасываем счетчики логирования для всех пользователей
+    _filter_log_counters.clear()
     
     # Получаем список активных пользователей
     active_users = await get_active_users()
@@ -376,6 +381,10 @@ async def check_new_listings(bot: Bot):
             log_warning("bot", f"Пропускаю пользователя {user_id}: {error_msg}")
             continue
         
+        # Сбрасываем счетчик логирования для этого пользователя
+        _filter_log_counters[user_id] = {"filtered": 0, "passed": 0}
+        log_info("filter", f"[user_{user_id}] 📋 Применяю фильтры: город={user_filters.get('city')}, комнаты={user_filters.get('min_rooms')}-{user_filters.get('max_rooms')}, цена=${user_filters.get('min_price'):,}-${user_filters.get('max_price'):,}, продавец={user_filters.get('seller_type') or 'Все'}, режим={'ИИ' if user_filters.get('ai_mode') else 'Обычный'}")
+        
         # Получаем город пользователя
         user_city = user_filters.get("city")
         
@@ -397,7 +406,7 @@ async def check_new_listings(bot: Bot):
         
         for listing in all_listings:
             # Проверяем соответствие фильтрам пользователя
-            if not _matches_user_filters(listing, user_filters):
+            if not _matches_user_filters(listing, user_filters, user_id=user_id, log_details=True):
                 continue
                 
                 # Проверяем, не отправляли ли уже этому пользователю
@@ -444,7 +453,15 @@ async def check_new_listings_ai_mode(
     status_msg: Optional[Message] = None
 ):
     """ИИ-режим: собирает все подходящие объявления, отправляет ИИ для выбора лучших"""
+    global _filter_log_counters
+    
     logger.info(f"🤖 ИИ-режим для пользователя {user_id}")
+    
+    # Сбрасываем счетчик логирования для этого пользователя
+    _filter_log_counters[user_id] = {"filtered": 0, "passed": 0}
+    
+    # Логируем фильтры пользователя
+    log_info("filter", f"[user_{user_id}] 📋 Применяю фильтры: город={user_filters.get('city')}, комнаты={user_filters.get('min_rooms')}-{user_filters.get('max_rooms')}, цена=${user_filters.get('min_price'):,}-${user_filters.get('max_price'):,}, продавец={user_filters.get('seller_type') or 'Все'}")
     
     # Собираем ВСЕ подходящие объявления (без дедупликации)
     # ВАЖНО: НЕ проверяем is_listing_sent_to_user - берем ВСЕ подходящие объявления
@@ -454,7 +471,7 @@ async def check_new_listings_ai_mode(
     
     for listing in all_listings:
         # Проверяем соответствие фильтрам пользователя
-        if not _matches_user_filters(listing, user_filters):
+        if not _matches_user_filters(listing, user_filters, user_id=user_id, log_details=True):
             filtered_out += 1
             continue
         
@@ -464,7 +481,9 @@ async def check_new_listings_ai_mode(
     
     seller_type = user_filters.get("seller_type")
     seller_filter_text = f", фильтр продавца: {seller_type if seller_type else 'Все'}"
+    counter = _filter_log_counters.get(user_id, {"filtered": 0, "passed": 0})
     logger.info(f"ИИ-режим: всего {len(all_listings)}, отфильтровано {filtered_out}, кандидатов для анализа {len(candidate_listings)}{seller_filter_text}")
+    logger.info(f"[user_{user_id}] 📊 Статистика фильтрации: отфильтровано {counter['filtered']} (логировано), прошло {counter['passed']} (логировано)")
     
     if not candidate_listings:
         logger.info(f"Пользователю {user_id} нет новых объявлений для ИИ-анализа")
@@ -799,13 +818,38 @@ async def evaluate_and_compare_new_listings(
         log_error("ai_mode", f"Ошибка отправки оценки пользователю {user_id}", e)
 
 
-def _matches_user_filters(listing: Listing, filters: Dict[str, Any]) -> bool:
-    """Проверяет соответствие объявления фильтрам пользователя"""
+# Счетчики для ограничения логирования (чтобы не засорять логи)
+_filter_log_counters = {}  # {user_id: {"filtered": 0, "passed": 0}}
+_MAX_FILTERED_LOGS = 20  # Максимум логов отфильтрованных объявлений
+_MAX_PASSED_LOGS = 10   # Максимум логов прошедших объявлений
+
+def _matches_user_filters(listing: Listing, filters: Dict[str, Any], user_id: Optional[int] = None, log_details: bool = True) -> bool:
+    """Проверяет соответствие объявления фильтрам пользователя
+    
+    Args:
+        listing: Объявление для проверки
+        filters: Фильтры пользователя
+        user_id: ID пользователя (для логирования)
+        log_details: Логировать детали фильтрации (по умолчанию True)
+    """
+    global _filter_log_counters
+    
+    user_prefix = f"[user_{user_id}]" if user_id else "[filter]"
+    
+    # Инициализируем счетчик для пользователя
+    if user_id and user_id not in _filter_log_counters:
+        _filter_log_counters[user_id] = {"filtered": 0, "passed": 0}
+    
     # Комнаты
     if listing.rooms > 0:
         min_rooms = filters.get("min_rooms", 1)
         max_rooms = filters.get("max_rooms", 4)
         if listing.rooms < min_rooms or listing.rooms > max_rooms:
+            if log_details and user_id:
+                counter = _filter_log_counters.get(user_id, {"filtered": 0, "passed": 0})
+                if counter["filtered"] < _MAX_FILTERED_LOGS:
+                    log_info("filter", f"{user_prefix} ❌ Отфильтровано по комнатам: {listing.id} ({listing.source}) - {listing.rooms}к (фильтр: {min_rooms}-{max_rooms}к), цена: {listing.price_formatted}, адрес: {listing.address}")
+                    counter["filtered"] += 1
             return False
     
     # Цена (конвертируем в USD если нужно)
@@ -821,7 +865,11 @@ def _matches_user_filters(listing: Listing, filters: Dict[str, Any]) -> bool:
         min_price = filters.get("min_price", 0)
         max_price = filters.get("max_price", 1000000)  # Используем значение из фильтров или максимум
         if price < min_price or price > max_price:
-            log_info("filter", f"Не прошёл фильтр: {listing.rooms}к, ${price} (диапазон: ${min_price}-${max_price})")
+            if log_details and user_id:
+                counter = _filter_log_counters.get(user_id, {"filtered": 0, "passed": 0})
+                if counter["filtered"] < _MAX_FILTERED_LOGS:
+                    log_info("filter", f"{user_prefix} ❌ Отфильтровано по цене: {listing.id} ({listing.source}) - {listing.rooms}к, ${price:,} (фильтр: ${min_price:,}-${max_price:,}), адрес: {listing.address}")
+                    counter["filtered"] += 1
             return False
     
     # Фильтр по типу продавца (только для Kufar)
@@ -830,12 +878,27 @@ def _matches_user_filters(listing: Listing, filters: Dict[str, Any]) -> bool:
     if seller_type and listing.is_company is not None:
         if seller_type == "owner" and listing.is_company:
             # Фильтр: только собственники, а объявление от агентства
-            log_info("filter", f"Отфильтровано по типу продавца: {listing.id} (агентство, фильтр: только собственники)")
+            if log_details and user_id:
+                counter = _filter_log_counters.get(user_id, {"filtered": 0, "passed": 0})
+                if counter["filtered"] < _MAX_FILTERED_LOGS:
+                    log_info("filter", f"{user_prefix} ❌ Отфильтровано по типу продавца: {listing.id} ({listing.source}) - агентство (фильтр: только собственники), {listing.rooms}к, {listing.price_formatted}")
+                    counter["filtered"] += 1
             return False
         elif seller_type == "company" and not listing.is_company:
             # Фильтр: только агентства, а объявление от собственника (оставляем для совместимости)
-            log_info("filter", f"Отфильтровано по типу продавца: {listing.id} (собственник, фильтр: только агентства)")
+            if log_details and user_id:
+                counter = _filter_log_counters.get(user_id, {"filtered": 0, "passed": 0})
+                if counter["filtered"] < _MAX_FILTERED_LOGS:
+                    log_info("filter", f"{user_prefix} ❌ Отфильтровано по типу продавца: {listing.id} ({listing.source}) - собственник (фильтр: только агентства), {listing.rooms}к, {listing.price_formatted}")
+                    counter["filtered"] += 1
             return False
+    
+    # Если прошли все фильтры - логируем успешное прохождение (только первые несколько для каждого пользователя)
+    if log_details and user_id:
+        counter = _filter_log_counters.get(user_id, {"filtered": 0, "passed": 0})
+        if counter["passed"] < _MAX_PASSED_LOGS:
+            log_info("filter", f"{user_prefix} ✅ Прошло фильтры: {listing.id} ({listing.source}) - {listing.rooms}к, {listing.price_formatted}, адрес: {listing.address}")
+            counter["passed"] += 1
     
     return True
 
@@ -1147,7 +1210,7 @@ async def cb_filters_done(callback: CallbackQuery):
     # Фильтруем по фильтрам пользователя
     filtered_listings = []
     for l in listings:
-        if _matches_user_filters(l, user_filters):
+        if _matches_user_filters(l, user_filters, user_id=user_id, log_details=True):
             if not await is_listing_sent_to_user(user_id, l.id):
                 filtered_listings.append(l)
     
@@ -1215,7 +1278,7 @@ async def cb_check_now(callback: CallbackQuery):
     
     new_listings = []
     for listing in all_listings:
-        if _matches_user_filters(listing, user_filters):
+        if _matches_user_filters(listing, user_filters, user_id=user_id, log_details=True):
             if not await is_listing_sent_to_user(user_id, listing.id):
                 dup_check = await is_duplicate_content(
                     listing.rooms, listing.area, listing.address, listing.price
@@ -1273,7 +1336,7 @@ async def cb_check_now_from_ai(callback: CallbackQuery):
     
     new_listings = []
     for listing in all_listings:
-        if _matches_user_filters(listing, user_filters):
+        if _matches_user_filters(listing, user_filters, user_id=user_id, log_details=True):
             if not await is_listing_sent_to_user(user_id, listing.id):
                 dup_check = await is_duplicate_content(
                     listing.rooms, listing.area, listing.address, listing.price
@@ -1351,9 +1414,13 @@ async def cb_check_now_ai(callback: CallbackQuery):
         candidate_listings = []
         filtered_out_by_filters = 0
         
+        # Сбрасываем счетчик логирования для этого пользователя
+        _filter_log_counters[user_id] = {"filtered": 0, "passed": 0}
+        log_info("filter", f"[user_{user_id}] 📋 Применяю фильтры: город={user_filters.get('city')}, комнаты={user_filters.get('min_rooms')}-{user_filters.get('max_rooms')}, цена=${user_filters.get('min_price'):,}-${user_filters.get('max_price'):,}, продавец={user_filters.get('seller_type') or 'Все'}")
+        
         for listing in all_listings:
             # ВАЖНО: Всегда применяем фильтры пользователя (дополнительная проверка)
-            if not _matches_user_filters(listing, user_filters):
+            if not _matches_user_filters(listing, user_filters, user_id=user_id, log_details=True):
                 filtered_out_by_filters += 1
                 continue
             
@@ -2018,7 +2085,7 @@ async def cb_send_all_listings(callback: CallbackQuery):
     
     new_listings = []
     for listing in all_listings:
-        if _matches_user_filters(listing, user_filters):
+        if _matches_user_filters(listing, user_filters, user_id=user_id, log_details=True):
             if not await is_listing_sent_to_user(user_id, listing.id):
                 dup_check = await is_duplicate_content(
                     listing.rooms, listing.area, listing.address, listing.price
@@ -2691,8 +2758,12 @@ async def search_listings_after_setup(
             already_sent = 0
             duplicates = 0
             
+            # Сбрасываем счетчик логирования для этого пользователя
+            _filter_log_counters[user_id] = {"filtered": 0, "passed": 0}
+            log_info("filter", f"[user_{user_id}] 📋 Применяю фильтры: город={user_filters.get('city')}, комнаты={user_filters.get('min_rooms')}-{user_filters.get('max_rooms')}, цена=${user_filters.get('min_price'):,}-${user_filters.get('max_price'):,}, продавец={user_filters.get('seller_type') or 'Все'}")
+            
             for listing in all_listings:
-                if not _matches_user_filters(listing, user_filters):
+                if not _matches_user_filters(listing, user_filters, user_id=user_id, log_details=True):
                     filtered_out += 1
                     continue
                     
