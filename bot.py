@@ -477,7 +477,9 @@ async def check_new_listings_ai_mode(
         
         candidate_listings.append(listing)
     
-    logger.info(f"ИИ-режим: всего {len(all_listings)}, отфильтровано {filtered_out}, уже отправлено {already_sent}, дубликатов {duplicates}, кандидатов {len(candidate_listings)}")
+    seller_type = user_filters.get("seller_type")
+    seller_filter_text = f", фильтр продавца: {seller_type if seller_type else 'Все'}"
+    logger.info(f"ИИ-режим: всего {len(all_listings)}, отфильтровано {filtered_out}, уже отправлено {already_sent}, дубликатов {duplicates}, кандидатов {len(candidate_listings)}{seller_filter_text}")
     
     if not candidate_listings:
         logger.info(f"Пользователю {user_id} нет новых объявлений для ИИ-анализа")
@@ -839,12 +841,15 @@ def _matches_user_filters(listing: Listing, filters: Dict[str, Any]) -> bool:
     
     # Фильтр по типу продавца (только для Kufar)
     seller_type = filters.get("seller_type")
+    # Если фильтр не установлен (None) или "Все", то не применяем фильтр
     if seller_type and listing.is_company is not None:
         if seller_type == "owner" and listing.is_company:
             # Фильтр: только собственники, а объявление от агентства
+            log_info("filter", f"Отфильтровано по типу продавца: {listing.id} (агентство, фильтр: только собственники)")
             return False
         elif seller_type == "company" and not listing.is_company:
-            # Фильтр: только агентства, а объявление от собственника
+            # Фильтр: только агентства, а объявление от собственника (оставляем для совместимости)
+            log_info("filter", f"Отфильтровано по типу продавца: {listing.id} (собственник, фильтр: только агентства)")
             return False
     
     return True
@@ -1371,9 +1376,11 @@ async def cb_check_now_ai(callback: CallbackQuery):
             # ИИ должен проанализировать все варианты, чтобы выбрать лучшие
             candidate_listings.append(listing)
         
+        seller_type = user_filters.get("seller_type")
+        seller_filter_text = f", фильтр продавца: {seller_type if seller_type else 'Все'}"
         logger.info(f"ИИ-анализ для пользователя {user_id}: всего объявлений {len(all_listings)}, "
                    f"отфильтровано по фильтрам {filtered_out_by_filters}, "
-                   f"кандидатов для анализа {len(candidate_listings)}")
+                   f"кандидатов для анализа {len(candidate_listings)}{seller_filter_text}")
         
         if not candidate_listings:
             # Не найдено ни одного объявления для анализа - показываем сообщение с предложением изменить фильтры
@@ -2676,6 +2683,8 @@ async def search_listings_after_setup(
             await show_actions_menu(bot, user_id, 0, "ИИ-режим")
             return
         
+        # Получаем полные фильтры пользователя из БД, чтобы включить seller_type
+        user_filters_db = await get_user_filters(user_id)
         user_filters = {
             "city": city,
             "min_rooms": min_rooms,
@@ -2683,7 +2692,8 @@ async def search_listings_after_setup(
             "min_price": min_price,
             "max_price": max_price,
             "ai_mode": ai_mode,
-            "is_active": True
+            "is_active": True,
+            "seller_type": user_filters_db.get("seller_type") if user_filters_db else None
         }
         
         if ai_mode:
