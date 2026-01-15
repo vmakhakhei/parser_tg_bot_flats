@@ -1631,32 +1631,24 @@ async def select_best_listings(
         await valuator.close_session()
     
     log_info("ai_select", f"Подготавливаю {len(listings_for_prompt)} объявлений для анализа...")
-    log_info("ai_select", f"Формирую промпт для экспертного анализа...")
     
-    # Пробуем сформировать промпт, если слишком большой - уменьшаем количество объявлений
-    max_attempts = 3
-    current_listings = listings_for_prompt
-    prompt = None
+    # Динамический батчинг: разбиваем объявления на батчи и отправляем несколько запросов
+    # Размер батча зависит от количества объявлений
+    total_listings = len(listings_for_prompt)
     
-    for attempt in range(max_attempts):
-        prompt = _prepare_selection_prompt_detailed(current_listings, user_filters, max_results)
-        prompt_length = len(prompt)
-        estimated_tokens = prompt_length // 4  # Примерная оценка: 1 токен ≈ 4 символа
-        
-        # Groq llama-3.1-8b-instant имеет лимит ~6000 токенов на запрос
-        # Оставляем запас ~1000 токенов для ответа
-        if estimated_tokens <= 5000:
-            log_info("ai_select", f"Промпт сформирован. Длина: {prompt_length} символов (~{estimated_tokens} токенов), объявлений: {len(current_listings)}")
-            break
-        else:
-            # Уменьшаем количество объявлений на 25%
-            new_count = max(5, int(len(current_listings) * 0.75))
-            log_warning("ai_select", f"⚠️ Промпт слишком большой: ~{estimated_tokens} токенов. Уменьшаю количество объявлений с {len(current_listings)} до {new_count}")
-            current_listings = current_listings[:new_count]
+    # Определяем размер батча (10-15 объявлений на батч для оптимального размера промпта)
+    if total_listings <= 15:
+        # Если объявлений мало - отправляем одним запросом
+        batch_size = total_listings
+        batches = [listings_for_prompt]
+    else:
+        # Разбиваем на батчи по 12 объявлений (оптимально для промпта ~3000-4000 токенов)
+        batch_size = 12
+        batches = []
+        for i in range(0, total_listings, batch_size):
+            batches.append(listings_for_prompt[i:i + batch_size])
     
-    if not prompt:
-        log_error("ai_select", "Не удалось сформировать промпт подходящего размера")
-        return []
+    log_info("ai_select", f"Разбито на {len(batches)} батч(ей) по ~{batch_size} объявлений")
     
     # Список провайдеров для fallback (в порядке приоритета)
     providers_to_try = []
@@ -1675,44 +1667,108 @@ async def select_best_listings(
         log_warning("ai_select", "ИИ-оценщик недоступен, возвращаю все объявления")
         return [{"listing": l["listing"], "reason": "ИИ недоступен"} for l in listings_for_prompt[:max_results]]
     
-    # Пробуем провайдеры по очереди
-    for provider_name, api_key in providers_to_try:
-        log_info("ai_select", f"Пробую провайдер: {provider_name.upper()}")
-        
-        try:
-            valuator = AIValuator(provider_name)
-            await valuator.start_session()
-            
-            try:
-                if provider_name == "gemini":
-                    selected_with_reasons = await valuator._select_best_gemini_detailed(prompt, current_listings)
-                elif provider_name == "groq":
-                    selected_with_reasons = await valuator._select_best_groq_detailed(prompt, current_listings)
-                else:
-                    log_warning("ai_select", f"Провайдер {provider_name} не поддерживает детальный выбор")
-                    continue
-                
-                # Если получили результат, используем его
-                if selected_with_reasons and len(selected_with_reasons) > 0:
-                    log_info("ai_select", f"✅ Успешно использован {provider_name.upper()}: выбрано {len(selected_with_reasons)} вариантов")
-                    
-                    await valuator.close_session()
-                    return selected_with_reasons[:max_results]
-                else:
-                    log_warning("ai_select", f"Провайдер {provider_name} вернул пустой результат, пробую следующий...")
-            
-            except Exception as e:
-                log_warning("ai_select", f"Ошибка при использовании {provider_name}: {e}, пробую следующий провайдер...")
-            finally:
-                await valuator.close_session()
-                
-        except Exception as e:
-            log_warning("ai_select", f"Не удалось инициализировать {provider_name}: {e}, пробую следующий...")
-            continue
+    # Обрабатываем каждый батч параллельно
+    all_selected_results = []
     
-    # Если все провайдеры не сработали - возвращаем пустой список
-    log_error("ai_select", "Все провайдеры не сработали, невозможно получить результат от ИИ")
-    return []
+    async def process_batch(batch_listings: List[Dict[str, Any]], batch_num: int) -> List[Dict[str, Any]]:
+        """Обрабатывает один батч объявлений"""
+        # Формируем промпт для батча
+        # Для каждого батча выбираем топ-5 (потом из всех выберем лучшие)
+        batch_max_results = min(5, len(batch_listings))
+        prompt = _prepare_selection_prompt_detailed(batch_listings, user_filters, batch_max_results)
+        prompt_length = len(prompt)
+        estimated_tokens = prompt_length // 4
+        
+        log_info("ai_select", f"Батч {batch_num + 1}/{len(batches)}: {len(batch_listings)} объявлений, промпт ~{estimated_tokens} токенов")
+        
+        # Пробуем провайдеры по очереди для этого батча
+        for provider_name, api_key in providers_to_try:
+            try:
+                valuator = AIValuator(provider_name)
+                await valuator.start_session()
+                
+                try:
+                    if provider_name == "gemini":
+                        selected = await valuator._select_best_gemini_detailed(prompt, batch_listings)
+                    elif provider_name == "groq":
+                        selected = await valuator._select_best_groq_detailed(prompt, batch_listings)
+                    else:
+                        continue
+                    
+                    if selected and len(selected) > 0:
+                        log_info("ai_select", f"✅ Батч {batch_num + 1}: выбрано {len(selected)} вариантов")
+                        await valuator.close_session()
+                        return selected
+                    else:
+                        log_warning("ai_select", f"Батч {batch_num + 1}: провайдер {provider_name} вернул пустой результат")
+                
+                except Exception as e:
+                    log_warning("ai_select", f"Батч {batch_num + 1}: ошибка {provider_name}: {e}")
+                finally:
+                    await valuator.close_session()
+                    
+            except Exception as e:
+                log_warning("ai_select", f"Батч {batch_num + 1}: не удалось инициализировать {provider_name}: {e}")
+                continue
+        
+        log_warning("ai_select", f"Батч {batch_num + 1}: не удалось получить результат")
+        return []
+    
+    # Обрабатываем батчи параллельно (но с ограничением для избежания rate limit)
+    log_info("ai_select", f"Обрабатываю {len(batches)} батч(ей) параллельно...")
+    
+    # Ограничиваем параллельность до 3 батчей одновременно (чтобы не превысить rate limit Groq)
+    semaphore = asyncio.Semaphore(3)
+    
+    async def process_batch_with_semaphore(batch_listings, batch_num):
+        async with semaphore:
+            # Небольшая задержка между батчами для избежания rate limit
+            if batch_num > 0:
+                await asyncio.sleep(1)
+            return await process_batch(batch_listings, batch_num)
+    
+    batch_tasks = [process_batch_with_semaphore(batch, i) for i, batch in enumerate(batches)]
+    batch_results = await asyncio.gather(*batch_tasks, return_exceptions=True)
+    
+    # Собираем все результаты
+    for i, result in enumerate(batch_results):
+        if isinstance(result, Exception):
+            log_error("ai_select", f"Ошибка обработки батча {i + 1}: {result}")
+        elif result:
+            all_selected_results.extend(result)
+    
+    log_info("ai_select", f"Всего получено результатов из всех батчей: {len(all_selected_results)}")
+    
+    if not all_selected_results:
+        log_error("ai_select", "Не удалось получить результаты ни из одного батча")
+        return []
+    
+    # Объединяем результаты и выбираем топ-N лучших по final_score
+    # Удаляем дубликаты по listing.id
+    seen_ids = set()
+    unique_results = []
+    for result in all_selected_results:
+        listing = result.get("listing")
+        if listing and listing.id not in seen_ids:
+            seen_ids.add(listing.id)
+            unique_results.append(result)
+    
+    # Сортируем по final_score (если есть) или по порядку
+    def get_score(result):
+        # Ищем final_score в разных местах ответа
+        if "final_score" in result:
+            return result["final_score"]
+        # Пробуем извлечь из reason, если там есть оценка
+        reason = result.get("reason", "")
+        score_match = re.search(r'(\d+\.?\d*)/10', reason)
+        if score_match:
+            return float(score_match.group(1))
+        return 0
+    
+    unique_results.sort(key=get_score, reverse=True)
+    
+    log_info("ai_select", f"Выбрано {len(unique_results)} уникальных результатов, возвращаю топ-{max_results}")
+    return unique_results[:max_results]
 
 
 def _prepare_selection_prompt_detailed(
