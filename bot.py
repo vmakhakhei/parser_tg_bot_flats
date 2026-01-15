@@ -1430,9 +1430,11 @@ async def cb_check_now_ai(callback: CallbackQuery):
         
         seller_type = user_filters.get("seller_type")
         seller_filter_text = f", фильтр продавца: {seller_type if seller_type else 'Все'}"
+        counter = _filter_log_counters.get(user_id, {"filtered": 0, "passed": 0})
         logger.info(f"ИИ-анализ для пользователя {user_id}: всего объявлений {len(all_listings)}, "
                    f"отфильтровано по фильтрам {filtered_out_by_filters}, "
                    f"кандидатов для анализа {len(candidate_listings)}{seller_filter_text}")
+        logger.info(f"[user_{user_id}] 📊 Статистика фильтрации: отфильтровано {counter['filtered']} (логировано), прошло {counter['passed']} (логировано)")
         
         if not candidate_listings:
             # Не найдено ни одного объявления для анализа - показываем сообщение с предложением изменить фильтры
