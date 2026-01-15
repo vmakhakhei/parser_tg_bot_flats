@@ -1545,6 +1545,24 @@ async def cb_check_now_ai(callback: CallbackQuery):
 
 async def show_mode_selection_menu(message: Message, state: FSMContext):
     """Показывает меню выбора режима работы после настройки фильтров"""
+    # Проверяем, что все предыдущие шаги пройдены
+    data = await state.get_data()
+    
+    if not data.get("city"):
+        await message.answer("❌ Ошибка: город не выбран. Начните настройку заново через /start")
+        await state.clear()
+        return
+    
+    if not data.get("min_rooms") or not data.get("max_rooms"):
+        await message.answer("❌ Ошибка: количество комнат не выбрано. Начните настройку заново через /start")
+        await state.clear()
+        return
+    
+    if data.get("min_price") is None or data.get("max_price") is None:
+        await message.answer("❌ Ошибка: цена не установлена. Начните настройку заново через /start")
+        await state.clear()
+        return
+    
     builder = InlineKeyboardBuilder()
     
     builder.button(text="🔍 Обычный парсер", callback_data="setup_mode_normal")
@@ -1571,15 +1589,32 @@ async def cb_setup_mode(callback: CallbackQuery, state: FSMContext):
     user_id = callback.from_user.id
     ai_mode = callback.data == "setup_mode_ai"
     
-    await callback.answer()
-    
     # Получаем данные из состояния
     data = await state.get_data()
-    city = data.get("city", "барановичи")
-    min_rooms = data.get("min_rooms", 1)
-    max_rooms = data.get("max_rooms", 4)
-    min_price = data.get("min_price", 0)
-    max_price = data.get("max_price", 100000)
+    
+    # Проверяем, что все обязательные поля заполнены
+    city = data.get("city")
+    min_rooms = data.get("min_rooms")
+    max_rooms = data.get("max_rooms")
+    min_price = data.get("min_price")
+    max_price = data.get("max_price")
+    
+    if not city:
+        await callback.answer("❌ Город не выбран! Начните настройку заново через /start", show_alert=True)
+        await state.clear()
+        return
+    
+    if min_rooms is None or max_rooms is None:
+        await callback.answer("❌ Количество комнат не выбрано! Начните настройку заново через /start", show_alert=True)
+        await state.clear()
+        return
+    
+    if min_price is None or max_price is None:
+        await callback.answer("❌ Цена не установлена! Начните настройку заново через /start", show_alert=True)
+        await state.clear()
+        return
+    
+    await callback.answer()
     
     # Сохраняем фильтры с выбранным режимом
     await set_user_filters(
@@ -2291,6 +2326,12 @@ async def show_rooms_selection_menu(message: Message, state: FSMContext, city_na
 @router.callback_query(F.data.startswith("setup_rooms_"))
 async def cb_setup_rooms_step(callback: CallbackQuery, state: FSMContext):
     """Обработчик выбора комнат в пошаговой настройке"""
+    # Проверяем, что город выбран
+    data = await state.get_data()
+    if not data.get("city"):
+        await callback.answer("❌ Сначала выберите город!", show_alert=True)
+        return
+    
     rooms_data = callback.data.replace("setup_rooms_", "")
     parts = rooms_data.split("_")
     min_rooms = int(parts[0])
@@ -2325,6 +2366,17 @@ async def show_price_selection_menu(message: Message, state: FSMContext, rooms_t
 @router.message(SetupStates.waiting_for_price_min)
 async def process_setup_price_min(message: Message, state: FSMContext):
     """Обрабатывает ввод минимальной цены"""
+    # Проверяем, что город и комнаты выбраны
+    data = await state.get_data()
+    if not data.get("city"):
+        await message.answer("❌ Ошибка: город не выбран. Начните настройку заново через /start")
+        await state.clear()
+        return
+    if not data.get("min_rooms") or not data.get("max_rooms"):
+        await message.answer("❌ Ошибка: количество комнат не выбрано. Начните настройку заново через /start")
+        await state.clear()
+        return
+    
     try:
         price_text = message.text.strip().replace(" ", "").replace(",", "").replace("$", "")
         min_price = int(price_text)
@@ -2361,6 +2413,21 @@ async def process_setup_price_min(message: Message, state: FSMContext):
 @router.message(SetupStates.waiting_for_price_max)
 async def process_setup_price_max(message: Message, state: FSMContext):
     """Обрабатывает ввод максимальной цены"""
+    # Проверяем, что все предыдущие шаги пройдены
+    data = await state.get_data()
+    if not data.get("city"):
+        await message.answer("❌ Ошибка: город не выбран. Начните настройку заново через /start")
+        await state.clear()
+        return
+    if not data.get("min_rooms") or not data.get("max_rooms"):
+        await message.answer("❌ Ошибка: количество комнат не выбрано. Начните настройку заново через /start")
+        await state.clear()
+        return
+    if not data.get("min_price") and data.get("min_price") != 0:
+        await message.answer("❌ Ошибка: минимальная цена не установлена. Начните настройку заново через /start")
+        await state.clear()
+        return
+    
     try:
         price_text = message.text.strip().replace(" ", "").replace(",", "").replace("$", "")
         max_price = int(price_text)
@@ -2370,7 +2437,6 @@ async def process_setup_price_max(message: Message, state: FSMContext):
             return
         
         # Получаем минимальную цену из состояния
-        data = await state.get_data()
         min_price = data.get("min_price", 0)
         
         if max_price < min_price:
