@@ -509,28 +509,28 @@ JSON ответ:
                                 if year_match:
                                     try:
                                         year = int(year_match.group(1))
-                                        if 1900 <= year <= 2025:
-                                            year_built = str(year)
+                                if 1900 <= year <= 2025:
+                                    year_built = str(year)
                                             log_info("ai_inspect", f"Найден год постройки в секции 'О доме': {year_built}")
-                                            break
-                                    except:
-                                        pass
+                                    break
+                            except:
+                                pass
                     
                         # Если не нашли в секциях, ищем в параметрах объявления
-                        if not year_built:
+                    if not year_built:
                             # Ищем элементы с классом, содержащим "param", "property", "characteristic"
                             param_elements = soup.find_all(['div', 'span', 'td', 'dt', 'dd'], 
                                                           class_=re.compile(r'param|property|characteristic|info|detail', re.I))
-                            for elem in param_elements:
-                                text = elem.get_text()
+                        for elem in param_elements:
+                            text = elem.get_text()
                                 # Ищем только в элементах, где есть слова "год" и "постройки" вместе
                                 if 'год' in text.lower() and 'постройки' in text.lower():
-                                    year_match = re.search(r'(\d{4})', text)
-                                    if year_match:
-                                        try:
-                                            year = int(year_match.group(1))
-                                            if 1900 <= year <= 2025:
-                                                year_built = str(year)
+                                year_match = re.search(r'(\d{4})', text)
+                                if year_match:
+                                    try:
+                                        year = int(year_match.group(1))
+                                        if 1900 <= year <= 2025:
+                                            year_built = str(year)
                                                 log_info("ai_inspect", f"Найден год постройки в параметрах: {year_built}")
                                                 break
                                         except:
@@ -813,7 +813,7 @@ JSON ответ:
                             if "generateContent" in supported_methods:
                                 # Фильтруем только стабильные модели (исключаем экспериментальные версии 2.0, 2.5)
                                 if any(stable in model_name for stable in ["gemini-1.5", "gemini-pro"]) and not any(exp in model_name for exp in ["2.0", "2.5", "exp"]):
-                                    models.append(model_name)
+                                models.append(model_name)
                     
                     # Сортируем: сначала стабильные модели из списка
                     models_sorted = []
@@ -1543,13 +1543,13 @@ def get_valuator() -> Optional[AIValuator]:
         else:
             # Автоматический выбор: только Groq
             if GROQ_API_KEY:
-                _valuator = AIValuator("groq")
+            _valuator = AIValuator("groq")
                 log_info("ai", "Использую Groq API (30 запросов/минуту, без суточных лимитов)")
-            elif HF_API_KEY:
-                _valuator = AIValuator("huggingface")
+        elif HF_API_KEY:
+            _valuator = AIValuator("huggingface")
                 log_info("ai", "Использую Hugging Face API")
-            elif os.getenv("OLLAMA_URL"):
-                _valuator = AIValuator("ollama")
+        elif os.getenv("OLLAMA_URL"):
+            _valuator = AIValuator("ollama")
                 log_info("ai", "Использую Ollama API")
     
     return _valuator
@@ -1577,18 +1577,18 @@ async def select_best_listings(
     """
     if not listings:
         return []
-    
-    # Формируем список для промпта (только базовые данные + ссылки)
-    # Исключаем объявления без цены (договорная, 0, None)
+        
+        # Формируем список для промпта (только базовые данные + ссылки)
+        # Исключаем объявления без цены (договорная, 0, None)
     # Лимит объявлений зависит от размера промпта, обычно до 100 OK
-    listings_for_prompt = []
+        listings_for_prompt = []
     listings_to_inspect = []
     
     for listing in listings[:100]:  # Максимум 100 объявлений для анализа
-        # Пропускаем объявления без цены
-        if not listing.price or listing.price <= 0:
-            log_info("ai_select", f"Пропускаю объявление {listing.id}: цена не указана или равна 0")
-            continue
+            # Пропускаем объявления без цены
+            if not listing.price or listing.price <= 0:
+                log_info("ai_select", f"Пропускаю объявление {listing.id}: цена не указана или равна 0")
+                continue
         
         listings_to_inspect.append(listing)
     
@@ -1756,6 +1756,8 @@ async def select_best_listings(
     # Сортируем по final_score (если есть) или по порядку
     def get_score(result):
         # Ищем final_score в разных местах ответа
+        if "score" in result:
+            return result["score"]
         if "final_score" in result:
             return result["final_score"]
         # Пробуем извлечь из reason, если там есть оценка
