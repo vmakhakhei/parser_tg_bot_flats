@@ -1359,51 +1359,25 @@ JSON ответ:
                 except json.JSONDecodeError as e:
                     log_error("ai_select", f"Ошибка парсинга JSON: {e}")
                     log_info("ai_select", f"Проблемный JSON (первые 500 символов): {json_str[:500]}")
+                    return []
                 except ValueError as e:
-                    log_warning("ai_select", f"Ошибка валидации JSON: {e}")
-                    # Продолжаем к fallback
+                    log_error("ai_select", f"Ошибка валидации JSON: {e}")
+                    return []
             
-            # Fallback: пытаемся найти ID в тексте
-            log_info("ai_select", "Пробую fallback парсинг по ID в тексте")
-            all_ids = [item["listing"].id for item in inspected_listings]
-            found_items = []
-            for listing_id in all_ids:
-                if listing_id in content:
-                    # Ищем описание рядом с ID
-                    reason_patterns = [
-                        f'{re.escape(listing_id)}[^"]*"reason":\\s*"([^"]+)"',
-                        f'{re.escape(listing_id)}.*?reason[^:]*:\\s*"([^"]+)"',
-                        f'{re.escape(listing_id)}.*?причина[^:]*:\\s*"([^"]+)"',
-                    ]
-                    
-                    reason = "Хорошее соотношение цена-качество"
-                    for pattern in reason_patterns:
-                        reason_match = re.search(pattern, content, re.IGNORECASE | re.DOTALL)
-                        if reason_match:
-                            reason = reason_match.group(1)
-                            break
-                    
-                    for inspected in inspected_listings:
-                        if inspected["listing"].id == listing_id:
-                            found_items.append({
-                                "listing": inspected["listing"],
-                                "reason": reason
-                            })
-                            log_info("ai_select", f"✅ Fallback: найден вариант {listing_id}")
-                            break
-            
-            if found_items:
-                log_info("ai_select", f"✅ Найдено через fallback: {len(found_items)} вариантов")
-                return found_items[:5]
+            # Если JSON не найден вообще
+            log_error("ai_select", f"JSON не найден в ответе. Первые 500 символов: {content[:500]}")
+            return []
             
         except json.JSONDecodeError as e:
             log_error("ai_select", f"Ошибка парсинга JSON: {content[:200]}", e)
+            return []
         except Exception as e:
             log_error("ai_select", f"Ошибка парсинга ответа", e)
+            return []
         
-        # Если ничего не найдено, возвращаем первые несколько
-        log_warning("ai_select", "Не удалось распарсить ответ, возвращаю первые 3")
-        return [{"listing": item["listing"], "reason": "Автоматический выбор"} for item in inspected_listings[:3]]
+        # Если ничего не найдено - возвращаем пустой список
+        log_error("ai_select", "Не удалось распарсить ответ от ИИ")
+        return []
     
     # Удалено: функция _select_best_gemini - Gemini больше не используется
     
@@ -1641,48 +1615,6 @@ async def select_best_listings(
                 if selected_with_reasons and len(selected_with_reasons) > 0:
                     log_info("ai_select", f"✅ Успешно использован {provider_name.upper()}: выбрано {len(selected_with_reasons)} вариантов")
                     
-                    # Проверяем, что выбрано минимум 5 вариантов (если есть столько кандидатов)
-                    min_required = min(5, max_results, len(listings))
-                    if len(selected_with_reasons) < min_required and len(listings) >= min_required:
-                        log_warning("ai_select", f"ИИ выбрал только {len(selected_with_reasons)} вариантов, требуется минимум {min_required}")
-                        # Если есть больше кандидатов, добавляем лучшие из оставшихся
-                        selected_ids = [item["listing"].id for item in selected_with_reasons]
-                        remaining = [l["listing"] for l in listings_for_prompt if l["listing"].id not in selected_ids]
-                        
-                        # Сортируем по цене за м² в USD
-                        def get_price_per_sqm_usd(l):
-                            if l.area <= 0:
-                                return float('inf')
-                            price_usd = l.price_usd if l.price_usd else (
-                                int(l.price_byn / 2.95) if l.price_byn else (
-                                    int(l.price / 2.95) if l.currency == "BYN" else l.price
-                                )
-                            )
-                            return price_usd / l.area if price_usd > 0 else float('inf')
-                        
-                        remaining_sorted = sorted(remaining, key=get_price_per_sqm_usd)
-                        
-                        # Добавляем недостающие варианты
-                        needed = min_required - len(selected_with_reasons)
-                        for listing in remaining_sorted[:needed]:
-                            # Правильно вычисляем цену за м² в USD
-                            price_usd_for_calc = listing.price_usd if listing.price_usd else (
-                                int(listing.price_byn / 2.95) if listing.price_byn else (
-                                    int(listing.price / 2.95) if listing.currency == "BYN" else listing.price
-                                )
-                            )
-                            price_per_sqm = int(price_usd_for_calc / listing.area) if listing.area > 0 and price_usd_for_calc > 0 else 0
-                            
-                            # Формируем более детальное объяснение для fallback вариантов
-                            year_info = f" Год постройки: {listing.year_built}." if listing.year_built else ""
-                            reason = f"Хорошая цена за м²: ${price_per_sqm}/м².{year_info} Квартира подходит под критерии поиска."
-                            
-                            selected_with_reasons.append({
-                                "listing": listing,
-                                "reason": reason
-                            })
-                        log_info("ai_select", f"Добавлено {needed} вариантов через fallback, всего: {len(selected_with_reasons)}")
-                    
                     await valuator.close_session()
                     return selected_with_reasons[:max_results]
                 else:
@@ -1697,9 +1629,9 @@ async def select_best_listings(
             log_warning("ai_select", f"Не удалось инициализировать {provider_name}: {e}, пробую следующий...")
             continue
     
-    # Если все провайдеры не сработали, возвращаем первые варианты
-    log_warning("ai_select", "Все провайдеры не сработали, возвращаю первые варианты")
-    return [{"listing": l["listing"], "reason": "Ошибка анализа, автоматический выбор"} for l in listings_for_prompt[:max_results]]
+    # Если все провайдеры не сработали - возвращаем пустой список
+    log_error("ai_select", "Все провайдеры не сработали, невозможно получить результат от ИИ")
+    return []
 
 
 def _prepare_selection_prompt_detailed(
