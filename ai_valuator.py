@@ -1592,6 +1592,9 @@ async def select_best_listings(
         
         listings_to_inspect.append(listing)
     
+    # Инициализируем список для промпта до блока try
+    listings_for_prompt = []
+    
     # Инспектируем страницы объявлений параллельно для получения полного описания
     # (важно для проверки на долю/комнату)
     log_info("ai_select", f"Инспектирую {len(listings_to_inspect)} страниц объявлений для получения описаний...")
@@ -1627,6 +1630,14 @@ async def select_best_listings(
             })
         
         log_info("ai_select", f"Инспектировано {inspect_limit} объявлений, всего подготовлено {len(listings_for_prompt)} для анализа")
+    except Exception as e:
+        log_error("ai_select", f"Ошибка при инспекции объявлений: {e}")
+        # Если инспекция не удалась, добавляем объявления без инспекции
+        for listing in listings_to_inspect:
+            listings_for_prompt.append({
+                "listing": listing,
+                "inspection": {}
+            })
     finally:
         await valuator.close_session()
     
