@@ -414,6 +414,9 @@ class KufarScraper(BaseScraper):
                 else:
                     price_formatted += f" (${price_usd:,})".replace(",", " ")
             
+            # Определяем тип продавца (company_ad = True означает агентство)
+            is_company = ad.get("company_ad", False)
+            
             return Listing(
                 id=listing_id,
                 source="Kufar.by",
@@ -431,6 +434,7 @@ class KufarScraper(BaseScraper):
                 price_byn=price_byn,
                 year_built=year_built,
                 created_at=created_at,
+                is_company=is_company,
             )
             
         except Exception as e:

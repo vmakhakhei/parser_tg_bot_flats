@@ -836,6 +836,16 @@ def _matches_user_filters(listing: Listing, filters: Dict[str, Any]) -> bool:
             log_info("filter", f"Не прошёл фильтр: {listing.rooms}к, ${price} (диапазон: ${min_price}-${max_price})")
             return False
     
+    # Фильтр по типу продавца (только для Kufar)
+    seller_type = filters.get("seller_type")
+    if seller_type and listing.is_company is not None:
+        if seller_type == "owner" and listing.is_company:
+            # Фильтр: только собственники, а объявление от агентства
+            return False
+        elif seller_type == "company" and not listing.is_company:
+            # Фильтр: только агентства, а объявление от собственника
+            return False
+    
     return True
 
 
@@ -1021,6 +1031,7 @@ async def cb_setup_filters(callback: CallbackQuery):
     builder.button(text="📍 Город", callback_data="user_filter_city")
     builder.button(text="🚪 Комнаты", callback_data="user_filter_rooms")
     builder.button(text="💰 Цена", callback_data="user_filter_price")
+    builder.button(text="👤 Тип продавца", callback_data="user_filter_seller")
     builder.button(text="✅ Готово", callback_data="user_filters_done")
     
     # Принудительно размещаем по 1 кнопке в ряду
@@ -1031,7 +1042,9 @@ async def cb_setup_filters(callback: CallbackQuery):
         city_text = user_filters.get('city', 'барановичи').title()
         rooms_text = f"{user_filters.get('min_rooms', 1)}-{user_filters.get('max_rooms', 4)}"
         price_text = f"${user_filters.get('min_price', 0):,} - ${user_filters.get('max_price', 100000):,}".replace(",", " ")
-        current_info = f"\n\n<b>Текущие настройки:</b>\n📍 Город: {city_text}\n🚪 Комнаты: {rooms_text}\n💰 Цена: {price_text}"
+        seller_type = user_filters.get('seller_type')
+        seller_text = "Все" if not seller_type else ("Только собственники" if seller_type == "owner" else "Только агентства")
+        current_info = f"\n\n<b>Текущие настройки:</b>\n📍 Город: {city_text}\n🚪 Комнаты: {rooms_text}\n💰 Цена: {price_text}\n👤 Продавец: {seller_text}"
     else:
         current_info = ""
     
@@ -1040,7 +1053,8 @@ async def cb_setup_filters(callback: CallbackQuery):
         "Выберите параметры поиска:\n\n"
         "📍 <b>Город</b> — выбор города для поиска\n"
         "🚪 <b>Комнаты</b> — диапазон комнат (1-2, 2-3, 3-4, 4+)\n"
-        "💰 <b>Цена</b> — цена от и до в USD\n\n"
+        "💰 <b>Цена</b> — цена от и до в USD\n"
+        "👤 <b>Тип продавца</b> — только собственники или агентства (Kufar)\n\n"
         "После настройки я найду подходящие объявления и буду присылать новые автоматически."
         + current_info,
         parse_mode=ParseMode.HTML,
@@ -2210,6 +2224,67 @@ async def cb_user_price_max(callback: CallbackQuery, state: FSMContext):
     )
     await state.set_state(PriceStates.waiting_for_max_price)
     await callback.answer("Введите число или используйте /priceto")
+
+
+@router.callback_query(F.data == "user_filter_seller")
+async def cb_user_filter_seller(callback: CallbackQuery):
+    """Показывает меню выбора типа продавца"""
+    user_id = callback.from_user.id
+    user_filters = await get_user_filters(user_id)
+    current_seller_type = user_filters.get("seller_type") if user_filters else None
+    
+    builder = InlineKeyboardBuilder()
+    builder.button(text="👤 Все", callback_data="seller_all")
+    builder.button(text="🏠 Только собственники", callback_data="seller_owner")
+    builder.button(text="🏢 Только агентства", callback_data="seller_company")
+    builder.button(text="🔙 Назад", callback_data="setup_filters")
+    
+    builder.adjust(1)
+    
+    current_text = "Все" if not current_seller_type else ("Только собственники" if current_seller_type == "owner" else "Только агентства")
+    
+    await callback.message.edit_text(
+        "👤 <b>Выберите тип продавца</b>\n\n"
+        "Фильтр применяется только к объявлениям с Kufar.by:\n\n"
+        "👤 <b>Все</b> — показывать все объявления\n"
+        "🏠 <b>Только собственники</b> — исключить объявления от агентств\n"
+        "🏢 <b>Только агентства</b> — показывать только объявления от агентств\n\n"
+        f"Текущий выбор: <b>{current_text}</b>",
+        parse_mode=ParseMode.HTML,
+        reply_markup=builder.as_markup()
+    )
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("seller_"))
+async def cb_set_seller_type(callback: CallbackQuery):
+    """Устанавливает тип продавца"""
+    user_id = callback.from_user.id
+    seller_data = callback.data.replace("seller_", "")
+    
+    user_filters = await get_user_filters(user_id)
+    
+    # Определяем значение для БД
+    seller_type = None
+    if seller_data == "owner":
+        seller_type = "owner"
+    elif seller_data == "company":
+        seller_type = "company"
+    # seller_data == "all" -> seller_type = None
+    
+    await set_user_filters(
+        user_id,
+        city=user_filters.get("city") if user_filters else "барановичи",
+        min_rooms=user_filters.get("min_rooms") or 1 if user_filters else 1,
+        max_rooms=user_filters.get("max_rooms") or 4 if user_filters else 4,
+        min_price=user_filters.get("min_price") or 0 if user_filters else 0,
+        max_price=user_filters.get("max_price") or 100000 if user_filters else 100000,
+        seller_type=seller_type
+    )
+    
+    seller_text = "Все" if not seller_type else ("Только собственники" if seller_type == "owner" else "Только агентства")
+    await callback.answer(f"✅ Установлено: {seller_text}")
+    await cb_setup_filters(callback)
 
 
 @router.callback_query(F.data == "user_filter_city")

@@ -80,6 +80,12 @@ async def init_database():
         # Добавляем колонку ai_mode если её нет (для существующих БД)
         try:
             await db.execute("ALTER TABLE user_filters ADD COLUMN ai_mode BOOLEAN DEFAULT 0")
+        
+        # Добавляем поле seller_type если его нет (None = все, True = только агентства, False = только собственники)
+        try:
+            await db.execute("ALTER TABLE user_filters ADD COLUMN seller_type TEXT")
+        except aiosqlite.OperationalError:
+            pass  # Поле уже существует
             await db.commit()
         except aiosqlite.OperationalError:
             pass  # Колонка уже существует
@@ -367,14 +373,24 @@ async def set_user_filters(
     min_price: int = 0,
     max_price: int = 100000,
     is_active: bool = True,
-    ai_mode: bool = False
+    ai_mode: bool = False,
+    seller_type: Optional[str] = None  # None = все, "owner" = только собственники, "company" = только агентства
 ):
     """Устанавливает фильтры пользователя"""
     async with aiosqlite.connect(DATABASE_PATH) as db:
+        # Получаем текущие фильтры для сохранения seller_type если не передан
+        cursor = await db.execute("SELECT seller_type FROM user_filters WHERE user_id = ?", (user_id,))
+        row = await cursor.fetchone()
+        current_seller_type = row[0] if row else None
+        
+        # Если seller_type не передан, сохраняем текущее значение
+        if seller_type is None:
+            seller_type = current_seller_type
+        
         await db.execute("""
             INSERT OR REPLACE INTO user_filters 
-            (user_id, city, min_rooms, max_rooms, min_price, max_price, is_active, ai_mode, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            (user_id, city, min_rooms, max_rooms, min_price, max_price, is_active, ai_mode, seller_type, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, (
             user_id,
             city,
@@ -384,6 +400,7 @@ async def set_user_filters(
             max_price,
             is_active,
             ai_mode,
+            seller_type,
             datetime.now().isoformat()
         ))
         await db.commit()
