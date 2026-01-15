@@ -77,6 +77,7 @@ class SetupStates(StatesGroup):
     waiting_for_rooms = State()
     waiting_for_price_min = State()
     waiting_for_price_max = State()
+    waiting_for_seller = State()
     waiting_for_mode = State()
 
 # Список областных центров и крупных городов Беларуси
@@ -868,7 +869,8 @@ async def cmd_start(message: Message, state: FSMContext):
             "1️⃣ Выберите город\n"
             "2️⃣ Выберите диапазон комнат\n"
             "3️⃣ Укажите диапазон цен\n"
-            "4️⃣ Выберите режим работы\n\n"
+            "4️⃣ Выберите тип продавца (Kufar)\n"
+            "5️⃣ Выберите режим работы\n\n"
             "Начнем с выбора города:",
             parse_mode=ParseMode.HTML
         )
@@ -1043,7 +1045,7 @@ async def cb_setup_filters(callback: CallbackQuery):
         rooms_text = f"{user_filters.get('min_rooms', 1)}-{user_filters.get('max_rooms', 4)}"
         price_text = f"${user_filters.get('min_price', 0):,} - ${user_filters.get('max_price', 100000):,}".replace(",", " ")
         seller_type = user_filters.get('seller_type')
-        seller_text = "Все" if not seller_type else ("Только собственники" if seller_type == "owner" else "Только агентства")
+        seller_text = "Все (Агентства + Собственники)" if not seller_type else "Только собственники"
         current_info = f"\n\n<b>Текущие настройки:</b>\n📍 Город: {city_text}\n🚪 Комнаты: {rooms_text}\n💰 Цена: {price_text}\n👤 Продавец: {seller_text}"
     else:
         current_info = ""
@@ -1586,7 +1588,7 @@ async def show_mode_selection_menu(message: Message, state: FSMContext):
     builder.adjust(1)
     
     await message.answer(
-        "🎯 <b>Шаг 4 из 4: Выберите режим работы</b>\n\n"
+        "🎯 <b>Шаг 5 из 5: Выберите режим работы</b>\n\n"
         "<b>🔍 Обычный парсер</b>\n"
         "Бот будет присылать все найденные объявления, соответствующие вашим фильтрам.\n\n"
         "<b>🤖 ИИ-мод</b>\n"
@@ -1612,6 +1614,7 @@ async def cb_setup_mode(callback: CallbackQuery, state: FSMContext):
     max_rooms = data.get("max_rooms")
     min_price = data.get("min_price")
     max_price = data.get("max_price")
+    seller_type = data.get("seller_type")  # Может быть None
     
     if not city:
         await callback.answer("❌ Город не выбран! Начните настройку заново через /start", show_alert=True)
@@ -1639,7 +1642,8 @@ async def cb_setup_mode(callback: CallbackQuery, state: FSMContext):
         min_price=min_price,
         max_price=max_price,
         is_active=True,
-        ai_mode=ai_mode
+        ai_mode=ai_mode,
+        seller_type=seller_type
     )
     
     await state.clear()
@@ -2234,21 +2238,19 @@ async def cb_user_filter_seller(callback: CallbackQuery):
     current_seller_type = user_filters.get("seller_type") if user_filters else None
     
     builder = InlineKeyboardBuilder()
-    builder.button(text="👤 Все", callback_data="seller_all")
+    builder.button(text="👤 Все (Агентства + Собственники)", callback_data="seller_all")
     builder.button(text="🏠 Только собственники", callback_data="seller_owner")
-    builder.button(text="🏢 Только агентства", callback_data="seller_company")
     builder.button(text="🔙 Назад", callback_data="setup_filters")
     
     builder.adjust(1)
     
-    current_text = "Все" if not current_seller_type else ("Только собственники" if current_seller_type == "owner" else "Только агентства")
+    current_text = "Все (Агентства + Собственники)" if not current_seller_type else "Только собственники"
     
     await callback.message.edit_text(
         "👤 <b>Выберите тип продавца</b>\n\n"
         "Фильтр применяется только к объявлениям с Kufar.by:\n\n"
-        "👤 <b>Все</b> — показывать все объявления\n"
-        "🏠 <b>Только собственники</b> — исключить объявления от агентств\n"
-        "🏢 <b>Только агентства</b> — показывать только объявления от агентств\n\n"
+        "👤 <b>Все</b> — показывать все объявления (агентства + собственники)\n"
+        "🏠 <b>Только собственники</b> — исключить объявления от агентств\n\n"
         f"Текущий выбор: <b>{current_text}</b>",
         parse_mode=ParseMode.HTML,
         reply_markup=builder.as_markup()
@@ -2268,8 +2270,6 @@ async def cb_set_seller_type(callback: CallbackQuery):
     seller_type = None
     if seller_data == "owner":
         seller_type = "owner"
-    elif seller_data == "company":
-        seller_type = "company"
     # seller_data == "all" -> seller_type = None
     
     await set_user_filters(
@@ -2425,7 +2425,7 @@ async def show_price_selection_menu(message: Message, state: FSMContext, rooms_t
     """Показывает запрос минимальной цены"""
     await message.answer(
         f"✅ Комнаты выбраны: <b>{rooms_text}</b>\n\n"
-        f"💰 <b>Шаг 3 из 4: Укажите диапазон цен (USD)</b>\n\n"
+        f"💰 <b>Шаг 3 из 5: Укажите диапазон цен (USD)</b>\n\n"
         f"Введите минимальную цену (ОТ):\n\n"
         f"Просто напишите число, например:\n"
         f"• <code>0</code> — без ограничения снизу\n"
@@ -2465,7 +2465,7 @@ async def process_setup_price_min(message: Message, state: FSMContext):
         # Сразу запрашиваем максимальную цену
         await message.answer(
             f"✅ Минимальная цена установлена: <b>${min_price:,}</b>\n\n"
-            f"💰 Теперь введите максимальную цену (ДО):\n\n"
+            f"💰 <b>Шаг 4 из 5: Введите максимальную цену (ДО):</b>\n\n"
             f"Просто напишите число, например:\n"
             f"• <code>50000</code> — до $50,000\n"
             f"• <code>80000</code> — до $80,000\n"
@@ -2540,8 +2540,8 @@ async def process_setup_price_max(message: Message, state: FSMContext):
         
         await state.update_data(max_price=max_price)
         
-        # Показываем меню выбора режима
-        await show_mode_selection_menu(message, state)
+        # Показываем меню выбора типа продавца
+        await show_seller_selection_menu(message, state)
         
     except ValueError:
         await message.answer(
@@ -2554,6 +2554,46 @@ async def process_setup_price_max(message: Message, state: FSMContext):
         )
 
 
+async def show_seller_selection_menu(message: Message, state: FSMContext):
+    """Показывает меню выбора типа продавца"""
+    builder = InlineKeyboardBuilder()
+    builder.button(text="👤 Все (Агентства + Собственники)", callback_data="setup_seller_all")
+    builder.button(text="🏠 Только собственники", callback_data="setup_seller_owner")
+    
+    builder.adjust(1)
+    
+    await message.answer(
+        "✅ Цена установлена\n\n"
+        "👤 <b>Шаг 4 из 5: Выберите тип продавца</b>\n\n"
+        "Фильтр применяется только к объявлениям с Kufar.by:\n\n"
+        "👤 <b>Все</b> — показывать все объявления (агентства + собственники)\n"
+        "🏠 <b>Только собственники</b> — исключить объявления от агентств\n\n"
+        "<i>Выберите вариант:</i>",
+        parse_mode=ParseMode.HTML,
+        reply_markup=builder.as_markup()
+    )
+    await state.set_state(SetupStates.waiting_for_seller)
+
+
+@router.callback_query(F.data.startswith("setup_seller_"))
+async def cb_setup_seller(callback: CallbackQuery, state: FSMContext):
+    """Обработчик выбора типа продавца в пошаговой настройке"""
+    seller_data = callback.data.replace("setup_seller_", "")
+    
+    # Определяем значение для БД
+    seller_type = None
+    if seller_data == "owner":
+        seller_type = "owner"
+    # seller_data == "all" -> seller_type = None
+    
+    # Сохраняем в FSM
+    await state.update_data(seller_type=seller_type)
+    
+    seller_text = "Все (Агентства + Собственники)" if not seller_type else "Только собственники"
+    await callback.answer(f"✅ Выбрано: {seller_text}")
+    
+    # Переходим к выбору режима
+    await show_mode_selection_menu(callback.message, state)
 
 
 async def show_no_listings_message(bot: Bot, user_id: int, status_msg: Optional[Message] = None):
