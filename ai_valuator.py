@@ -1255,11 +1255,16 @@ JSON ответ:
             
             # Если не нашли через паттерны, пытаемся найти любой JSON объект
             if not json_str:
-                # Ищем JSON объект, который содержит "selected"
+                # Ищем JSON объект, который содержит "top_offers", "analysis_summary" или "selected"
                 brace_count = 0
-                start_idx = content.find('{"selected"')
+                start_idx = content.find('{"top_offers"')
+                if start_idx == -1:
+                    start_idx = content.find('{"analysis_summary"')
                 if start_idx == -1:
                     start_idx = content.find('{"selected"')
+                if start_idx == -1:
+                    # Пробуем найти просто начало JSON объекта
+                    start_idx = content.find('{')
                 
                 if start_idx != -1:
                     json_str = ""
@@ -1272,6 +1277,8 @@ JSON ответ:
                             brace_count -= 1
                             if brace_count == 0:
                                 break
+                    
+                    log_info("ai_select", f"Найден JSON объект (длина: {len(json_str)} символов)")
             
             if json_str:
                 try:
@@ -1284,6 +1291,11 @@ JSON ответ:
                     
                     if analysis_summary:
                         log_info("ai_select", f"📊 Сводка: {analysis_summary[:150]}...")
+                    
+                    if not top_offers:
+                        log_warning("ai_select", f"JSON распарсен, но top_offers/selected пуст. JSON: {json_str[:200]}")
+                        # Пробуем fallback
+                        raise ValueError("top_offers пуст")
                     
                     log_info("ai_select", f"Найдено {len(top_offers)} элементов в JSON ответе")
                     
@@ -1345,7 +1357,11 @@ JSON ответ:
                     else:
                         log_warning("ai_select", f"Не удалось найти ни одного валидного варианта в JSON")
                 except json.JSONDecodeError as e:
-                    log_error("ai_select", f"Ошибка парсинга JSON: {e}, JSON: {json_str[:200]}")
+                    log_error("ai_select", f"Ошибка парсинга JSON: {e}")
+                    log_info("ai_select", f"Проблемный JSON (первые 500 символов): {json_str[:500]}")
+                except ValueError as e:
+                    log_warning("ai_select", f"Ошибка валидации JSON: {e}")
+                    # Продолжаем к fallback
             
             # Fallback: пытаемся найти ID в тексте
             log_info("ai_select", "Пробую fallback парсинг по ID в тексте")
