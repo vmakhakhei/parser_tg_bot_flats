@@ -336,6 +336,17 @@ async def send_listing_to_user(bot: Bot, user_id: int, listing: Listing, use_ai_
         return False
 
 
+def _validate_user_filters(user_filters: Dict[str, Any]) -> tuple[bool, Optional[str]]:
+    """Проверяет валидность фильтров пользователя. Возвращает (is_valid, error_message)"""
+    if not user_filters:
+        return False, "Фильтры не настроены"
+    
+    if not user_filters.get("city"):
+        return False, "Город не выбран"
+    
+    return True, None
+
+
 async def check_new_listings(bot: Bot):
     """Проверяет новые объявления и отправляет их активным пользователям"""
     logger.info("=" * 50)
@@ -358,8 +369,14 @@ async def check_new_listings(bot: Bot):
         if not user_filters or not user_filters.get("is_active"):
             continue
         
+        # Проверяем валидность фильтров
+        is_valid, error_msg = _validate_user_filters(user_filters)
+        if not is_valid:
+            log_warning("bot", f"Пропускаю пользователя {user_id}: {error_msg}")
+            continue
+        
         # Получаем город пользователя
-        user_city = user_filters.get("city", "барановичи")
+        user_city = user_filters.get("city")
         
         # Получаем объявления для города пользователя
         aggregator = ListingsAggregator(enabled_sources=DEFAULT_SOURCES)
@@ -1039,9 +1056,40 @@ async def cb_filters_done(callback: CallbackQuery):
     
     user_filters = await get_user_filters(user_id)
     if not user_filters:
-        # Устанавливаем дефолтные фильтры если их нет
-        await set_user_filters(user_id)
-        user_filters = await get_user_filters(user_id)
+        await callback.answer("❌ Фильтры не настроены!", show_alert=True)
+        
+        builder = InlineKeyboardBuilder()
+        builder.button(text="⚙️ Настроить фильтры", callback_data="setup_filters")
+        builder.adjust(1)
+        
+        await callback.message.edit_text(
+            "❌ <b>Фильтры не настроены</b>\n\n"
+            "Пожалуйста, настройте все фильтры перед поиском:\n"
+            "• Город\n"
+            "• Количество комнат\n"
+            "• Диапазон цен\n\n"
+            "Используйте кнопку ниже для настройки.",
+            parse_mode=ParseMode.HTML,
+            reply_markup=builder.as_markup()
+        )
+        return
+    
+    # Проверяем наличие обязательных фильтров
+    if not user_filters.get("city"):
+        await callback.answer("❌ Город не выбран!", show_alert=True)
+        
+        builder = InlineKeyboardBuilder()
+        builder.button(text="📍 Выбрать город", callback_data="user_filter_city")
+        builder.button(text="🔙 Назад", callback_data="setup_filters")
+        builder.adjust(1)
+        
+        await callback.message.edit_text(
+            "❌ <b>Город не выбран</b>\n\n"
+            "Пожалуйста, выберите город для поиска.",
+            parse_mode=ParseMode.HTML,
+            reply_markup=builder.as_markup()
+        )
+        return
     
     # Валидация диапазона цен (максимум $20,000)
     MAX_PRICE_RANGE = 20000
@@ -2560,15 +2608,28 @@ async def cb_user_set_city(callback: CallbackQuery, state: FSMContext):
     
     # Устанавливаем город из списка
     user_filters = await get_user_filters(user_id)
-    await set_user_filters(
-        user_id,
-        city=city_data,
-        min_rooms=user_filters.get("min_rooms", 1) if user_filters else 1,
-        max_rooms=user_filters.get("max_rooms", 4) if user_filters else 4,
-        min_price=user_filters.get("min_price", 0) if user_filters else 0,
-        max_price=user_filters.get("max_price", 100000) if user_filters else 100000,
-        is_active=True
-    )
+    if not user_filters:
+        # Если фильтров нет, создаём новые только с городом
+        await set_user_filters(
+            user_id,
+            city=city_data,
+            min_rooms=1,  # Временные значения, пользователь должен настроить
+            max_rooms=4,
+            min_price=0,
+            max_price=100000,
+            is_active=False  # Не активен, пока не настроены все параметры
+        )
+    else:
+        # Обновляем только город, остальные параметры оставляем как есть
+        await set_user_filters(
+            user_id,
+            city=city_data,
+            min_rooms=user_filters.get("min_rooms") or 1,
+            max_rooms=user_filters.get("max_rooms") or 4,
+            min_price=user_filters.get("min_price") or 0,
+            max_price=user_filters.get("max_price") or 100000,
+            is_active=user_filters.get("is_active", False)
+        )
     
     await callback.answer(f"✅ Город установлен: {city_data.title()}")
     await cb_setup_filters(callback)
@@ -2613,15 +2674,28 @@ async def process_city_input(message: Message, state: FSMContext):
     
     # Сохраняем город
     user_filters = await get_user_filters(user_id)
-    await set_user_filters(
-        user_id,
-        city=normalized_city,
-        min_rooms=user_filters.get("min_rooms", 1) if user_filters else 1,
-        max_rooms=user_filters.get("max_rooms", 4) if user_filters else 4,
-        min_price=user_filters.get("min_price", 0) if user_filters else 0,
-        max_price=user_filters.get("max_price", 100000) if user_filters else 100000,
-        is_active=True
-    )
+    if not user_filters:
+        # Если фильтров нет, создаём новые только с городом
+        await set_user_filters(
+            user_id,
+            city=normalized_city,
+            min_rooms=1,  # Временные значения, пользователь должен настроить
+            max_rooms=4,
+            min_price=0,
+            max_price=100000,
+            is_active=False  # Не активен, пока не настроены все параметры
+        )
+    else:
+        # Обновляем только город, остальные параметры оставляем как есть
+        await set_user_filters(
+            user_id,
+            city=normalized_city,
+            min_rooms=user_filters.get("min_rooms") or 1,
+            max_rooms=user_filters.get("max_rooms") or 4,
+            min_price=user_filters.get("min_price") or 0,
+            max_price=user_filters.get("max_price") or 100000,
+            is_active=user_filters.get("is_active", False)
+        )
     
     await state.clear()
     
