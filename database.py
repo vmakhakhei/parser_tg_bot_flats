@@ -80,15 +80,16 @@ async def init_database():
         # Добавляем колонку ai_mode если её нет (для существующих БД)
         try:
             await db.execute("ALTER TABLE user_filters ADD COLUMN ai_mode BOOLEAN DEFAULT 0")
+            await db.commit()
+        except aiosqlite.OperationalError:
+            pass  # Колонка уже существует
         
         # Добавляем поле seller_type если его нет (None = все, True = только агентства, False = только собственники)
         try:
             await db.execute("ALTER TABLE user_filters ADD COLUMN seller_type TEXT")
-        except aiosqlite.OperationalError:
-            pass  # Поле уже существует
             await db.commit()
         except aiosqlite.OperationalError:
-            pass  # Колонка уже существует
+            pass  # Поле уже существует
         
         # Таблица отправленных объявлений каждому пользователю
         await db.execute("""
