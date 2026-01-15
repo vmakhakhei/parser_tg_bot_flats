@@ -301,16 +301,37 @@ class AIValuator:
         elif "могилев" in address_lower or "могилёв" in address_lower:
             city_from_address = "Могилёв"
         
+        # Проверка на долю/комнату в названии и описании
+        title_text = listing.title.lower() if listing.title else ""
+        description_lower = description_text.lower() if description_text else ""
+        combined_text = f"{title_text} {description_lower}"
+        
+        is_share_or_room = False
+        share_warning = ""
+        share_keywords = ["доля", "часть квартиры", "1/2", "1/3", "1/4", "половина", "комната в", "комната в коммуналке", "комната в общежитии", "не целая", "часть собственности"]
+        
+        for keyword in share_keywords:
+            if keyword in combined_text:
+                is_share_or_room = True
+                if "доля" in combined_text or "1/2" in combined_text or "1/3" in combined_text or "1/4" in combined_text:
+                    share_warning = "\n⚠️ ВНИМАНИЕ: Это ДОЛЯ в квартире, а не целая квартира! Цена должна быть значительно ниже рынка целых квартир."
+                elif "комната" in combined_text:
+                    share_warning = "\n⚠️ ВНИМАНИЕ: Это КОМНАТА в квартире/коммуналке, а не целая квартира! Цена должна быть значительно ниже рынка целых квартир."
+                break
+        
         prompt = f"""Оценщик недвижимости {city_from_address}, Беларусь. Оцени квартиру:
 
 ОБЪЕКТ: {listing.rooms}к, {listing.area}м², этаж {listing.floor or '?'}{floor_info}, год {listing.year_built or '?'}{year_info}
 Адрес: {listing.address}{district_price_info}
 Цена: {price_info}, {price_per_sqm_text}
 Ремонт: {renovation_state}
-{f'Описание: {description_text[:200]}' if description_text else ''}
+{f'Название: {listing.title[:100]}' if listing.title else ''}
+{f'Описание: {description_text[:300]}' if description_text else ''}
+{share_warning}
 
 РЫНОК 2025 Беларусь ($/м²): Минск $1200-2500, обл.центры $600-1200, районные $400-800
 Корректировки: 1й/последний этаж -5%, до 1980г -7%, евроремонт +10%, требует ремонта -10%
+{'- ДОЛЯ/КОМНАТА: цена должна быть на 40-60% ниже целой квартиры!' if is_share_or_room else ''}
 
 ЗАДАЧА: Определи справедливую цену для {city_from_address}, сравни с рынком города, дай рекомендации.
 
@@ -1676,7 +1697,21 @@ def _prepare_selection_prompt_detailed(
         # Адрес
         address_short = listing.address[:50] if listing.address else ""
         
-        listing_info = f"{i}. ID:{listing.id} | {rooms_text}, {area_text}, {price_text}{price_per_sqm}{year_info} | {address_short} | {listing.url}\n"
+        # Название и описание (важно для проверки на долю/комнату)
+        title_text = listing.title[:150] if listing.title else ""
+        
+        # Используем полное описание из инспекции, если доступно
+        inspection = item.get("inspection", {})
+        full_description = inspection.get("full_description", "") if inspection else ""
+        description_text = full_description[:300] if full_description else (listing.description[:300] if listing.description else "")
+        
+        # Формируем информацию об объявлении с названием и описанием
+        listing_info = f"{i}. ID:{listing.id} | {rooms_text}, {area_text}, {price_text}{price_per_sqm}{year_info} | {address_short}"
+        if title_text:
+            listing_info += f"\n   Название: {title_text}"
+        if description_text:
+            listing_info += f"\n   Описание: {description_text}"
+        listing_info += f"\n   Ссылка: {listing.url}\n"
         listings_text.append(listing_info)
     
     # Новый промпт согласно требованиям
@@ -1688,15 +1723,22 @@ def _prepare_selection_prompt_detailed(
 - Бюджет: ${min_price:,} - ${max_price:,}
 
 ИНСТРУКЦИЯ ПО АНАЛИЗУ:
-1. Оцени каждое объявление по критериям (1-10):
+1. ВАЖНО: Проверь название и описание каждого объявления на наличие упоминаний о:
+   • ДОЛЕ в квартире (доля, часть квартиры, доля собственности, 1/2, 1/3, 1/4 и т.д.)
+   • КОМНАТЕ (комната в квартире, комната в коммуналке, комната в общежитии)
+   • НЕ ЦЕЛОЙ КВАРТИРЕ (часть квартиры, половина квартиры, не целая квартира)
+   ⚠️ Если это доля или комната — ОБЯЗАТЕЛЬНО укажи это в critical_notes и снизь оценку на 2-3 балла!
+
+2. Оцени каждое объявление по критериям (1-10):
    • Ценовая привлекательность: цена vs рынок {city} (10=отличная цена, 1=завышена)
    • Год постройки и состояние: новее 2010г = бонус
    • Район и инфраструктура
    • Соответствие критериям пользователя
+   • ЦЕЛАЯ КВАРТИРА: если это доля/комната — снизь оценку (пользователь ищет целую квартиру)
 
-2. Сравни все объявления между собой
+3. Сравни все объявления между собой
 
-3. Выбери ТОП-{max_results} лучших вариантов
+4. Выбери ТОП-{max_results} лучших вариантов (ПРЕДПОЧТИТЕЛЬНО ЦЕЛЫЕ КВАРТИРЫ)
 
 ОБЪЯВЛЕНИЯ ДЛЯ АНАЛИЗА:
 {''.join(listings_text)}
@@ -1710,7 +1752,7 @@ def _prepare_selection_prompt_detailed(
       "title": "Краткое название (комнаты, площадь, район)",
       "final_score": 8.5,
       "reason": "Почему это хороший вариант (цена за м², сравнение с рынком, год, состояние)",
-      "critical_notes": ["Возможный недостаток 1", "Недостаток 2"]
+      "critical_notes": ["⚠️ ВАЖНО: Если это доля/комната — обязательно укажи здесь! Например: 'Доля в квартире (1/2)', 'Комната в коммуналке' и т.д.", "Возможный недостаток 2"]
     }}
   ],
   "best_overall": {{
