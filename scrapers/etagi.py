@@ -122,7 +122,7 @@ class EtagiScraper(BaseScraper):
                 continue
             
             # Парсим данные из контейнера
-            listing = self._parse_listing_from_container(container, listing_id, full_url)
+            listing = self._parse_listing_from_container(container, listing_id, full_url, city)
             if listing:
                 if self._matches_filters(listing, min_rooms, max_rooms, min_price, max_price):
                     listings.append(listing)
@@ -130,7 +130,7 @@ class EtagiScraper(BaseScraper):
         log_info("etagi", f"Найдено: {len(listings)} объявлений")
         return listings
     
-    def _parse_listing_from_container(self, container, listing_id: str, url: str) -> Optional[Listing]:
+    def _parse_listing_from_container(self, container, listing_id: str, url: str, city: str = "Минск") -> Optional[Listing]:
         """Парсит объявление из контейнера"""
         try:
             text = container.get_text(separator=' ', strip=True)

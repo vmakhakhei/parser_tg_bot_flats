@@ -1566,21 +1566,21 @@ async def select_best_listings(
     """
     if not listings:
         return []
-        
-        # Формируем список для промпта (только базовые данные + ссылки)
-        # Исключаем объявления без цены (договорная, 0, None)
+    
+    # Формируем список для промпта (только базовые данные + ссылки)
+    # Исключаем объявления без цены (договорная, 0, None)
     # Лимит объявлений зависит от размера промпта, обычно до 100 OK
-        listings_for_prompt = []
+    listings_for_prompt = []
     for listing in listings[:100]:  # Максимум 100 объявлений для анализа
-            # Пропускаем объявления без цены
-            if not listing.price or listing.price <= 0:
-                log_info("ai_select", f"Пропускаю объявление {listing.id}: цена не указана или равна 0")
-                continue
-            
-            listings_for_prompt.append({
-                "listing": listing,
-                "inspection": {}  # Пустая инспекция - ИИ сам посмотрит
-            })
+        # Пропускаем объявления без цены
+        if not listing.price or listing.price <= 0:
+            log_info("ai_select", f"Пропускаю объявление {listing.id}: цена не указана или равна 0")
+            continue
+        
+        listings_for_prompt.append({
+            "listing": listing,
+            "inspection": {}  # Пустая инспекция - ИИ сам посмотрит
+        })
     
     log_info("ai_select", f"Подготавливаю {len(listings_for_prompt)} объявлений для анализа...")
     log_info("ai_select", f"Формирую промпт для экспертного анализа...")
