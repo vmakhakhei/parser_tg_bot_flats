@@ -494,7 +494,7 @@ JSON ответ:
                                             break
                                     except:
                                         pass
-                        
+                    
                         # Если не нашли в секциях, ищем в параметрах объявления
                         if not year_built:
                             # Ищем элементы с классом, содержащим "param", "property", "characteristic"
@@ -1196,12 +1196,12 @@ JSON ответ:
         
         payload = {
             "messages": [
-                {"role": "system", "content": "Ты эксперт по недвижимости. Отвечай только JSON."},
+                {"role": "system", "content": "Ты экспертный помощник по анализу рынка недвижимости Беларуси. Анализируй объявления тщательно, сравнивай между собой и выбирай самые выгодные варианты. Отвечай строго в JSON формате."},
                 {"role": "user", "content": prompt}
             ],
             "model": GROQ_MODEL,
-            "temperature": 0.3,
-            "max_tokens": 2000  # Больше токенов для детальных описаний
+            "temperature": 0.4,
+            "max_tokens": 3000  # Больше токенов для детального анализа
         }
         
         try:
@@ -1276,26 +1276,39 @@ JSON ответ:
             if json_str:
                 try:
                     result = json.loads(json_str)
-                    selected = result.get("selected", [])
                     
-                    log_info("ai_select", f"Найдено {len(selected)} элементов в JSON ответе")
+                    # Поддержка нового формата (top_offers) и старого (selected)
+                    top_offers = result.get("top_offers", result.get("selected", []))
+                    analysis_summary = result.get("analysis_summary", "")
+                    best_overall = result.get("best_overall", {})
+                    
+                    if analysis_summary:
+                        log_info("ai_select", f"📊 Сводка: {analysis_summary[:150]}...")
+                    
+                    log_info("ai_select", f"Найдено {len(top_offers)} элементов в JSON ответе")
                     
                     # Формируем результат
                     result_list = []
-                    for item in selected:
-                        listing_id = item.get("id", "")
+                    for item in top_offers:
+                        # Поддержка обоих форматов ID
+                        listing_id = item.get("offer_id", item.get("id", ""))
+                        title = item.get("title", "")
                         reason = item.get("reason", "Хорошее соотношение цена-качество")
+                        final_score = item.get("final_score", 0)
+                        critical_notes = item.get("critical_notes", [])
                         
                         if not listing_id:
                             log_warning("ai_select", f"Пропускаю элемент без ID: {item}")
                             continue
                         
-                        # Проверяем длину объяснения - должно быть минимум 100 символов
-                        if len(reason) < 100:
-                            log_warning("ai_select", f"⚠️ Объяснение для {listing_id} слишком короткое ({len(reason)} символов), минимально требуется 100")
-                            # Пытаемся улучшить короткое объяснение
-                            if "хорош" in reason.lower() or "соответствует" in reason.lower():
-                                reason = f"{reason} Рекомендуется более детальный анализ по ссылке для полной оценки всех преимуществ варианта."
+                        # Формируем расширенное описание с оценкой и недостатками
+                        extended_reason = reason
+                        if final_score > 0:
+                            extended_reason = f"⭐ Оценка: {final_score}/10\n\n{reason}"
+                        if critical_notes and len(critical_notes) > 0:
+                            notes_text = "\n".join([f"⚠️ {note}" for note in critical_notes if note])
+                            if notes_text:
+                                extended_reason = f"{extended_reason}\n\n{notes_text}"
                         
                         # Находим соответствующее объявление
                         found = False
@@ -1303,20 +1316,31 @@ JSON ответ:
                             if inspected["listing"].id == listing_id:
                                 result_list.append({
                                     "listing": inspected["listing"],
-                                    "reason": reason
+                                    "reason": extended_reason,
+                                    "score": final_score,
+                                    "title": title
                                 })
                                 found = True
-                                log_info("ai_select", f"✅ Найден вариант: {listing_id} - длина объяснения: {len(reason)} символов")
+                                log_info("ai_select", f"✅ Найден вариант: {listing_id} (оценка: {final_score})")
                                 break
                         
                         if not found:
                             log_warning("ai_select", f"Не найден listing для ID: {listing_id}")
                     
+                    # Сортируем по оценке (если есть)
+                    result_list.sort(key=lambda x: x.get("score", 0), reverse=True)
+                    
+                    # Помечаем лучший вариант
+                    if best_overall and result_list:
+                        best_id = best_overall.get("offer_id", "")
+                        best_advantage = best_overall.get("main_advantage", "")
+                        for item in result_list:
+                            if item["listing"].id == best_id and best_advantage:
+                                item["reason"] = f"🏆 ЛУЧШИЙ ВЫБОР: {best_advantage}\n\n{item['reason']}"
+                                break
+                    
                     if result_list:
-                        log_info("ai_select", f"✅ Успешно распарсено {len(result_list)} вариантов с описаниями")
-                        # Проверяем, что распарсено достаточно вариантов
-                        if len(result_list) < 5:
-                            log_warning("ai_select", f"⚠️ ИИ вернул только {len(result_list)} вариантов, требуется минимум 5")
+                        log_info("ai_select", f"✅ Успешно распарсено {len(result_list)} вариантов")
                         return result_list
                     else:
                         log_warning("ai_select", f"Не удалось найти ни одного валидного варианта в JSON")
@@ -1542,24 +1566,24 @@ async def select_best_listings(
     """
     if not listings:
         return []
-    
-    # Формируем список для промпта (только базовые данные + ссылки)
-    # Исключаем объявления без цены (договорная, 0, None)
-    # Лимит объявлений зависит от размера промпта, обычно до 100 OK
-    listings_for_prompt = []
-    for listing in listings[:100]:  # Максимум 100 объявлений для анализа
-        # Пропускаем объявления без цены
-        if not listing.price or listing.price <= 0:
-            log_info("ai_select", f"Пропускаю объявление {listing.id}: цена не указана или равна 0")
-            continue
         
-        listings_for_prompt.append({
-            "listing": listing,
-            "inspection": {}  # Пустая инспекция - ИИ сам посмотрит
-        })
+        # Формируем список для промпта (только базовые данные + ссылки)
+        # Исключаем объявления без цены (договорная, 0, None)
+    # Лимит объявлений зависит от размера промпта, обычно до 100 OK
+        listings_for_prompt = []
+    for listing in listings[:100]:  # Максимум 100 объявлений для анализа
+            # Пропускаем объявления без цены
+            if not listing.price or listing.price <= 0:
+                log_info("ai_select", f"Пропускаю объявление {listing.id}: цена не указана или равна 0")
+                continue
+            
+            listings_for_prompt.append({
+                "listing": listing,
+                "inspection": {}  # Пустая инспекция - ИИ сам посмотрит
+            })
     
     log_info("ai_select", f"Подготавливаю {len(listings_for_prompt)} объявлений для анализа...")
-    log_info("ai_select", f"Формирую минимальный промпт с ссылками...")
+    log_info("ai_select", f"Формирую промпт для экспертного анализа...")
     prompt = _prepare_selection_prompt_detailed(listings_for_prompt, user_filters, max_results)
     log_info("ai_select", f"Промпт сформирован. Длина: {len(prompt)} символов")
     
@@ -1635,15 +1659,7 @@ async def select_best_listings(
                             
                             # Формируем более детальное объяснение для fallback вариантов
                             year_info = f" Год постройки: {listing.year_built}." if listing.year_built else ""
-                            district_info = ""
-                            if "советская" in listing.address.lower() or "брестская" in listing.address.lower() or "ленина" in listing.address.lower():
-                                district_info = " Район Центр - престижный район с развитой инфраструктурой."
-                            elif "волошина" in listing.address.lower() or "марфицкого" in listing.address.lower():
-                                district_info = " Район Боровки - современный район с новыми домами."
-                            elif "космонавтов" in listing.address.lower():
-                                district_info = " Район Текстильный - доступные цены, тихий район."
-                            
-                            reason = f"Хорошая цена за м²: ${price_per_sqm}/м², что соответствует среднерыночной стоимости.{year_info}{district_info} Квартира подходит под критерии поиска по цене и количеству комнат."
+                            reason = f"Хорошая цена за м²: ${price_per_sqm}/м².{year_info} Квартира подходит под критерии поиска."
                             
                             selected_with_reasons.append({
                                 "listing": listing,
@@ -1675,7 +1691,7 @@ def _prepare_selection_prompt_detailed(
     user_filters: Dict[str, Any], 
     max_results: int
 ) -> str:
-    """Подготавливает минимальный промпт с ссылками - Gemini сам просмотрит страницы"""
+    """Подготавливает промпт для экспертного анализа объявлений"""
     
     min_price = user_filters.get("min_price", 0)
     max_price = user_filters.get("max_price", 100000)
@@ -1683,52 +1699,80 @@ def _prepare_selection_prompt_detailed(
     max_rooms = user_filters.get("max_rooms", 4)
     city = user_filters.get("city", "Минск").title()
     
-    # Формируем минимальный список: только ID, базовые параметры и URL
+    # Формируем список объявлений с деталями
     listings_text = []
-    # Ограничиваем количество объявлений (максимум 15)
-    listings_to_process = inspected_listings[:15]
+    listings_to_process = inspected_listings[:30]  # До 30 объявлений
     
     for i, item in enumerate(listings_to_process, 1):
         listing = item["listing"]
         
-        rooms_text = f"{listing.rooms}к" if listing.rooms > 0 else "?"
-        area_text = f"{listing.area}м²" if listing.area > 0 else "?"
+        rooms_text = f"{listing.rooms}-комн." if listing.rooms > 0 else "?"
+        area_text = f"{listing.area} м²" if listing.area > 0 else "?"
         
-        # Цена за м² (главный критерий) - всегда в USD
-        price_per_sqm = ""
-        if listing.area > 0:
-            # Правильно вычисляем цену в USD для расчета цены за м²
-            price_usd_for_calc = listing.price_usd if listing.price_usd else (
-                int(listing.price_byn / 2.95) if listing.price_byn else (
-                    int(listing.price / 2.95) if listing.currency == "BYN" else listing.price
-                )
+        # Цена в USD
+        price_usd = listing.price_usd if listing.price_usd else (
+            int(listing.price_byn / 2.95) if listing.price_byn else (
+                int(listing.price / 2.95) if listing.currency == "BYN" else listing.price
             )
-            if price_usd_for_calc > 0:
-                price_per_sqm_usd = int(price_usd_for_calc / listing.area)
-            price_per_sqm = f" ${price_per_sqm_usd}/м²"
+        )
+        price_text = f"${price_usd:,}" if price_usd > 0 else "?"
         
-        # Год постройки (если есть)
-        year_info = ""
-        if listing.year_built:
-            year_info = f" {listing.year_built}г"
+        # Цена за м²
+        price_per_sqm = ""
+        if listing.area > 0 and price_usd > 0:
+            price_per_sqm = f" (${int(price_usd / listing.area)}/м²)"
         
-        # Минимальный формат: ID | параметры | URL
-        listing_info = f"{i}.{listing.id}|{rooms_text},{area_text}{price_per_sqm}{year_info}|{listing.url}\n"
+        # Год постройки
+        year_info = f", {listing.year_built}г." if listing.year_built else ""
+        
+        # Адрес
+        address_short = listing.address[:50] if listing.address else ""
+        
+        listing_info = f"{i}. ID:{listing.id} | {rooms_text}, {area_text}, {price_text}{price_per_sqm}{year_info} | {address_short} | {listing.url}\n"
         listings_text.append(listing_info)
     
-    # Компактный промпт для выбора лучших вариантов
-    prompt = f"""Эксперт по недвижимости {city}, Беларусь. Выбери {max_results} лучших квартир по цена/качество.
+    # Новый промпт согласно требованиям
+    prompt = f"""Ты — экспертный помощник по анализу рыночных предложений недвижимости в Беларуси. Твоя задача — тщательно анализировать объявления, сравнивать их между собой и выбирать самые выгодные варианты.
 
-ФИЛЬТРЫ: {min_rooms}-{max_rooms} комнат, ${min_price:,}-${max_price:,}, город: {city}
+КРИТЕРИИ ПОИСКА ПОЛЬЗОВАТЕЛЯ:
+- Город: {city}
+- Комнат: {min_rooms}-{max_rooms}
+- Бюджет: ${min_price:,} - ${max_price:,}
 
-КРИТЕРИИ: 1) Цена за м² vs рынок города 2) Год постройки (после 2010 +бонус) 3) Состояние ремонта 4) Район
+ИНСТРУКЦИЯ ПО АНАЛИЗУ:
+1. Оцени каждое объявление по критериям (1-10):
+   • Ценовая привлекательность: цена vs рынок {city} (10=отличная цена, 1=завышена)
+   • Год постройки и состояние: новее 2010г = бонус
+   • Район и инфраструктура
+   • Соответствие критериям пользователя
 
-ОБЪЯВЛЕНИЯ:
+2. Сравни все объявления между собой
+
+3. Выбери ТОП-{max_results} лучших вариантов
+
+ОБЪЯВЛЕНИЯ ДЛЯ АНАЛИЗА:
 {''.join(listings_text)}
 
-ЗАДАЧА: Выбери минимум 5 лучших вариантов для {city}. Для каждого напиши объяснение (3-5 предложений): цена за м², сравнение с рынком города, год постройки, состояние, почему выгодно.
+ФОРМАТ ОТВЕТА (строго JSON):
+{{
+  "analysis_summary": "Краткая сводка: сколько проанализировано, общая ситуация на рынке {city}",
+  "top_offers": [
+    {{
+      "offer_id": "listing_id из объявления",
+      "title": "Краткое название (комнаты, площадь, район)",
+      "final_score": 8.5,
+      "reason": "Почему это хороший вариант (цена за м², сравнение с рынком, год, состояние)",
+      "critical_notes": ["Возможный недостаток 1", "Недостаток 2"]
+    }}
+  ],
+  "best_overall": {{
+    "offer_id": "ID лучшего варианта",
+    "title": "Название",
+    "main_advantage": "Главное преимущество"
+  }}
+}}
 
-JSON: {{"selected": [{{"id": "listing_id", "reason": "объяснение с цифрами"}}]}}"""
+Важно: Если данных недостаточно для оценки — укажи N/A. Выбери минимум {max_results} вариантов."""
     
     return prompt
 
