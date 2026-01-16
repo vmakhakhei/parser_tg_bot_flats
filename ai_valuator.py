@@ -1636,8 +1636,9 @@ async def select_best_listings(
     async def process_batch(batch_listings: List[Dict[str, Any]], batch_num: int) -> List[Dict[str, Any]]:
         """Обрабатывает один батч объявлений"""
         # Формируем промпт для батча
-        # Для каждого батча выбираем топ-5 (потом из всех выберем лучшие)
-        batch_max_results = min(5, len(batch_listings))
+        # Для каждого батча выбираем только лучшее объявление (топ-1)
+        # Потом все лучшие из батчей будут сравниваться отдельным запросом к ИИ
+        batch_max_results = 1  # Только лучшее объявление из каждого батча
         prompt = _prepare_selection_prompt_detailed(batch_listings, user_filters, batch_max_results)
         prompt_length = len(prompt)
         estimated_tokens = prompt_length // 4
@@ -1711,7 +1712,6 @@ async def select_best_listings(
         log_error("ai_select", "Не удалось получить результаты ни из одного батча")
         return []
     
-    # Объединяем результаты и выбираем топ-N лучших по final_score
     # Удаляем дубликаты по listing.id
     seen_ids = set()
     unique_results = []
@@ -1721,24 +1721,198 @@ async def select_best_listings(
             seen_ids.add(listing.id)
             unique_results.append(result)
     
-    # Сортируем по final_score (если есть) или по порядку
-    def get_score(result):
-        # Ищем final_score в разных местах ответа
-        if "score" in result:
-            return result["score"]
-        if "final_score" in result:
-            return result["final_score"]
-        # Пробуем извлечь из reason, если там есть оценка
-        reason = result.get("reason", "")
-        score_match = re.search(r'(\d+\.?\d*)/10', reason)
-        if score_match:
-            return float(score_match.group(1))
-        return 0
+    log_info("ai_select", f"Получено {len(unique_results)} уникальных лучших вариантов из батчей")
     
-    unique_results.sort(key=get_score, reverse=True)
+    # Если у нас только одно объявление или меньше max_results, возвращаем как есть
+    if len(unique_results) <= max_results:
+        log_info("ai_select", f"Вариантов меньше или равно {max_results}, возвращаю без финального сравнения")
+        return unique_results[:max_results]
     
-    log_info("ai_select", f"Выбрано {len(unique_results)} уникальных результатов, возвращаю топ-{max_results}")
-    return unique_results[:max_results]
+    # Если у нас несколько лучших вариантов из разных батчей, делаем финальное сравнение через ИИ
+    log_info("ai_select", f"Делаю финальное сравнение {len(unique_results)} лучших вариантов из батчей...")
+    
+    # Задержка перед финальным сравнением для соблюдения rate limit
+    await asyncio.sleep(15)
+    
+    # Подготавливаем данные для финального сравнения
+    # Формат должен соответствовать тому, что ожидает _select_best_groq_detailed
+    final_comparison_listings = []
+    for result in unique_results:
+        listing = result.get("listing")
+        if listing:
+            # Создаем словарь с данными объявления для финального промпта
+            # Формат должен быть: {"listing": Listing, "inspection": {...}, ...}
+            final_comparison_listings.append({
+                "listing": listing,
+                "inspection": result.get("inspection", {}),  # Сохраняем данные инспекции если есть
+                "batch_score": result.get("score") or result.get("final_score", 0),
+                "batch_reason": result.get("reason", "")
+            })
+    
+    # Формируем промпт для финального сравнения лучших вариантов
+    final_prompt = _prepare_final_comparison_prompt(final_comparison_listings, user_filters, max_results)
+    
+    # Выполняем финальное сравнение через ИИ
+    final_selected = []
+    for provider_name, api_key in providers_to_try:
+        try:
+            valuator = AIValuator(provider_name)
+            await valuator.start_session()
+            
+            try:
+                # Используем только Groq для финального сравнения (Gemini может быть недоступен)
+                if provider_name == "groq":
+                    final_selected = await valuator._select_best_groq_detailed(final_prompt, final_comparison_listings)
+                else:
+                    continue
+                
+                if final_selected and len(final_selected) > 0:
+                    log_info("ai_select", f"✅ Финальное сравнение: выбрано {len(final_selected)} вариантов")
+                    await valuator.close_session()
+                    break
+                else:
+                    log_warning("ai_select", f"Финальное сравнение: провайдер {provider_name} вернул пустой результат")
+            
+            except Exception as e:
+                log_warning("ai_select", f"Финальное сравнение: ошибка {provider_name}: {e}")
+            finally:
+                await valuator.close_session()
+                
+        except Exception as e:
+            log_warning("ai_select", f"Финальное сравнение: не удалось инициализировать {provider_name}: {e}")
+            continue
+    
+    # Если финальное сравнение не удалось, возвращаем лучшие по score из батчей
+    if not final_selected or len(final_selected) == 0:
+        log_warning("ai_select", "Финальное сравнение не удалось, возвращаю лучшие по score из батчей")
+        def get_score(result):
+            if "score" in result:
+                return result["score"]
+            if "final_score" in result:
+                return result["final_score"]
+            reason = result.get("reason", "")
+            score_match = re.search(r'(\d+\.?\d*)/10', reason)
+            if score_match:
+                return float(score_match.group(1))
+            return 0
+        
+        unique_results.sort(key=get_score, reverse=True)
+        return unique_results[:max_results]
+    
+    log_info("ai_select", f"Финальное сравнение завершено, возвращаю топ-{max_results}")
+    return final_selected[:max_results]
+
+
+def _prepare_final_comparison_prompt(
+    best_from_batches: List[Dict[str, Any]], 
+    user_filters: Dict[str, Any], 
+    max_results: int
+) -> str:
+    """Подготавливает промпт для финального сравнения лучших вариантов из разных батчей"""
+    
+    min_price = user_filters.get("min_price", 0)
+    max_price = user_filters.get("max_price", 100000)
+    min_rooms = user_filters.get("min_rooms", 1)
+    max_rooms = user_filters.get("max_rooms", 4)
+    city = user_filters.get("city", "Минск").title()
+    
+    # Формируем список лучших вариантов из батчей с их оценками
+    listings_text = []
+    
+    for i, item in enumerate(best_from_batches, 1):
+        listing = item["listing"]
+        batch_score = item.get("batch_score", 0)
+        batch_reason = item.get("batch_reason", "")
+        
+        rooms_text = f"{listing.rooms}-комн." if listing.rooms > 0 else "?"
+        area_text = f"{listing.area} м²" if listing.area > 0 else "?"
+        
+        # Цена в USD
+        price_usd = listing.price_usd if listing.price_usd else (
+            int(listing.price_byn / 2.95) if listing.price_byn else (
+                int(listing.price / 2.95) if listing.currency == "BYN" else listing.price
+            )
+        )
+        price_text = f"${price_usd:,}" if price_usd > 0 else "?"
+        
+        # Цена за м²
+        price_per_sqm = ""
+        if listing.area > 0 and price_usd > 0:
+            price_per_sqm = f" (${int(price_usd / listing.area)}/м²)"
+        
+        # Год постройки
+        year_info = f", {listing.year_built}г." if listing.year_built else ""
+        
+        # Адрес
+        address_short = listing.address[:50] if listing.address else ""
+        
+        # Название и описание
+        title_text = listing.title[:100] if listing.title else ""
+        description_text = listing.description[:200] if listing.description else ""
+        
+        # Формируем информацию об объявлении
+        listing_info = f"{i}. ID:{listing.id} | {rooms_text}, {area_text}, {price_text}{price_per_sqm}{year_info} | {address_short}"
+        if title_text:
+            listing_info += f"\n   📌 Название: {title_text}"
+        if description_text:
+            listing_info += f"\n   📝 Описание: {description_text}"
+        else:
+            listing_info += f"\n   📝 Описание: [не указано - проверь по ссылке]"
+        listing_info += f"\n   🔗 Ссылка: {listing.url}"
+        if batch_score > 0:
+            listing_info += f"\n   ⭐ Предварительная оценка из батча: {batch_score}/10"
+        if batch_reason:
+            listing_info += f"\n   💭 Обоснование из батча: {batch_reason[:150]}"
+        listing_info += "\n"
+        listings_text.append(listing_info)
+    
+    # Промпт для финального сравнения
+    prompt = f"""Эксперт по недвижимости Беларуси. ФИНАЛЬНОЕ СРАВНЕНИЕ лучших вариантов из разных батчей.
+
+КРИТЕРИИ: {city}, {min_rooms}-{max_rooms}к, ${min_price:,}-${max_price:,}
+
+⚠️ КРИТИЧЕСКИ ВАЖНО — ПРОВЕРКА НА ДОЛЮ/КОМНАТУ:
+Проверь ТОЛЬКО на ЯВНЫЕ признаки:
+- "доля в квартире", "1/2 квартиры", "1/3 квартиры", "1/4 квартиры", "половина квартиры"
+- "комната в коммуналке", "комната в общежитии", "комната в квартире" (если продается КОМНАТА, а не квартира)
+- "часть квартиры", "не целая квартира", "продается комната"
+
+НЕ считай долей/комнатой если:
+- В описании просто упоминается слово "комната" в контексте описания квартиры (например, "однокомнатная квартира", "комната в квартире" как описание)
+- В названии указано "квартира", "студия", "апартаменты"
+
+Если ТОЧНО найдено → укажи в critical_notes: "⚠️ ДОЛЯ: [детали]" или "⚠️ КОМНАТА: [детали]"
+Если доля/комната → снизь final_score на 3-4 балла, НЕ выбирай в топ если есть целые квартиры!
+
+ОЦЕНКА (1-10) - сравнивай между собой:
+• Цена vs рынок {city} (10=отлично, 1=завышена)
+• Год постройки (новее 2010г = бонус)
+• Район и инфраструктура
+• ЦЕЛАЯ КВАРТИРА (доля/комната = -3-4 балла)
+• Соотношение цена/качество
+
+Выбери ТОП-{max_results} ЛУЧШИХ из этих вариантов (ТОЛЬКО ЦЕЛЫЕ КВАРТИРЫ!)
+
+ЛУЧШИЕ ВАРИАНТЫ ИЗ БАТЧЕЙ ДЛЯ ФИНАЛЬНОГО СРАВНЕНИЯ:
+{''.join(listings_text)}
+
+ФОРМАТ ОТВЕТА (строго JSON):
+{{
+  "analysis_summary": "Краткая сводка: сравнение {len(best_from_batches)} лучших вариантов из батчей, общая ситуация на рынке {city}",
+  "top_offers": [
+    {{
+      "offer_id": "kufar_123456",
+      "title": "Краткое описание",
+      "final_score": 9.5,
+      "reason": "Детальное обоснование выбора (2-3 предложения)",
+      "critical_notes": "Важные замечания (если есть доля/комната - укажи здесь)"
+    }}
+  ]
+}}
+
+Верни ТОП-{max_results} лучших вариантов в порядке убывания final_score."""
+    
+    return prompt
 
 
 def _prepare_selection_prompt_detailed(
