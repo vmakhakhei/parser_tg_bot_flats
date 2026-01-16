@@ -1772,8 +1772,8 @@ async def select_best_listings(
                     break
                 else:
                     log_warning("ai_select", f"Финальное сравнение: провайдер {provider_name} вернул пустой результат")
-        
-    except Exception as e:
+            
+            except Exception as e:
                 log_warning("ai_select", f"Финальное сравнение: ошибка {provider_name}: {e}")
             finally:
                 await valuator.close_session()
