@@ -1178,10 +1178,21 @@ JSON ответ:
                         else:
                             log_error("ai_select", f"Превышено количество попыток для Groq API (429). Возвращаю пустой результат.")
                             return []
+                    elif resp.status == 413:
+                        # Request too large - промпт слишком большой
+                        error_text = await resp.text()
+                        log_error("ai_select", f"Groq API вернул статус 413: {error_text[:300]}")
+                        # Возвращаем специальный код ошибки для обработки на уровне выше
+                        raise ValueError("REQUEST_TOO_LARGE")
                     else:
                         error_text = await resp.text()
                         log_error("ai_select", f"Groq API вернул статус {resp.status}: {error_text[:200]}")
-                        return []  # Для других ошибок не повторяем
+                        # Для других ошибок тоже пробуем retry
+                        if attempt < max_retries - 1:
+                            await asyncio.sleep(retry_delay)
+                            retry_delay = min(retry_delay * 2, 60)
+                            continue
+                        return []
             except asyncio.TimeoutError:
                 log_warning("ai_select", f"Таймаут запроса к Groq API (попытка {attempt + 1}/{max_retries})")
                 if attempt < max_retries - 1:
@@ -1748,8 +1759,12 @@ async def select_best_listings(
     # Формируем промпт для финального сравнения лучших вариантов
     final_prompt = _prepare_final_comparison_prompt(final_comparison_listings, user_filters, max_results)
     
-    # Выполняем финальное сравнение через ИИ
+    # Выполняем финальное сравнение через ИИ с retry логикой
     final_selected = []
+    max_final_retries = 3
+    current_listings_for_final = final_comparison_listings.copy()
+    current_prompt = final_prompt
+    
     for provider_name, api_key in providers_to_try:
         try:
             valuator = AIValuator(provider_name)
@@ -1758,17 +1773,73 @@ async def select_best_listings(
             try:
                 # Используем только Groq для финального сравнения (Gemini может быть недоступен)
                 if provider_name == "groq":
-                    final_selected = await valuator._select_best_groq_detailed(final_prompt, final_comparison_listings)
+                    # Retry логика для финального сравнения
+                    for final_attempt in range(max_final_retries):
+                        try:
+                            final_selected = await valuator._select_best_groq_detailed(current_prompt, current_listings_for_final)
+                            
+                            if final_selected and len(final_selected) > 0:
+                                log_info("ai_select", f"✅ Финальное сравнение: выбрано {len(final_selected)} вариантов")
+                                await valuator.close_session()
+                                break
+                            else:
+                                log_warning("ai_select", f"Финальное сравнение: провайдер {provider_name} вернул пустой результат (попытка {final_attempt + 1}/{max_final_retries})")
+                                if final_attempt < max_final_retries - 1:
+                                    await asyncio.sleep(5)  # Небольшая задержка перед retry
+                                    continue
+                                
+                        except ValueError as e:
+                            if "REQUEST_TOO_LARGE" in str(e):
+                                # Ошибка 413 - промпт слишком большой, уменьшаем количество вариантов
+                                log_warning("ai_select", f"Финальное сравнение: промпт слишком большой (413), уменьшаю количество вариантов...")
+                                
+                                # Уменьшаем количество вариантов вдвое
+                                if len(current_listings_for_final) > max_results * 2:
+                                    # Берем только топ варианты по score
+                                    def get_score_for_final(item):
+                                        batch_score = item.get("batch_score", 0)
+                                        if batch_score > 0:
+                                            return batch_score
+                                        # Пробуем извлечь score из reason
+                                        reason = item.get("batch_reason", "")
+                                        score_match = re.search(r'(\d+\.?\d*)/10', reason)
+                                        if score_match:
+                                            return float(score_match.group(1))
+                                        return 0
+                                    
+                                    current_listings_for_final.sort(key=get_score_for_final, reverse=True)
+                                    new_limit = max(max_results * 2, len(current_listings_for_final) // 2)
+                                    current_listings_for_final = current_listings_for_final[:new_limit]
+                                    
+                                    # Пересоздаем промпт с меньшим количеством вариантов
+                                    # current_listings_for_final уже содержит правильную структуру
+                                    current_prompt = _prepare_final_comparison_prompt(
+                                        current_listings_for_final,
+                                        user_filters,
+                                        max_results
+                                    )
+                                    
+                                    log_info("ai_select", f"Финальное сравнение: уменьшено до {len(current_listings_for_final)} вариантов, повторяю попытку...")
+                                    await asyncio.sleep(2)  # Небольшая задержка перед retry
+                                    continue
+                                else:
+                                    log_error("ai_select", f"Финальное сравнение: не удалось уменьшить промпт достаточно, возвращаю пустой результат")
+                                    break
+                            else:
+                                raise
+                        
+                        except Exception as e:
+                            log_warning("ai_select", f"Финальное сравнение: ошибка {provider_name} (попытка {final_attempt + 1}/{max_final_retries}): {e}")
+                            if final_attempt < max_final_retries - 1:
+                                await asyncio.sleep(5)  # Небольшая задержка перед retry
+                                continue
+                            break
+                    
+                    if final_selected and len(final_selected) > 0:
+                        break
                 else:
                     continue
                 
-                if final_selected and len(final_selected) > 0:
-                    log_info("ai_select", f"✅ Финальное сравнение: выбрано {len(final_selected)} вариантов")
-                    await valuator.close_session()
-                    break
-                else:
-                    log_warning("ai_select", f"Финальное сравнение: провайдер {provider_name} вернул пустой результат")
-            
             except Exception as e:
                 log_warning("ai_select", f"Финальное сравнение: ошибка {provider_name}: {e}")
             finally:

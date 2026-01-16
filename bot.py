@@ -572,8 +572,20 @@ async def check_new_listings_ai_mode(
             estimated_batches = (total_candidates + 11) // 12  # Округляем вверх
         
         # Рассчитываем примерное время обработки
-        # Инспекция: ~5 секунд, батчи: ~30 секунд на батч, финальное сравнение: ~20 секунд
-        estimated_time_seconds = 5 + (estimated_batches * 30) + 20
+        # Инспекция: ~7 секунд (20 объявлений параллельно)
+        # Батчи: (batches - 1) * 15 сек (задержка между батчами) + batches * 3 сек (обработка батча)
+        # Финальное сравнение: ~20 секунд
+        inspection_time = 7
+        batch_delay = 15  # Задержка между батчами
+        batch_processing_time = 3  # Время обработки одного батча
+        final_comparison_time = 20
+        
+        if estimated_batches == 1:
+            batch_total_time = batch_processing_time
+        else:
+            batch_total_time = (estimated_batches - 1) * batch_delay + estimated_batches * batch_processing_time
+        
+        estimated_time_seconds = inspection_time + batch_total_time + final_comparison_time
         estimated_time_minutes = estimated_time_seconds // 60
         estimated_time_secs = estimated_time_seconds % 60
         
@@ -1580,8 +1592,20 @@ async def cb_check_now_ai(callback: CallbackQuery):
             estimated_batches = (total_count + 11) // 12  # Округляем вверх
         
         # Рассчитываем примерное время обработки
-        # Инспекция: ~5 секунд, батчи: ~30 секунд на батч, финальное сравнение: ~20 секунд
-        estimated_time_seconds = 5 + (estimated_batches * 30) + 20
+        # Инспекция: ~7 секунд (20 объявлений параллельно)
+        # Батчи: (batches - 1) * 15 сек (задержка между батчами) + batches * 3 сек (обработка батча)
+        # Финальное сравнение: ~20 секунд
+        inspection_time = 7
+        batch_delay = 15  # Задержка между батчами
+        batch_processing_time = 3  # Время обработки одного батча
+        final_comparison_time = 20
+        
+        if estimated_batches == 1:
+            batch_total_time = batch_processing_time
+        else:
+            batch_total_time = (estimated_batches - 1) * batch_delay + estimated_batches * batch_processing_time
+        
+        estimated_time_seconds = inspection_time + batch_total_time + final_comparison_time
         estimated_time_minutes = estimated_time_seconds // 60
         estimated_time_secs = estimated_time_seconds % 60
         
