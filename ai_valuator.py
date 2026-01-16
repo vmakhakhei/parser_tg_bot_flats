@@ -1150,16 +1150,16 @@ JSON ответ:
         retry_delay = 10  # Начальная задержка 10 секунд
         
         for attempt in range(max_retries):
-        try:
-            timeout = aiohttp.ClientTimeout(total=60)
-            async with self.session.post(GROQ_API_URL, json=payload, headers=headers, timeout=timeout) as resp:
-                if resp.status == 200:
-                    data = await resp.json()
-                    content = data["choices"][0]["message"]["content"]
-                    log_info("ai_select", f"Ответ от Groq: {content[:300]}...")
-                    
-                    selected_with_reasons = self._parse_selection_response_detailed(content, inspected_listings)
-                    return selected_with_reasons
+            try:
+                timeout = aiohttp.ClientTimeout(total=60)
+                async with self.session.post(GROQ_API_URL, json=payload, headers=headers, timeout=timeout) as resp:
+                    if resp.status == 200:
+                        data = await resp.json()
+                        content = data["choices"][0]["message"]["content"]
+                        log_info("ai_select", f"Ответ от Groq: {content[:300]}...")
+                        
+                        selected_with_reasons = self._parse_selection_response_detailed(content, inspected_listings)
+                        return selected_with_reasons
                     elif resp.status == 429:
                         # Rate limit - ждем и пробуем еще раз
                         error_text = await resp.text()
@@ -1178,9 +1178,9 @@ JSON ответ:
                         else:
                             log_error("ai_select", f"Превышено количество попыток для Groq API (429). Возвращаю пустой результат.")
                             return []
-                else:
-                    error_text = await resp.text()
-                    log_error("ai_select", f"Groq API вернул статус {resp.status}: {error_text[:200]}")
+                    else:
+                        error_text = await resp.text()
+                        log_error("ai_select", f"Groq API вернул статус {resp.status}: {error_text[:200]}")
                         return []  # Для других ошибок не повторяем
             except asyncio.TimeoutError:
                 log_warning("ai_select", f"Таймаут запроса к Groq API (попытка {attempt + 1}/{max_retries})")
