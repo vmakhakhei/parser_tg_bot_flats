@@ -733,7 +733,7 @@ JSON ответ:
                             if "generateContent" in supported_methods:
                                 # Фильтруем только стабильные модели (исключаем экспериментальные версии 2.0, 2.5)
                                 if any(stable in model_name for stable in ["gemini-1.5", "gemini-pro"]) and not any(exp in model_name for exp in ["2.0", "2.5", "exp"]):
-                                models.append(model_name)
+                                    models.append(model_name)
                     
                     # Сортируем: сначала стабильные модели из списка
                     models_sorted = []
@@ -1463,13 +1463,13 @@ def get_valuator() -> Optional[AIValuator]:
         else:
             # Автоматический выбор: только Groq
             if GROQ_API_KEY:
-            _valuator = AIValuator("groq")
+                _valuator = AIValuator("groq")
                 log_info("ai", "Использую Groq API (30 запросов/минуту, без суточных лимитов)")
-        elif HF_API_KEY:
-            _valuator = AIValuator("huggingface")
+            elif HF_API_KEY:
+                _valuator = AIValuator("huggingface")
                 log_info("ai", "Использую Hugging Face API")
-        elif os.getenv("OLLAMA_URL"):
-            _valuator = AIValuator("ollama")
+            elif os.getenv("OLLAMA_URL"):
+                _valuator = AIValuator("ollama")
                 log_info("ai", "Использую Ollama API")
     return _valuator
 
