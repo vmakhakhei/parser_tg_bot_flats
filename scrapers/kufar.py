@@ -323,6 +323,92 @@ class KufarScraper(BaseScraper):
         
         return listings
     
+    def _extract_fields_from_description(self, description: str, area: float = 0.0) -> dict:
+        """Извлекает поля из описания объявления"""
+        if not description:
+            return {}
+        
+        desc_lower = description.lower()
+        extracted = {}
+        
+        # Балкон/лоджия
+        if any(word in desc_lower for word in ["балкон", "лоджия", "с балконом", "есть балкон", "балкон есть"]):
+            extracted["balcony"] = "Есть"
+        elif any(phrase in desc_lower for phrase in ["без балкона", "нет балкона", "балкон отсутствует"]):
+            extracted["balcony"] = "Нет"
+        
+        # Тип санузла
+        if "раздельный" in desc_lower and ("санузел" in desc_lower or "туалет" in desc_lower):
+            extracted["bathroom"] = "Раздельный"
+        elif "совмещенный" in desc_lower and ("санузел" in desc_lower or "туалет" in desc_lower):
+            extracted["bathroom"] = "Совмещенный"
+        
+        # Тип дома
+        if "кирпичный" in desc_lower:
+            extracted["house_type"] = "Кирпичный"
+        elif "панельный" in desc_lower:
+            extracted["house_type"] = "Панельный"
+        elif "монолитный" in desc_lower:
+            extracted["house_type"] = "Монолитный"
+        elif "блочный" in desc_lower:
+            extracted["house_type"] = "Блочный"
+        elif "деревянный" in desc_lower:
+            extracted["house_type"] = "Деревянный"
+        
+        # Состояние ремонта
+        if any(word in desc_lower for word in ["евроремонт", "евро ремонт", "капитальный ремонт", "новый ремонт", "свежий ремонт", "современный ремонт"]):
+            extracted["renovation_state"] = "отличное"
+        elif any(word in desc_lower for word in ["хороший ремонт", "качественный ремонт", "хорошее состояние"]):
+            extracted["renovation_state"] = "хорошее"
+        elif any(word in desc_lower for word in ["требует ремонта", "нужен ремонт", "под ремонт", "требует косметического ремонта", "нужен косметический ремонт"]):
+            extracted["renovation_state"] = "требует ремонта"
+        elif any(word in desc_lower for word in ["без ремонта", "старый ремонт", "советский ремонт", "плохое состояние"]):
+            extracted["renovation_state"] = "плохое"
+        
+        # Площадь кухни
+        kitchen_match = re.search(r'кухня\s+(\d+[.,]?\d*)\s*м[²2]', desc_lower)
+        if not kitchen_match:
+            kitchen_match = re.search(r'кухня\s+(\d+[.,]?\d*)', desc_lower)
+        if kitchen_match:
+            try:
+                kitchen_area = float(kitchen_match.group(1).replace(",", "."))
+                # Проверяем разумность: кухня не может быть больше общей площади или меньше 3м²
+                if 3 <= kitchen_area <= 30 and (area == 0 or kitchen_area <= area):
+                    extracted["kitchen_area"] = kitchen_area
+            except:
+                pass
+        
+        # Жилая площадь
+        living_match = re.search(r'жилая\s+площадь\s+(\d+[.,]?\d*)\s*м[²2]', desc_lower)
+        if not living_match:
+            living_match = re.search(r'жилая\s+(\d+[.,]?\d*)\s*м[²2]', desc_lower)
+        if living_match:
+            try:
+                living_area = float(living_match.group(1).replace(",", "."))
+                # Проверяем разумность: жилая площадь не может быть больше общей площади
+                if 10 <= living_area <= 200 and (area == 0 or living_area <= area):
+                    extracted["living_area"] = living_area
+            except:
+                pass
+        
+        # Этажность дома
+        floors_match = re.search(r'(\d+)\s*этажн', desc_lower)
+        if not floors_match:
+            floors_match = re.search(r'(\d+)\s*эт\.\s*дом', desc_lower)
+        if not floors_match:
+            floors_match = re.search(r'дом\s+(\d+)\s*этаж', desc_lower)
+        if not floors_match:
+            floors_match = re.search(r'(\d+)\s*этаж', desc_lower)
+        if floors_match:
+            try:
+                total_floors = int(floors_match.group(1))
+                if 1 <= total_floors <= 30:  # Разумные пределы
+                    extracted["total_floors"] = str(total_floors)
+            except:
+                pass
+        
+        return extracted
+    
     def _parse_ad(self, ad: dict, city: str = "Минск") -> Optional[Listing]:
         """Парсит одно объявление из API"""
         try:
@@ -490,6 +576,42 @@ class KufarScraper(BaseScraper):
                 description = body_short.strip()
             elif body:
                 description = body.strip()
+            
+            # Извлекаем недостающие поля из описания
+            if description:
+                extracted_fields = self._extract_fields_from_description(description, area)
+                
+                # Заполняем только пустые поля (приоритет у API параметров)
+                if not balcony and extracted_fields.get("balcony"):
+                    balcony = extracted_fields["balcony"]
+                    log_info("kufar", f"Извлечено из описания: балкон={balcony}")
+                
+                if not bathroom and extracted_fields.get("bathroom"):
+                    bathroom = extracted_fields["bathroom"]
+                    log_info("kufar", f"Извлечено из описания: санузел={bathroom}")
+                
+                if not house_type and extracted_fields.get("house_type"):
+                    house_type = extracted_fields["house_type"]
+                    log_info("kufar", f"Извлечено из описания: тип дома={house_type}")
+                
+                if not renovation_state and extracted_fields.get("renovation_state"):
+                    renovation_state = extracted_fields["renovation_state"]
+                    log_info("kufar", f"Извлечено из описания: состояние ремонта={renovation_state}")
+                
+                if kitchen_area == 0.0 and extracted_fields.get("kitchen_area"):
+                    kitchen_area = extracted_fields["kitchen_area"]
+                    log_info("kufar", f"Извлечено из описания: площадь кухни={kitchen_area}")
+                
+                if living_area == 0.0 and extracted_fields.get("living_area"):
+                    living_area = extracted_fields["living_area"]
+                    log_info("kufar", f"Извлечено из описания: жилая площадь={living_area}")
+                
+                if not total_floors and extracted_fields.get("total_floors"):
+                    total_floors = extracted_fields["total_floors"]
+                    # Обновляем floor если нужно
+                    if floor and "/" not in str(floor):
+                        floor = f"{floor}/{total_floors}"
+                    log_info("kufar", f"Извлечено из описания: этажность={total_floors}")
             
             # Год постройки
             year_built = ""
