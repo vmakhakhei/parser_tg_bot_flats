@@ -733,7 +733,7 @@ JSON ответ:
                             if "generateContent" in supported_methods:
                                 # Фильтруем только стабильные модели (исключаем экспериментальные версии 2.0, 2.5)
                                 if any(stable in model_name for stable in ["gemini-1.5", "gemini-pro"]) and not any(exp in model_name for exp in ["2.0", "2.5", "exp"]):
-                                    models.append(model_name)
+                                models.append(model_name)
                     
                     # Сортируем: сначала стабильные модели из списка
                     models_sorted = []
@@ -1150,16 +1150,16 @@ JSON ответ:
         retry_delay = 10  # Начальная задержка 10 секунд
         
         for attempt in range(max_retries):
-            try:
-                timeout = aiohttp.ClientTimeout(total=60)
-                async with self.session.post(GROQ_API_URL, json=payload, headers=headers, timeout=timeout) as resp:
-                    if resp.status == 200:
-                        data = await resp.json()
-                        content = data["choices"][0]["message"]["content"]
-                        log_info("ai_select", f"Ответ от Groq: {content[:300]}...")
-                        
-                        selected_with_reasons = self._parse_selection_response_detailed(content, inspected_listings)
-                        return selected_with_reasons
+        try:
+            timeout = aiohttp.ClientTimeout(total=60)
+            async with self.session.post(GROQ_API_URL, json=payload, headers=headers, timeout=timeout) as resp:
+                if resp.status == 200:
+                    data = await resp.json()
+                    content = data["choices"][0]["message"]["content"]
+                    log_info("ai_select", f"Ответ от Groq: {content[:300]}...")
+                    
+                    selected_with_reasons = self._parse_selection_response_detailed(content, inspected_listings)
+                    return selected_with_reasons
                     elif resp.status == 429:
                         # Rate limit - ждем и пробуем еще раз
                         error_text = await resp.text()
@@ -1178,9 +1178,9 @@ JSON ответ:
                         else:
                             log_error("ai_select", f"Превышено количество попыток для Groq API (429). Возвращаю пустой результат.")
                             return []
-                    else:
-                        error_text = await resp.text()
-                        log_error("ai_select", f"Groq API вернул статус {resp.status}: {error_text[:200]}")
+                else:
+                    error_text = await resp.text()
+                    log_error("ai_select", f"Groq API вернул статус {resp.status}: {error_text[:200]}")
                         return []  # Для других ошибок не повторяем
             except asyncio.TimeoutError:
                 log_warning("ai_select", f"Таймаут запроса к Groq API (попытка {attempt + 1}/{max_retries})")
@@ -1188,7 +1188,7 @@ JSON ответ:
                     await asyncio.sleep(retry_delay)
                     continue
                 return []
-            except Exception as e:
+        except Exception as e:
                 log_error("ai_select", f"Ошибка запроса к Groq API (попытка {attempt + 1}/{max_retries})", e)
                 if attempt < max_retries - 1:
                     await asyncio.sleep(retry_delay)
@@ -1497,13 +1497,13 @@ def get_valuator() -> Optional[AIValuator]:
         else:
             # Автоматический выбор: только Groq
             if GROQ_API_KEY:
-                _valuator = AIValuator("groq")
+            _valuator = AIValuator("groq")
                 log_info("ai", "Использую Groq API (30 запросов/минуту, без суточных лимитов)")
-            elif HF_API_KEY:
-                _valuator = AIValuator("huggingface")
+        elif HF_API_KEY:
+            _valuator = AIValuator("huggingface")
                 log_info("ai", "Использую Hugging Face API")
-            elif os.getenv("OLLAMA_URL"):
-                _valuator = AIValuator("ollama")
+        elif os.getenv("OLLAMA_URL"):
+            _valuator = AIValuator("ollama")
                 log_info("ai", "Использую Ollama API")
     return _valuator
 
@@ -1531,16 +1531,16 @@ async def select_best_listings(
     if not listings:
         return []
         
-    # Формируем список для промпта (только базовые данные + ссылки)
-    # Исключаем объявления без цены (договорная, 0, None)
+        # Формируем список для промпта (только базовые данные + ссылки)
+        # Исключаем объявления без цены (договорная, 0, None)
     # Лимит объявлений зависит от размера промпта, обычно до 100 OK
     listings_to_inspect = []
     
     for listing in listings[:100]:  # Максимум 100 объявлений для анализа
-        # Пропускаем объявления без цены
-        if not listing.price or listing.price <= 0:
-            log_info("ai_select", f"Пропускаю объявление {listing.id}: цена не указана или равна 0")
-            continue
+            # Пропускаем объявления без цены
+            if not listing.price or listing.price <= 0:
+                log_info("ai_select", f"Пропускаю объявление {listing.id}: цена не указана или равна 0")
+                continue
         
         listings_to_inspect.append(listing)
     
@@ -1604,7 +1604,7 @@ async def select_best_listings(
         # Если объявлений мало - отправляем одним запросом
         batch_size = total_listings
         batches = [listings_for_prompt]
-    else:
+        else:
         # Разбиваем на батчи по 12 объявлений (оптимально для промпта ~3000-4000 токенов)
         batch_size = 12
         batches = []
@@ -1743,7 +1743,7 @@ async def select_best_listings(
             # Создаем словарь с данными объявления для финального промпта
             # Формат должен быть: {"listing": Listing, "inspection": {...}, ...}
             final_comparison_listings.append({
-                "listing": listing,
+                    "listing": listing,
                 "inspection": result.get("inspection", {}),  # Сохраняем данные инспекции если есть
                 "batch_score": result.get("score") or result.get("final_score", 0),
                 "batch_reason": result.get("reason", "")
@@ -1772,8 +1772,8 @@ async def select_best_listings(
                     break
                 else:
                     log_warning("ai_select", f"Финальное сравнение: провайдер {provider_name} вернул пустой результат")
-            
-            except Exception as e:
+        
+    except Exception as e:
                 log_warning("ai_select", f"Финальное сравнение: ошибка {provider_name}: {e}")
             finally:
                 await valuator.close_session()
@@ -1848,7 +1848,11 @@ def _prepare_final_comparison_prompt(
         
         # Название и описание
         title_text = listing.title[:100] if listing.title else ""
-        description_text = listing.description[:200] if listing.description else ""
+        
+        # Используем полное описание из инспекции, если доступно
+        inspection = item.get("inspection", {})
+        full_description = inspection.get("full_description", "") if inspection else ""
+        description_text = full_description[:200] if full_description else (listing.description[:200] if listing.description else "")
         
         # Формируем информацию об объявлении
         listing_info = f"{i}. ID:{listing.id} | {rooms_text}, {area_text}, {price_text}{price_per_sqm}{year_info} | {address_short}"
