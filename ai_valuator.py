@@ -319,21 +319,58 @@ class AIValuator:
                     share_warning = "\n⚠️ ВНИМАНИЕ: Это КОМНАТА в квартире/коммуналке, а не целая квартира! Цена должна быть значительно ниже рынка целых квартир."
                 break
         
+        # Формируем дополнительные характеристики
+        additional_info = []
+        
+        # Тип дома
+        if listing.house_type:
+            additional_info.append(f"Тип дома: {listing.house_type}")
+        
+        # Балкон
+        if listing.balcony:
+            additional_info.append(f"Балкон: {listing.balcony}")
+        
+        # Санузел
+        if listing.bathroom:
+            additional_info.append(f"Санузел: {listing.bathroom}")
+        
+        # Площадь кухни
+        if listing.kitchen_area > 0:
+            additional_info.append(f"Кухня: {listing.kitchen_area}м²")
+        
+        # Жилая площадь (если отличается от общей)
+        if listing.living_area > 0 and listing.living_area != listing.area:
+            additional_info.append(f"Жилая площадь: {listing.living_area}м²")
+        
+        # Тип продавца
+        if listing.is_company is not None:
+            seller_type = "Агентство" if listing.is_company else "Собственник"
+            additional_info.append(f"Продавец: {seller_type}")
+        
+        # Используем состояние ремонта из listing, если есть, иначе из анализа описания
+        final_renovation_state = listing.renovation_state if listing.renovation_state else renovation_state
+        
+        additional_info_str = "\n".join(additional_info) if additional_info else ""
+        
         prompt = f"""Оценщик недвижимости {city_from_address}, Беларусь. Оцени квартиру:
 
 ОБЪЕКТ: {listing.rooms}к, {listing.area}м², этаж {listing.floor or '?'}{floor_info}, год {listing.year_built or '?'}{year_info}
 Адрес: {listing.address}{district_price_info}
 Цена: {price_info}, {price_per_sqm_text}
-Ремонт: {renovation_state}
-{f'Название: {listing.title[:100]}' if listing.title else ''}
+Ремонт: {final_renovation_state}
+{additional_info_str + chr(10) if additional_info_str else ''}{f'Название: {listing.title[:80]}' if listing.title else ''}
 {f'Описание: {description_text[:300]}' if description_text else ''}
 {share_warning}
 
 РЫНОК 2025 Беларусь ($/м²): Минск $1200-2500, обл.центры $600-1200, районные $400-800
 Корректировки: 1й/последний этаж -5%, до 1980г -7%, евроремонт +10%, требует ремонта -10%
+Тип дома: кирпичный +5-10%, монолитный +10-15%, панельный = базовая цена
+Балкон: наличие +2-3% к цене
+Санузел: раздельный предпочтительнее совмещенного
+Кухня: больше 8м² = бонус +2-3%
 {'- ДОЛЯ/КОМНАТА: цена должна быть на 40-60% ниже целой квартиры!' if is_share_or_room else ''}
 
-ЗАДАЧА: Определи справедливую цену для {city_from_address}, сравни с рынком города, дай рекомендации.
+ЗАДАЧА: Определи справедливую цену для {city_from_address}, сравни с рынком города, учти все характеристики (тип дома, балкон, санузел, площадь кухни), дай рекомендации.
 
 JSON ответ:
 {{"fair_price_usd": число, "is_overpriced": true/false, "assessment": "оценка 2-3 предложения", "renovation_state": "отличное/хорошее/среднее/требует ремонта/плохое", "recommendations": "что проверить, стоит ли покупать", "value_score": 1-10}}"""
@@ -2012,9 +2049,6 @@ def _prepare_final_comparison_prompt(
         batch_score = item.get("batch_score", 0)
         batch_reason = item.get("batch_reason", "")
         
-        rooms_text = f"{listing.rooms}-комн." if listing.rooms > 0 else "?"
-        area_text = f"{listing.area} м²" if listing.area > 0 else "?"
-        
         # Цена в USD
         price_usd = listing.price_usd if listing.price_usd else (
             int(listing.price_byn / 2.95) if listing.price_byn else (
@@ -2028,27 +2062,26 @@ def _prepare_final_comparison_prompt(
         if listing.area > 0 and price_usd > 0:
             price_per_sqm = f" (${int(price_usd / listing.area)}/м²)"
         
-        # Год постройки
-        year_info = f", {listing.year_built}г." if listing.year_built else ""
+        # Компактный формат параметров
+        compact_params = _format_listing_compact(listing)
         
-        # Адрес
-        address_short = listing.address[:50] if listing.address else ""
+        # Адрес (сокращен до 40 символов)
+        address_short = listing.address[:40] if listing.address else ""
         
-        # Название и описание
-        title_text = listing.title[:100] if listing.title else ""
+        # Название (сокращено до 80 символов)
+        title_text = listing.title[:80] if listing.title else ""
         
-        # Используем полное описание из инспекции, если доступно
-        # Увеличиваем до 500 символов для лучшего контекста (важно для проверки на долю/часть дома)
+        # Описание (сокращено до 400 символов для оптимизации размера промпта)
         inspection = item.get("inspection", {})
         full_description = inspection.get("full_description", "") if inspection else ""
-        description_text = full_description[:500] if full_description else (listing.description[:500] if listing.description else "")
+        description_text = full_description[:400] if full_description else (listing.description[:400] if listing.description else "")
         
         # Логируем для отладки проверки на долю/часть дома
         if description_text and ("часть дома" in description_text.lower() or "квартира в частном доме" in description_text.lower()):
             log_info("ai_select", f"⚠️ Обнаружена потенциальная 'часть дома' в описании для {listing.id}: {description_text[:100]}...")
         
-        # Формируем информацию об объявлении
-        listing_info = f"{i}. ID:{listing.id} | {rooms_text}, {area_text}, {price_text}{price_per_sqm}{year_info} | {address_short}"
+        # Формируем информацию об объявлении в компактном формате
+        listing_info = f"{i}. ID:{listing.id} | {compact_params} | {price_text}{price_per_sqm} | Адр:{address_short}"
         if title_text:
             listing_info += f"\n   📌 Название: {title_text}"
         if description_text:
@@ -2115,6 +2148,31 @@ def _prepare_final_comparison_prompt(
   - Новостройки (2010+) = бонус +1-2 балла
   - Старые дома (до 1980г) = минус 1-2 балла (если это не компенсируется низкой ценой)
 
+• Тип дома (важно для оценки):
+  - Кирпичный = бонус +1-2 балла (дороже панельного на 5-10%)
+  - Монолитный = премиум +2-3 балла (самый дорогой тип)
+  - Панельный = стандарт (базовая оценка)
+
+• Балкон/лоджия:
+  - Наличие добавляет +2-3% к цене = +0.5-1 балл
+  - Отсутствие = минус 0.5 балла (особенно для верхних этажей)
+
+• Санузел:
+  - Раздельный = бонус +0.5 балла (предпочтительнее)
+  - Совмещенный = стандарт (базовая оценка)
+
+• Площадь кухни:
+  - Больше 8м² = бонус +0.5-1 балл (комфортная планировка)
+  - Меньше 6м² = минус 0.5 балла (тесная кухня)
+
+• Состояние ремонта:
+  - Отличное/хорошее = бонус +1-2 балла
+  - Требует ремонта = минус 1-2 балла
+
+• Тип продавца:
+  - Собственник может быть гибче в цене (учитывай при оценке переговоров)
+  - Агентство = стандарт (менее гибкое в цене)
+
 • Район и инфраструктура (сравни с типичными предложениями в {city}):
   - Центральные/престижные районы = бонус
   - Удаленные/менее развитые районы = минус (если цена не компенсирует)
@@ -2155,6 +2213,51 @@ def _prepare_final_comparison_prompt(
     return prompt
 
 
+def _format_listing_compact(listing: Listing) -> str:
+    """Форматирует объявление в компактном формате для промптов"""
+    parts = []
+    
+    # Основные параметры
+    main = f"К:{listing.rooms}, Пл:{listing.area}м²"
+    if listing.living_area > 0 and listing.living_area != listing.area:
+        main += f"(ж:{listing.living_area})"
+    if listing.kitchen_area > 0:
+        main += f"(к:{listing.kitchen_area})"
+    
+    # Этаж и этажность
+    floor_info = listing.floor if listing.floor else "?"
+    # Если этаж не содержит "/" и есть информация об этажности, добавляем её
+    if listing.total_floors and "/" not in str(floor_info) and floor_info != "?":
+        floor_info = f"{floor_info}/{listing.total_floors}"
+    elif listing.total_floors and floor_info == "?":
+        # Если этаж неизвестен, но есть этажность, показываем только этажность
+        floor_info = f"?/{listing.total_floors}"
+    
+    # Дополнительные параметры
+    extras = []
+    if listing.house_type:
+        house_type_short = listing.house_type[:10] if len(listing.house_type) > 10 else listing.house_type
+        extras.append(f"Тип:{house_type_short}")
+    if listing.balcony:
+        balcony_short = listing.balcony[:5] if len(listing.balcony) > 5 else listing.balcony
+        extras.append(f"Б:{balcony_short}")
+    if listing.bathroom:
+        bathroom_short = listing.bathroom[:8] if len(listing.bathroom) > 8 else listing.bathroom
+        extras.append(f"С:{bathroom_short}")
+    if listing.renovation_state:
+        renovation_short = listing.renovation_state[:10] if len(listing.renovation_state) > 10 else listing.renovation_state
+        extras.append(f"Р:{renovation_short}")
+    if listing.is_company is not None:
+        extras.append("Пр:Агентство" if listing.is_company else "Пр:Собственник")
+    
+    year_info = listing.year_built if listing.year_built else "?"
+    result = f"{main}, Эт:{floor_info}, Г:{year_info}"
+    if extras:
+        result += f", {', '.join(extras)}"
+    
+    return result
+
+
 def _prepare_selection_prompt_detailed(
     inspected_listings: List[Dict[str, Any]], 
     user_filters: Dict[str, Any], 
@@ -2177,9 +2280,6 @@ def _prepare_selection_prompt_detailed(
     for i, item in enumerate(listings_to_process, 1):
         listing = item["listing"]
         
-        rooms_text = f"{listing.rooms}-комн." if listing.rooms > 0 else "?"
-        area_text = f"{listing.area} м²" if listing.area > 0 else "?"
-        
         # Цена в USD
         price_usd = listing.price_usd if listing.price_usd else (
             int(listing.price_byn / 2.95) if listing.price_byn else (
@@ -2193,29 +2293,26 @@ def _prepare_selection_prompt_detailed(
         if listing.area > 0 and price_usd > 0:
             price_per_sqm = f" (${int(price_usd / listing.area)}/м²)"
         
-        # Год постройки
-        year_info = f", {listing.year_built}г." if listing.year_built else ""
+        # Компактный формат параметров
+        compact_params = _format_listing_compact(listing)
         
-        # Адрес
-        address_short = listing.address[:50] if listing.address else ""
+        # Адрес (сокращен до 40 символов)
+        address_short = listing.address[:40] if listing.address else ""
         
-        # Название и описание (важно для проверки на долю/комнату)
-        # Сокращаем для уменьшения размера промпта
-        title_text = listing.title[:100] if listing.title else ""
+        # Название (сокращено до 80 символов)
+        title_text = listing.title[:80] if listing.title else ""
         
-        # Используем полное описание из инспекции, если доступно
-        # Увеличиваем до 500 символов для лучшего контекста (важно для проверки на долю/часть дома)
+        # Описание (сокращено до 400 символов для оптимизации размера промпта)
         inspection = item.get("inspection", {})
         full_description = inspection.get("full_description", "") if inspection else ""
-        description_text = full_description[:500] if full_description else (listing.description[:500] if listing.description else "")
+        description_text = full_description[:400] if full_description else (listing.description[:400] if listing.description else "")
         
         # Логируем для отладки проверки на долю/часть дома
         if description_text and ("часть дома" in description_text.lower() or "квартира в частном доме" in description_text.lower()):
             log_info("ai_select", f"⚠️ Обнаружена потенциальная 'часть дома' в описании для {listing.id}: {description_text[:100]}...")
         
-        # Формируем информацию об объявлении с названием и описанием
-        # ВАЖНО: Описание может содержать информацию о доле/комнате!
-        listing_info = f"{i}. ID:{listing.id} | {rooms_text}, {area_text}, {price_text}{price_per_sqm}{year_info} | {address_short}"
+        # Формируем информацию об объявлении в компактном формате
+        listing_info = f"{i}. ID:{listing.id} | {compact_params} | {price_text}{price_per_sqm} | Адр:{address_short}"
         if title_text:
             listing_info += f"\n   📌 Название: {title_text}"
         if description_text:
@@ -2247,6 +2344,12 @@ def _prepare_selection_prompt_detailed(
 ОЦЕНКА (1-10):
 • Цена vs рынок {city} (10=отлично, 1=завышена)
 • Год постройки (новее 2010г = бонус)
+• Тип дома: кирпичный дороже панельного (+1-2 балла), монолитный = премиум (+2-3 балла)
+• Балкон/лоджия: наличие добавляет +2-3% к цене (+0.5-1 балл)
+• Санузел: раздельный предпочтительнее совмещенного (+0.5 балла)
+• Площадь кухни: больше 8м² = бонус (+0.5-1 балл)
+• Состояние ремонта: отличное/хорошее = бонус, требует ремонта = минус
+• Тип продавца: собственник может быть гибче в цене (учитывай при оценке)
 • Район и инфраструктура
 • ЦЕЛАЯ КВАРТИРА (доля/комната = -3-4 балла)
 

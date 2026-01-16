@@ -33,6 +33,13 @@ class Listing:
     year_built: str = ""  # Год постройки
     created_at: str = ""  # Дата создания объявления (формат: YYYY-MM-DD или "сегодня", "вчера", "X дней назад")
     is_company: Optional[bool] = None  # True = агентство, False = собственник, None = неизвестно
+    balcony: str = ""  # Наличие балкона/лоджии
+    bathroom: str = ""  # Тип санузла (раздельный/совмещенный)
+    total_floors: str = ""  # Этажность дома
+    house_type: str = ""  # Тип дома (кирпичный/панельный/монолитный)
+    renovation_state: str = ""  # Состояние ремонта
+    kitchen_area: float = 0.0  # Площадь кухни в м²
+    living_area: float = 0.0  # Жилая площадь в м²
     
     def __post_init__(self):
         """Вычисляем цену за м² если не указана"""
@@ -63,6 +70,13 @@ class Listing:
             "year_built": self.year_built,
             "created_at": self.created_at,
             "is_company": self.is_company,
+            "balcony": self.balcony,
+            "bathroom": self.bathroom,
+            "total_floors": self.total_floors,
+            "house_type": self.house_type,
+            "renovation_state": self.renovation_state,
+            "kitchen_area": self.kitchen_area,
+            "living_area": self.living_area,
         }
     
     @staticmethod

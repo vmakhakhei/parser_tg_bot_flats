@@ -397,6 +397,100 @@ class KufarScraper(BaseScraper):
             elif floor_val:
                 floor = str(floor_val)
             
+            # Этажность дома (отдельно от этажа)
+            total_floors = ""
+            if floors_val:
+                total_floors = str(floors_val)
+            
+            # Балкон/лоджия
+            balcony = ""
+            balcony_val = params.get("balcony", "")
+            if balcony_val:
+                # "1" = есть, "2" = нет
+                if str(balcony_val) == "1":
+                    balcony = "Есть"
+                elif str(balcony_val) == "2":
+                    balcony = "Нет"
+                else:
+                    balcony = str(balcony_val)
+            
+            # Санузел
+            bathroom = ""
+            bathroom_val = params.get("bathroom", "")
+            if bathroom_val:
+                # "1" = раздельный, "2" = совмещенный
+                bathroom_text = params.get("bathroom_text", "")
+                if bathroom_text:
+                    bathroom = bathroom_text
+                elif str(bathroom_val) == "1":
+                    bathroom = "Раздельный"
+                elif str(bathroom_val) == "2":
+                    bathroom = "Совмещенный"
+                else:
+                    bathroom = str(bathroom_val)
+            
+            # Тип дома
+            house_type = ""
+            house_type_val = params.get("house_type", "")
+            if house_type_val:
+                house_type_text = params.get("house_type_text", "")
+                if house_type_text:
+                    house_type = house_type_text
+                else:
+                    # Маппинг числовых значений на текстовые
+                    house_type_map = {
+                        "1": "Панельный",
+                        "2": "Блочный",
+                        "3": "Кирпичный",
+                        "4": "Монолитный",
+                        "5": "Деревянный"
+                    }
+                    house_type = house_type_map.get(str(house_type_val), str(house_type_val))
+            
+            # Состояние ремонта
+            renovation_state = ""
+            condition_val = params.get("condition", "")
+            flat_repair_val = params.get("flat_repair", "")
+            if flat_repair_val:
+                flat_repair_text = params.get("flat_repair_text", "")
+                if flat_repair_text:
+                    renovation_state = flat_repair_text
+                else:
+                    renovation_state = str(flat_repair_val)
+            elif condition_val:
+                condition_text = params.get("condition_text", "")
+                if condition_text:
+                    renovation_state = condition_text
+                else:
+                    renovation_state = str(condition_val)
+            
+            # Площадь кухни
+            kitchen_area = 0.0
+            kitchen_val = params.get("size_kitchen", "")
+            if kitchen_val:
+                try:
+                    kitchen_area = float(str(kitchen_val).replace(",", "."))
+                except:
+                    pass
+            
+            # Жилая площадь
+            living_area = 0.0
+            living_val = params.get("size_living_space", "")
+            if living_val:
+                try:
+                    living_area = float(str(living_val).replace(",", "."))
+                except:
+                    pass
+            
+            # Описание
+            description = ""
+            body_short = ad.get("body_short", "")
+            body = ad.get("body", "")
+            if body_short:
+                description = body_short.strip()
+            elif body:
+                description = body.strip()
+            
             # Год постройки
             year_built = ""
             # Пробуем разные варианты параметров года из API Kufar
@@ -553,6 +647,14 @@ class KufarScraper(BaseScraper):
                 year_built=year_built,
                 created_at=created_at,
                 is_company=is_company,
+                description=description,
+                balcony=balcony,
+                bathroom=bathroom,
+                total_floors=total_floors,
+                house_type=house_type,
+                renovation_state=renovation_state,
+                kitchen_area=kitchen_area,
+                living_area=living_area,
             )
             
         except Exception as e:

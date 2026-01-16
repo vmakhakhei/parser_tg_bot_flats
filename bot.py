@@ -223,13 +223,54 @@ def format_listing_message(listing: Listing, ai_valuation: Optional[Dict[str, An
     lines.append(f"🚪 <b>Комнат:</b> {listing.rooms}")
     lines.append(f"📐 <b>Площадь:</b> {listing.area} м²")
     
+    # Жилая площадь (если отличается от общей)
+    if listing.living_area > 0 and listing.living_area != listing.area:
+        lines.append(f"🛋️ <b>Жилая площадь:</b> {listing.living_area} м²")
+    
+    # Площадь кухни
+    if listing.kitchen_area > 0:
+        lines.append(f"🍳 <b>Кухня:</b> {listing.kitchen_area} м²")
+    
     # Этаж
     if listing.floor:
         lines.append(f"🏢 <b>Этаж:</b> {listing.floor}")
+    elif listing.total_floors:
+        # Если есть только этажность без этажа
+        lines.append(f"🏢 <b>Этажность:</b> {listing.total_floors} этажей")
     
     # Год постройки
     if listing.year_built:
         lines.append(f"📅 <b>Год:</b> {listing.year_built}")
+    
+    # Тип дома
+    if listing.house_type:
+        lines.append(f"🏗️ <b>Тип дома:</b> {listing.house_type}")
+    
+    # Балкон/лоджия
+    if listing.balcony:
+        balcony_emoji = "✅" if listing.balcony.lower() in ["есть", "да", "1"] else "❌"
+        lines.append(f"{balcony_emoji} <b>Балкон:</b> {listing.balcony}")
+    
+    # Санузел
+    if listing.bathroom:
+        lines.append(f"🚿 <b>Санузел:</b> {listing.bathroom}")
+    
+    # Состояние ремонта
+    if listing.renovation_state:
+        renovation_emoji = {
+            "отличное": "✨",
+            "хорошее": "✅",
+            "среднее": "⚪",
+            "требует ремонта": "⚠️",
+            "плохое": "❌",
+            "вторичное": "📋"
+        }.get(listing.renovation_state.lower(), "📋")
+        lines.append(f"{renovation_emoji} <b>Ремонт:</b> {listing.renovation_state}")
+    
+    # Тип продавца
+    if listing.is_company is not None:
+        seller_type = "🏢 Агентство" if listing.is_company else "👤 Собственник"
+        lines.append(f"{seller_type}")
     
     # Дата создания объявления
     if listing.created_at:
@@ -253,6 +294,16 @@ def format_listing_message(listing: Listing, ai_valuation: Optional[Dict[str, An
         
         lines.append(f"📆 <b>Опубликовано:</b> {date_display}")
     
+    # Описание (первые 300 символов)
+    if listing.description:
+        description_text = listing.description.strip()
+        if len(description_text) > 300:
+            description_text = description_text[:300] + "..."
+        lines.append("")
+        lines.append(f"📝 <b>Описание:</b>")
+        lines.append(f"<i>{description_text}</i>")
+    
+    lines.append("")
     lines.append(f"📍 <b>Адрес:</b> {listing.address}")
     lines.append(f"🌐 <b>Источник:</b> {listing.source}")
     lines.append("")
