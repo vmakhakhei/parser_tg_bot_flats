@@ -697,17 +697,17 @@ async def check_new_listings_ai_mode(
                                     user_id,
                                     msg_part,
                                     parse_mode=ParseMode.HTML,
-                            disable_web_page_preview=False
-                        )
+                                    disable_web_page_preview=False
+                                )
                     else:
                         # Отправляем все сообщения отдельно
                         for msg_part in messages_parts:
-                        await bot.send_message(
-                            user_id,
+                            await bot.send_message(
+                                user_id,
                                 msg_part,
-                            parse_mode=ParseMode.HTML,
-                            disable_web_page_preview=False
-                        )
+                                parse_mode=ParseMode.HTML,
+                                disable_web_page_preview=False
+                            )
                 except Exception as e:
                     log_error("ai_mode", f"Ошибка редактирования/отправки результатов пользователю {user_id}", e)
                     # Fallback: отправляем сокращенную версию
