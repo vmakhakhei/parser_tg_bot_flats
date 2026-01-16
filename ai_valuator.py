@@ -1145,21 +1145,55 @@ JSON ответ:
             "max_tokens": 3000  # Больше токенов для детального анализа
         }
         
-        try:
-            timeout = aiohttp.ClientTimeout(total=60)
-            async with self.session.post(GROQ_API_URL, json=payload, headers=headers, timeout=timeout) as resp:
-                if resp.status == 200:
-                    data = await resp.json()
-                    content = data["choices"][0]["message"]["content"]
-                    log_info("ai_select", f"Ответ от Groq: {content[:300]}...")
-                    
-                    selected_with_reasons = self._parse_selection_response_detailed(content, inspected_listings)
-                    return selected_with_reasons
-                else:
-                    error_text = await resp.text()
-                    log_error("ai_select", f"Groq API вернул статус {resp.status}: {error_text[:200]}")
-        except Exception as e:
-            log_error("ai_select", f"Ошибка запроса к Groq API", e)
+        # Retry логика для обработки rate limit (429)
+        max_retries = 3
+        retry_delay = 10  # Начальная задержка 10 секунд
+        
+        for attempt in range(max_retries):
+            try:
+                timeout = aiohttp.ClientTimeout(total=60)
+                async with self.session.post(GROQ_API_URL, json=payload, headers=headers, timeout=timeout) as resp:
+                    if resp.status == 200:
+                        data = await resp.json()
+                        content = data["choices"][0]["message"]["content"]
+                        log_info("ai_select", f"Ответ от Groq: {content[:300]}...")
+                        
+                        selected_with_reasons = self._parse_selection_response_detailed(content, inspected_listings)
+                        return selected_with_reasons
+                    elif resp.status == 429:
+                        # Rate limit - ждем и пробуем еще раз
+                        error_text = await resp.text()
+                        log_warning("ai_select", f"Groq API вернул статус 429 (Rate limit). Попытка {attempt + 1}/{max_retries}. Жду {retry_delay} секунд...")
+                        
+                        # Извлекаем информацию о лимите из ошибки (если доступна)
+                        if "tokens per minute" in error_text.lower():
+                            log_info("ai_select", f"Детали ошибки: {error_text[:300]}")
+                        
+                        # Увеличиваем задержку с каждой попыткой (exponential backoff)
+                        await asyncio.sleep(retry_delay)
+                        retry_delay = min(retry_delay * 2, 60)  # Максимум 60 секунд
+                        
+                        if attempt < max_retries - 1:
+                            continue  # Пробуем еще раз
+                        else:
+                            log_error("ai_select", f"Превышено количество попыток для Groq API (429). Возвращаю пустой результат.")
+                            return []
+                    else:
+                        error_text = await resp.text()
+                        log_error("ai_select", f"Groq API вернул статус {resp.status}: {error_text[:200]}")
+                        return []  # Для других ошибок не повторяем
+            except asyncio.TimeoutError:
+                log_warning("ai_select", f"Таймаут запроса к Groq API (попытка {attempt + 1}/{max_retries})")
+                if attempt < max_retries - 1:
+                    await asyncio.sleep(retry_delay)
+                    continue
+                return []
+            except Exception as e:
+                log_error("ai_select", f"Ошибка запроса к Groq API (попытка {attempt + 1}/{max_retries})", e)
+                if attempt < max_retries - 1:
+                    await asyncio.sleep(retry_delay)
+                    continue
+                return []
         
         return []
     
@@ -1643,17 +1677,22 @@ async def select_best_listings(
         log_warning("ai_select", f"Батч {batch_num + 1}: не удалось получить результат")
         return []
     
-    # Обрабатываем батчи параллельно (но с ограничением для избежания rate limit)
-    log_info("ai_select", f"Обрабатываю {len(batches)} батч(ей) параллельно...")
+    # Обрабатываем батчи последовательно или с минимальной параллельностью для избежания rate limit
+    # Groq API имеет лимит 6000 токенов/минуту (TPM), поэтому обрабатываем по 1-2 батча за раз
+    log_info("ai_select", f"Обрабатываю {len(batches)} батч(ей) с ограничением параллельности...")
     
-    # Ограничиваем параллельность до 3 батчей одновременно (чтобы не превысить rate limit Groq)
-    semaphore = asyncio.Semaphore(3)
+    # Уменьшаем параллельность до 1 батча одновременно для избежания rate limit
+    # Groq API: лимит 6000 TPM, каждый батч использует ~1200-1800 токенов
+    semaphore = asyncio.Semaphore(1)
     
     async def process_batch_with_semaphore(batch_listings, batch_num):
         async with semaphore:
-            # Небольшая задержка между батчами для избежания rate limit
+            # Задержка между батчами для избежания rate limit (Groq: 6000 TPM)
+            # Каждый батч использует ~1500 токенов, поэтому нужна задержка ~15 секунд между батчами
             if batch_num > 0:
-                await asyncio.sleep(1)
+                delay = 15  # 15 секунд между батчами для соблюдения лимита 6000 TPM
+                log_info("ai_select", f"Жду {delay} секунд перед обработкой батча {batch_num + 1}...")
+                await asyncio.sleep(delay)
             return await process_batch(batch_listings, batch_num)
     
     batch_tasks = [process_batch_with_semaphore(batch, i) for i, batch in enumerate(batches)]
