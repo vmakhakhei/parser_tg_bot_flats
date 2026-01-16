@@ -1965,10 +1965,14 @@ def _prepare_selection_prompt_detailed(
         title_text = listing.title[:100] if listing.title else ""
         
         # Используем полное описание из инспекции, если доступно
-        # Увеличиваем до 300 символов для лучшего контекста (важно для проверки на долю/часть дома)
+        # Увеличиваем до 500 символов для лучшего контекста (важно для проверки на долю/часть дома)
         inspection = item.get("inspection", {})
         full_description = inspection.get("full_description", "") if inspection else ""
-        description_text = full_description[:300] if full_description else (listing.description[:300] if listing.description else "")
+        description_text = full_description[:500] if full_description else (listing.description[:500] if listing.description else "")
+        
+        # Логируем для отладки проверки на долю/часть дома
+        if description_text and ("часть дома" in description_text.lower() or "квартира в частном доме" in description_text.lower()):
+            log_info("ai_select", f"⚠️ Обнаружена потенциальная 'часть дома' в описании для {listing.id}: {description_text[:100]}...")
         
         # Формируем информацию об объявлении с названием и описанием
         # ВАЖНО: Описание может содержать информацию о доле/комнате!
