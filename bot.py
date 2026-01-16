@@ -686,7 +686,7 @@ async def check_new_listings_ai_mode(
                     if status_msg:
                         # Первое сообщение редактируем статус
                         if messages_parts:
-                        await status_msg.edit_text(
+                            await status_msg.edit_text(
                                 messages_parts[0],
                                 parse_mode=ParseMode.HTML,
                                 disable_web_page_preview=False
@@ -696,7 +696,7 @@ async def check_new_listings_ai_mode(
                                 await bot.send_message(
                                     user_id,
                                     msg_part,
-                            parse_mode=ParseMode.HTML,
+                                    parse_mode=ParseMode.HTML,
                             disable_web_page_preview=False
                         )
                     else:
