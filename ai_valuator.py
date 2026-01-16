@@ -733,7 +733,7 @@ JSON ответ:
                             if "generateContent" in supported_methods:
                                 # Фильтруем только стабильные модели (исключаем экспериментальные версии 2.0, 2.5)
                                 if any(stable in model_name for stable in ["gemini-1.5", "gemini-pro"]) and not any(exp in model_name for exp in ["2.0", "2.5", "exp"]):
-                                models.append(model_name)
+                                    models.append(model_name)
                     
                     # Сортируем: сначала стабильные модели из списка
                     models_sorted = []
