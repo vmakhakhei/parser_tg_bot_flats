@@ -129,7 +129,7 @@ class KufarScraper(BaseScraper):
             else:
                 url = base_url
             
-            log_info("kufar", f"Запрос API для города '{city}', страница {current_page}: {url[:100]}...")
+            log_info("kufar", f"Запрос API для города '{city}', страница {current_page}: {url}")
             
             # #region agent log
             _write_debug_log({
@@ -145,6 +145,15 @@ class KufarScraper(BaseScraper):
             
             # Получаем JSON
             json_data = await self._fetch_json(url)
+            
+            # Логируем полный ответ API для диагностики
+            if json_data:
+                ads_count = len(json_data.get("ads", []))
+                total_count = json_data.get("total", 0)
+                log_info("kufar", f"API ответ: найдено объявлений на странице: {ads_count}, всего на сайте: {total_count}")
+                if ads_count == 0 and total_count == 0:
+                    log_warning("kufar", f"⚠️ API вернул 0 объявлений. Возможно, фильтры слишком строгие или формат параметров неправильный.")
+                    log_warning("kufar", f"Проверьте URL: {url}")
             
             # #region agent log
             ads_count = len(json_data.get("ads", [])) if json_data else 0
@@ -243,12 +252,23 @@ class KufarScraper(BaseScraper):
             async with aiohttp.ClientSession() as session:
                 async with session.get(url, headers=headers, timeout=30) as response:
                     if response.status == 200:
-                        return await response.json()
+                        data = await response.json()
+                        # Логируем статус ответа для диагностики
+                        if not data or not data.get("ads"):
+                            log_warning("kufar", f"API вернул пустой ответ или без поля 'ads'. Статус: {response.status}")
+                            log_warning("kufar", f"Полный URL: {url}")
+                            if data:
+                                log_warning("kufar", f"Структура ответа: {list(data.keys())}")
+                        return data
                     else:
+                        response_text = await response.text()
                         log_warning("kufar", f"API ответил кодом {response.status}")
+                        log_warning("kufar", f"Ответ сервера: {response_text[:500]}")
+                        log_warning("kufar", f"URL запроса: {url}")
                         return None
         except Exception as e:
             log_error("kufar", f"Ошибка API запроса", e)
+            log_error("kufar", f"URL запроса: {url}")
             return None
     
     def _parse_api_response(
