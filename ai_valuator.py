@@ -1497,10 +1497,10 @@ def get_valuator() -> Optional[AIValuator]:
         else:
             # Автоматический выбор: только Groq
             if GROQ_API_KEY:
-            _valuator = AIValuator("groq")
+                _valuator = AIValuator("groq")
                 log_info("ai", "Использую Groq API (30 запросов/минуту, без суточных лимитов)")
-        elif HF_API_KEY:
-            _valuator = AIValuator("huggingface")
+            elif HF_API_KEY:
+                _valuator = AIValuator("huggingface")
                 log_info("ai", "Использую Hugging Face API")
         elif os.getenv("OLLAMA_URL"):
             _valuator = AIValuator("ollama")
