@@ -564,15 +564,39 @@ async def check_new_listings_ai_mode(
     # Отправляем уведомление пользователю о начале анализа (сохраняем для редактирования)
     status_msg = None
     try:
+        # Рассчитываем примерное количество батчей для оценки времени
+        total_candidates = len(candidate_listings)
+        if total_candidates <= 15:
+            estimated_batches = 1
+        else:
+            estimated_batches = (total_candidates + 11) // 12  # Округляем вверх
+        
+        # Рассчитываем примерное время обработки
+        # Инспекция: ~5 секунд, батчи: ~30 секунд на батч, финальное сравнение: ~20 секунд
+        estimated_time_seconds = 5 + (estimated_batches * 30) + 20
+        estimated_time_minutes = estimated_time_seconds // 60
+        estimated_time_secs = estimated_time_seconds % 60
+        
+        if estimated_time_minutes > 0:
+            time_text = f"~{estimated_time_minutes} мин {estimated_time_secs} сек"
+        else:
+            time_text = f"~{estimated_time_seconds} сек"
+        
         status_msg = await bot.send_message(
             user_id,
-            f"🤖 <b>ИИ-анализ</b>\n\n"
-            f"Найдено {len(candidate_listings)} подходящих объявлений.\n"
-            f"Анализирую и выбираю лучшие варианты...",
+            f"🤖 <b>ИИ-анализ запущен</b>\n\n"
+            f"📊 Найдено: {len(candidate_listings)} объявлений\n"
+            f"📦 Будет обработано: {estimated_batches} батч(ей)\n"
+            f"⏱ Примерное время: {time_text}\n\n"
+            f"⏳ Анализирую и выбираю лучшие варианты...",
             parse_mode=ParseMode.HTML
         )
     except Exception as e:
         log_warning("ai_mode", f"Не удалось отправить уведомление пользователю {user_id}: {e}")
+    
+    # Засекаем время начала анализа
+    import time
+    start_time = time.time()
     
     # Отправляем все объявления в ИИ для выбора лучших
     if AI_VALUATOR_AVAILABLE and select_best_listings:
@@ -582,6 +606,16 @@ async def check_new_listings_ai_mode(
                 user_filters,
                 max_results=5  # Запрашиваем 5 вариантов
             )
+            
+            # Рассчитываем фактическое время обработки
+            elapsed_time = time.time() - start_time
+            elapsed_minutes = int(elapsed_time // 60)
+            elapsed_seconds = int(elapsed_time % 60)
+            
+            if elapsed_minutes > 0:
+                elapsed_text = f"{elapsed_minutes} мин {elapsed_seconds} сек"
+            else:
+                elapsed_text = f"{elapsed_seconds} сек"
             
             if best_with_reasons and len(best_with_reasons) > 0:
                 logger.info(f"ИИ выбрал {len(best_with_reasons)} лучших вариантов для пользователя {user_id}")
@@ -652,7 +686,7 @@ async def check_new_listings_ai_mode(
                     if status_msg:
                         # Первое сообщение редактируем статус
                         if messages_parts:
-                            await status_msg.edit_text(
+                        await status_msg.edit_text(
                                 messages_parts[0],
                                 parse_mode=ParseMode.HTML,
                                 disable_web_page_preview=False
@@ -662,18 +696,18 @@ async def check_new_listings_ai_mode(
                                 await bot.send_message(
                                     user_id,
                                     msg_part,
-                                    parse_mode=ParseMode.HTML,
-                                    disable_web_page_preview=False
-                                )
+                            parse_mode=ParseMode.HTML,
+                            disable_web_page_preview=False
+                        )
                     else:
                         # Отправляем все сообщения отдельно
                         for msg_part in messages_parts:
-                            await bot.send_message(
-                                user_id,
+                        await bot.send_message(
+                            user_id,
                                 msg_part,
-                                parse_mode=ParseMode.HTML,
-                                disable_web_page_preview=False
-                            )
+                            parse_mode=ParseMode.HTML,
+                            disable_web_page_preview=False
+                        )
                 except Exception as e:
                     log_error("ai_mode", f"Ошибка редактирования/отправки результатов пользователю {user_id}", e)
                     # Fallback: отправляем сокращенную версию
@@ -1343,17 +1377,17 @@ async def cb_check_now(callback: CallbackQuery):
     # ИИ-режим используется только для автоматических проверок каждые 12 часов
     logger.info(f"Пользователь {user_id}: ручная проверка - Обычный режим (все объявления)")
     
-    status_msg = await callback.message.answer(
+        status_msg = await callback.message.answer(
         "🔍 <b>Проверяю новые объявления...</b>",
-        parse_mode=ParseMode.HTML
-    )
-    
+            parse_mode=ParseMode.HTML
+        )
+        
     # Ищем новые объявления для города пользователя
     user_city = user_filters.get("city", "барановичи")
-    aggregator = ListingsAggregator(enabled_sources=DEFAULT_SOURCES)
+        aggregator = ListingsAggregator(enabled_sources=DEFAULT_SOURCES)
     
     # ИСПРАВЛЕНИЕ: Используем фильтры пользователя вместо широких диапазонов
-    all_listings = await aggregator.fetch_all_listings(
+        all_listings = await aggregator.fetch_all_listings(
         city=user_city,
         min_rooms=user_filters.get("min_rooms", 1),
         max_rooms=user_filters.get("max_rooms", 5),
@@ -1396,12 +1430,12 @@ async def cb_check_now_from_ai(callback: CallbackQuery):
         await callback.message.answer("Сначала настройте фильтры через /start")
         return
     
-    status_msg = await callback.message.answer(
+        status_msg = await callback.message.answer(
         "🔍 <b>Проверяю объявления...</b>\n\n"
         "Отправляю все найденные объявления...",
-        parse_mode=ParseMode.HTML
-    )
-    
+            parse_mode=ParseMode.HTML
+        )
+        
     # Ищем все объявления для города пользователя с использованием фильтров пользователя
     user_city = user_filters.get("city", "барановичи")
     min_rooms = user_filters.get("min_rooms", 1)
@@ -1409,27 +1443,27 @@ async def cb_check_now_from_ai(callback: CallbackQuery):
     min_price = user_filters.get("min_price", 0)
     max_price = user_filters.get("max_price", 1000000)
     
-    aggregator = ListingsAggregator(enabled_sources=DEFAULT_SOURCES)
-    
-    all_listings = await aggregator.fetch_all_listings(
+        aggregator = ListingsAggregator(enabled_sources=DEFAULT_SOURCES)
+        
+        all_listings = await aggregator.fetch_all_listings(
         city=user_city,
         min_rooms=min_rooms,
         max_rooms=max_rooms,
         min_price=min_price,
         max_price=max_price,
-    )
-    
-    new_listings = []
-    for listing in all_listings:
+        )
+        
+        new_listings = []
+        for listing in all_listings:
         if _matches_user_filters(listing, user_filters, user_id=user_id, log_details=True):
-            if not await is_listing_sent_to_user(user_id, listing.id):
-                dup_check = await is_duplicate_content(
-                    listing.rooms, listing.area, listing.address, listing.price
-                )
-                if not dup_check["is_duplicate"]:
-                    new_listings.append(listing)
-    
-    if new_listings:
+                if not await is_listing_sent_to_user(user_id, listing.id):
+                    dup_check = await is_duplicate_content(
+                        listing.rooms, listing.area, listing.address, listing.price
+                    )
+                    if not dup_check["is_duplicate"]:
+                        new_listings.append(listing)
+        
+        if new_listings:
         try:
             await status_msg.edit_text(
                 f"✅ <b>Найдено {len(new_listings)} объявлений</b>\n\nОтправляю...",
@@ -1437,21 +1471,21 @@ async def cb_check_now_from_ai(callback: CallbackQuery):
             )
         except Exception:
             pass
-        
-        sent_count = 0
+            
+            sent_count = 0
         for listing in new_listings[:20]:  # Максимум 20 за раз
             if await send_listing_to_user(callback.bot, user_id, listing, use_ai_valuation=False):
-                sent_count += 1
-                await asyncio.sleep(2)
-        
+                    sent_count += 1
+                    await asyncio.sleep(2)
+            
         # Показываем меню ИИ-режима после отправки
         await show_actions_menu(callback.bot, user_id, sent_count, "ИИ-режим")
-    else:
-        await status_msg.edit_text(
-            "📭 <b>Новых объявлений нет</b>\n\n"
-            "Все подходящие объявления уже были отправлены ранее.",
-            parse_mode=ParseMode.HTML
-        )
+        else:
+            await status_msg.edit_text(
+                "📭 <b>Новых объявлений нет</b>\n\n"
+                "Все подходящие объявления уже были отправлены ранее.",
+                parse_mode=ParseMode.HTML
+            )
         # Показываем меню ИИ-режима даже если объявлений нет
         await show_actions_menu(callback.bot, user_id, 0, "ИИ-режим")
 
@@ -1796,16 +1830,16 @@ async def cb_setup_mode(callback: CallbackQuery, state: FSMContext):
     
     # Отправляем сообщение о начале поиска
     mode_text = "ИИ-мод" if ai_mode else "Обычный парсер"
-    status_msg = await callback.message.answer(
+        status_msg = await callback.message.answer(
         f"✅ <b>Фильтры настроены!</b>\n\n"
         f"📍 Город: {city.title()}\n"
         f"🚪 Комнаты: {min_rooms}-{max_rooms}\n"
         f"💰 Цена: ${min_price:,} - ${max_price:,}\n"
         f"🤖 Режим: {mode_text}\n\n"
         f"🔍 Ищу подходящие объявления...",
-        parse_mode=ParseMode.HTML
-    )
-    
+            parse_mode=ParseMode.HTML
+        )
+        
     # Запускаем поиск
     await search_listings_after_setup(
         callback.bot,
@@ -2117,7 +2151,7 @@ async def cb_ai_valuate_listing(callback: CallbackQuery):
                         parse_mode=ParseMode.HTML,
                         disable_web_page_preview=False
                     )
-            else:
+    else:
                 await status_msg.edit_text(
                     "⚠️ <b>ИИ не смог оценить квартиру</b>\n\n"
                     "Попробуйте позже или проверьте объявление вручную.",
