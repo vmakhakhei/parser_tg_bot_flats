@@ -4,6 +4,8 @@
 import asyncio
 import sys
 import os
+import time
+import json
 from typing import List, Dict, Any, Optional
 
 # Добавляем родительскую директорию в path для импорта
@@ -28,6 +30,22 @@ except ImportError:
         print(f"[WARN] [{source}] {message}")
     def log_info(source, message):
         print(f"[INFO] [{source}] {message}")
+
+# Вспомогательная функция для debug логирования
+def _write_debug_log(data):
+    """Записывает debug лог в файл"""
+    try:
+        import os
+        base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        log_path = os.path.join(base_dir, ".cursor", "debug.log")
+        os.makedirs(os.path.dirname(log_path), exist_ok=True)
+        with open(log_path, "a", encoding="utf-8") as f:
+            f.write(json.dumps(data) + "\n")
+    except Exception as e:
+        try:
+            log_error("aggregator", f"Debug log error: {e}")
+        except:
+            pass
 
 
 class ListingsAggregator:
@@ -85,18 +103,57 @@ class ListingsAggregator:
                 tasks.append(task)
                 source_names.append(source_name)
         
+        # #region agent log
+        _write_debug_log({
+            "sessionId": "test-session",
+            "runId": "run1",
+            "hypothesisId": "C",
+            "location": "aggregator.py:88",
+            "message": "Aggregator fetch start",
+            "data": {"city": city, "sources": source_names, "filters": {"min_rooms": min_rooms, "max_rooms": max_rooms, "min_price": min_price, "max_price": max_price}},
+            "timestamp": int(time.time() * 1000)
+        })
+        # #endregion
+        
         # Выполняем все запросы параллельно
         results = await asyncio.gather(*tasks, return_exceptions=True)
         
         # Обрабатываем результаты (парсеры сами логируют количество)
+        source_stats = {}
         for source_name, result in zip(source_names, results):
             if isinstance(result, Exception):
                 log_error(source_name, f"Ошибка парсинга", result)
+                source_stats[source_name] = {"error": str(result), "count": 0}
             elif isinstance(result, list):
                 all_listings.extend(result)
+                source_stats[source_name] = {"count": len(result), "error": None}
+        
+        # #region agent log
+        _write_debug_log({
+            "sessionId": "test-session",
+            "runId": "run1",
+            "hypothesisId": "C",
+            "location": "aggregator.py:105",
+            "message": "Aggregator source results",
+            "data": {"city": city, "source_stats": source_stats, "total_before_dedup": len(all_listings)},
+            "timestamp": int(time.time() * 1000)
+        })
+        # #endregion
         
         # Удаляем дубликаты по ID
         unique_listings = self._remove_duplicates(all_listings)
+        
+        # #region agent log
+        _write_debug_log({
+            "sessionId": "test-session",
+            "runId": "run1",
+            "hypothesisId": "C",
+            "location": "aggregator.py:115",
+            "message": "Aggregator deduplication",
+            "data": {"city": city, "before_dedup": len(all_listings), "after_dedup": len(unique_listings), "duplicates_removed": len(all_listings) - len(unique_listings)},
+            "timestamp": int(time.time() * 1000)
+        })
+        # #endregion
         
         # Сортируем по дате (новые первые) - у нас нет даты, сортируем по цене
         unique_listings.sort(key=lambda x: x.price if x.price > 0 else 999999999)

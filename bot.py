@@ -6,6 +6,7 @@ import logging
 import aiosqlite
 import json
 import base64
+import time
 from typing import List, Dict, Any, Optional
 
 from aiogram import Bot, Dispatcher, Router, F
@@ -42,6 +43,22 @@ from database import (
 from scrapers.aggregator import ListingsAggregator
 from scrapers.base import Listing
 from error_logger import error_logger, log_error, log_warning, log_info
+
+# Вспомогательная функция для debug логирования
+def _write_debug_log(data):
+    """Записывает debug лог в файл"""
+    try:
+        import os
+        base_dir = os.path.dirname(os.path.abspath(__file__))
+        log_path = os.path.join(base_dir, ".cursor", "debug.log")
+        os.makedirs(os.path.dirname(log_path), exist_ok=True)
+        with open(log_path, "a", encoding="utf-8") as f:
+            f.write(json.dumps(data) + "\n")
+    except Exception as e:
+        try:
+            log_error("bot", f"Debug log error: {e}")
+        except:
+            pass
 
 # ИИ-оценщик (опционально)
 try:
@@ -315,7 +332,7 @@ async def send_listing_to_user(bot: Bot, user_id: int, listing: Listing, use_ai_
                     text="🤖 <b>Хотите получить ИИ-оценку этой квартиры?</b>",
                     parse_mode=ParseMode.HTML,
                     reply_markup=reply_markup
-                )
+            )
         else:
             # Без фотографий - просто текст с кнопкой
             await bot.send_message(
@@ -389,25 +406,56 @@ async def check_new_listings(bot: Bot):
         user_city = user_filters.get("city")
         
         # Получаем объявления для города пользователя
+        # ИСПРАВЛЕНИЕ: Используем фильтры пользователя вместо широких диапазонов
+        # Это важно, чтобы скраперы (особенно Kufar) фильтровали на уровне API
         aggregator = ListingsAggregator(enabled_sources=DEFAULT_SOURCES)
+        
+        # #region agent log
+        _write_debug_log({
+            "sessionId": "test-session",
+            "runId": "run1",
+            "hypothesisId": "C",
+            "location": "bot.py:395",
+            "message": "check_new_listings fetch start",
+            "data": {"user_id": user_id, "city": user_city, "filters": user_filters},
+            "timestamp": int(time.time() * 1000)
+        })
+        # #endregion
+        
         all_listings = await aggregator.fetch_all_listings(
             city=user_city,
-            min_rooms=1,
-            max_rooms=5,
-            min_price=0,
-            max_price=1000000,  # Широкий диапазон для всех пользователей
+            min_rooms=user_filters.get("min_rooms", 1),
+            max_rooms=user_filters.get("max_rooms", 5),
+            min_price=user_filters.get("min_price", 0),
+            max_price=user_filters.get("max_price", 1000000),
         )
-        
+    
         logger.info(f"Для пользователя {user_id} (город: {user_city}) найдено объявлений: {len(all_listings)}")
         
-        # Проверяем режим работы пользователя
-        # Обычный режим: отправляем все подходящие объявления (ИИ-оценка только по запросу через кнопку)
-        user_new_count = 0
+        # #region agent log
+        _write_debug_log({
+            "sessionId": "test-session",
+            "runId": "run1",
+            "hypothesisId": "C",
+            "location": "bot.py:410",
+            "message": "check_new_listings fetch complete",
+            "data": {"user_id": user_id, "city": user_city, "total_listings": len(all_listings), "ai_mode": user_filters.get("ai_mode", False)},
+            "timestamp": int(time.time() * 1000)
+        })
+        # #endregion
         
-        for listing in all_listings:
-            # Проверяем соответствие фильтрам пользователя
-            if not _matches_user_filters(listing, user_filters, user_id=user_id, log_details=True):
-                continue
+        # Проверяем режим работы пользователя
+        if user_filters.get("ai_mode"):
+            # ИИ-режим: передаем все объявления в функцию ИИ-режима
+            await check_new_listings_ai_mode(bot, user_id, user_filters, all_listings)
+        else:
+            # Обычный режим: отправляем все подходящие объявления (ИИ-оценка только по запросу через кнопку)
+            user_new_count = 0
+            
+            for listing in all_listings:
+                # Проверяем соответствие фильтрам пользователя
+                if not _matches_user_filters(listing, user_filters, user_id=user_id, log_details=True):
+                    continue
                 
                 # Проверяем, не отправляли ли уже этому пользователю
                 if await is_listing_sent_to_user(user_id, listing.id):
@@ -484,6 +532,18 @@ async def check_new_listings_ai_mode(
     counter = _filter_log_counters.get(user_id, {"filtered": 0, "passed": 0})
     logger.info(f"ИИ-режим: всего {len(all_listings)}, отфильтровано {filtered_out}, кандидатов для анализа {len(candidate_listings)}{seller_filter_text}")
     logger.info(f"[user_{user_id}] 📊 Статистика фильтрации: отфильтровано {counter['filtered']} (логировано), прошло {counter['passed']} (логировано)")
+    
+    # #region agent log
+    _write_debug_log({
+        "sessionId": "test-session",
+        "runId": "run1",
+        "hypothesisId": "C",
+        "location": "bot.py:490",
+        "message": "AI mode filtering complete",
+        "data": {"user_id": user_id, "total_listings": len(all_listings), "filtered_out": filtered_out, "candidates": len(candidate_listings), "counter_filtered": counter.get("filtered", 0), "counter_passed": counter.get("passed", 0)},
+        "timestamp": int(time.time() * 1000)
+    })
+    # #endregion
     
     if not candidate_listings:
         logger.info(f"Пользователю {user_id} нет новых объявлений для ИИ-анализа")
@@ -845,6 +905,18 @@ def _matches_user_filters(listing: Listing, filters: Dict[str, Any], user_id: Op
         min_rooms = filters.get("min_rooms", 1)
         max_rooms = filters.get("max_rooms", 4)
         if listing.rooms < min_rooms or listing.rooms > max_rooms:
+            # #region agent log
+            if user_id:
+                _write_debug_log({
+                    "sessionId": "test-session",
+                    "runId": "run1",
+                    "hypothesisId": "B",
+                    "location": "bot.py:850",
+                    "message": "Filtered by rooms",
+                    "data": {"user_id": user_id, "listing_id": listing.id, "listing_rooms": listing.rooms, "filter_min": min_rooms, "filter_max": max_rooms, "source": listing.source},
+                    "timestamp": int(time.time() * 1000)
+                })
+            # #endregion
             if log_details and user_id:
                 counter = _filter_log_counters.get(user_id, {"filtered": 0, "passed": 0})
                 if counter["filtered"] < _MAX_FILTERED_LOGS:
@@ -865,6 +937,18 @@ def _matches_user_filters(listing: Listing, filters: Dict[str, Any], user_id: Op
         min_price = filters.get("min_price", 0)
         max_price = filters.get("max_price", 1000000)  # Используем значение из фильтров или максимум
         if price < min_price or price > max_price:
+            # #region agent log
+            if user_id:
+                _write_debug_log({
+                    "sessionId": "test-session",
+                    "runId": "run1",
+                    "hypothesisId": "B",
+                    "location": "bot.py:870",
+                    "message": "Filtered by price",
+                    "data": {"user_id": user_id, "listing_id": listing.id, "listing_price": price, "filter_min": min_price, "filter_max": max_price, "source": listing.source},
+                    "timestamp": int(time.time() * 1000)
+                })
+            # #endregion
             if log_details and user_id:
                 counter = _filter_log_counters.get(user_id, {"filtered": 0, "passed": 0})
                 if counter["filtered"] < _MAX_FILTERED_LOGS:
@@ -1268,12 +1352,13 @@ async def cb_check_now(callback: CallbackQuery):
     user_city = user_filters.get("city", "барановичи")
     aggregator = ListingsAggregator(enabled_sources=DEFAULT_SOURCES)
     
+    # ИСПРАВЛЕНИЕ: Используем фильтры пользователя вместо широких диапазонов
     all_listings = await aggregator.fetch_all_listings(
         city=user_city,
-        min_rooms=1,
-        max_rooms=5,
-        min_price=0,
-        max_price=1000000,
+        min_rooms=user_filters.get("min_rooms", 1),
+        max_rooms=user_filters.get("max_rooms", 5),
+        min_price=user_filters.get("min_price", 0),
+        max_price=user_filters.get("max_price", 1000000),
     )
     
     new_listings = []
@@ -1458,8 +1543,8 @@ async def cb_check_now_ai(callback: CallbackQuery):
             f"🤖 <b>ИИ-анализ</b>\n\n"
             f"Найдено {total_count} объявлений.\n"
             f"Анализирую и выбираю {max_results} лучших вариантов...",
-            parse_mode=ParseMode.HTML
-        )
+        parse_mode=ParseMode.HTML
+    )
         
         # Отправляем все объявления в ИИ для выбора лучших
         if not AI_VALUATOR_AVAILABLE:
@@ -1693,7 +1778,7 @@ async def cb_setup_mode(callback: CallbackQuery, state: FSMContext):
         return
     
     await callback.answer()
-    
+
     # Сохраняем фильтры с выбранным режимом
     await set_user_filters(
         user_id=user_id,
@@ -1895,8 +1980,8 @@ async def cb_ai_valuate_listing(callback: CallbackQuery):
                 "❌ <b>Ошибка</b>\n\nНе удалось получить данные объявления. Попробуйте позже.",
                 parse_mode=ParseMode.HTML
             )
-            return
-        
+        return
+    
         user_city = user_filters.get("city", "барановичи")
         aggregator = ListingsAggregator(enabled_sources=DEFAULT_SOURCES)
         all_listings = await aggregator.fetch_all_listings(
@@ -2042,9 +2127,9 @@ async def cb_ai_valuate_listing(callback: CallbackQuery):
             await status_msg.edit_text(
                 "⚠️ <b>ИИ не смог оценить квартиру</b>\n\n"
                 "Попробуйте позже или проверьте объявление вручную.",
-                parse_mode=ParseMode.HTML
-            )
-            
+            parse_mode=ParseMode.HTML
+        )
+        
     except asyncio.TimeoutError:
         await status_msg.edit_text(
             "⏱️ <b>Таймаут ИИ-оценки</b>\n\n"
@@ -2077,14 +2162,15 @@ async def cb_send_all_listings(callback: CallbackQuery):
     user_city = user_filters.get("city", "барановичи")
     aggregator = ListingsAggregator(enabled_sources=DEFAULT_SOURCES)
     
+    # ИСПРАВЛЕНИЕ: Используем фильтры пользователя вместо широких диапазонов
     all_listings = await aggregator.fetch_all_listings(
         city=user_city,
-        min_rooms=1,
-        max_rooms=5,
-        min_price=0,
-        max_price=1000000,
+        min_rooms=user_filters.get("min_rooms", 1),
+        max_rooms=user_filters.get("max_rooms", 5),
+        min_price=user_filters.get("min_price", 0),
+        max_price=user_filters.get("max_price", 1000000),
     )
-    
+        
     new_listings = []
     for listing in all_listings:
         if _matches_user_filters(listing, user_filters, user_id=user_id, log_details=True):

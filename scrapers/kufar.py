@@ -5,6 +5,7 @@ import re
 import json
 import sys
 import os
+import time
 from typing import List, Optional
 
 # Добавляем родительскую директорию в path для импорта
@@ -22,6 +23,22 @@ except ImportError:
         print(f"[WARN] [{source}] {message}")
     def log_info(source, message):
         print(f"[INFO] [{source}] {message}")
+
+# Вспомогательная функция для debug логирования
+def _write_debug_log(data):
+    """Записывает debug лог в файл"""
+    try:
+        import os
+        base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        log_path = os.path.join(base_dir, ".cursor", "debug.log")
+        os.makedirs(os.path.dirname(log_path), exist_ok=True)
+        with open(log_path, "a", encoding="utf-8") as f:
+            f.write(json.dumps(data) + "\n")
+    except Exception as e:
+        try:
+            log_error("kufar", f"Debug log error: {e}")
+        except:
+            pass
 
 
 class KufarScraper(BaseScraper):
@@ -63,7 +80,7 @@ class KufarScraper(BaseScraper):
         max_rooms: int = 4,
         min_price: int = 0,
         max_price: int = 100000,
-        max_pages: int = 5,  # Максимум страниц для загрузки
+        max_pages: int = 10,  # Увеличено до 10 страниц для получения большего количества объявлений
     ) -> List[Listing]:
         """Получает список объявлений через API с пагинацией"""
         
@@ -84,6 +101,23 @@ class KufarScraper(BaseScraper):
             f"&size=30"  # Количество объявлений на странице
         )
         
+        # Добавляем фильтры по комнатам в URL (если указаны)
+        # Формат: rms=v.or:1,2 (для 1 или 2 комнат)
+        if min_rooms > 0 and max_rooms > 0:
+            rooms_list = list(range(min_rooms, max_rooms + 1))
+            if rooms_list:
+                rooms_param = ",".join(map(str, rooms_list))
+                base_url += f"&rms=v.or:{rooms_param}"
+        
+        # Добавляем фильтр по цене в URL (если указаны)
+        # Формат: prc=r:50000,60000 (от 50000 до 60000)
+        if min_price > 0 or max_price < 1000000:
+            # Используем реальные значения из фильтров
+            price_min = max(0, min_price)
+            price_max = min(1000000, max_price)
+            if price_max > price_min:
+                base_url += f"&prc=r:{price_min},{price_max}"
+        
         all_listings = []
         current_page = 1
         next_token = None
@@ -97,8 +131,35 @@ class KufarScraper(BaseScraper):
             
             log_info("kufar", f"Запрос API для города '{city}', страница {current_page}: {url[:100]}...")
             
+            # #region agent log
+            _write_debug_log({
+                "sessionId": "test-session",
+                "runId": "run1",
+                "hypothesisId": "A",
+                "location": "kufar.py:115",
+                "message": "Kufar API request",
+                "data": {"city": city, "page": current_page, "url": url, "filters": {"min_rooms": min_rooms, "max_rooms": max_rooms, "min_price": min_price, "max_price": max_price}},
+                "timestamp": int(time.time() * 1000)
+            })
+            # #endregion
+            
             # Получаем JSON
             json_data = await self._fetch_json(url)
+            
+            # #region agent log
+            ads_count = len(json_data.get("ads", [])) if json_data else 0
+            total_count = json_data.get("total", 0) if json_data else 0
+            _write_debug_log({
+                "sessionId": "test-session",
+                "runId": "run1",
+                "hypothesisId": "A",
+                "location": "kufar.py:125",
+                "message": "Kufar API response",
+                "data": {"city": city, "page": current_page, "has_data": json_data is not None, "ads_count": ads_count, "total_count": total_count},
+                "timestamp": int(time.time() * 1000)
+            })
+            # #endregion
+            
             if not json_data:
                 log_warning("kufar", f"API вернул пустой ответ для города '{city}' на странице {current_page}")
                 break
@@ -106,6 +167,18 @@ class KufarScraper(BaseScraper):
             # Парсим объявления с текущей страницы
             page_listings = self._parse_api_response(json_data, min_rooms, max_rooms, min_price, max_price, city)
             all_listings.extend(page_listings)
+            
+            # #region agent log
+            _write_debug_log({
+                "sessionId": "test-session",
+                "runId": "run1",
+                "hypothesisId": "D",
+                "location": "kufar.py:140",
+                "message": "Kufar pagination check",
+                "data": {"city": city, "page": current_page, "listings_on_page": len(page_listings), "total_listings": len(all_listings)},
+                "timestamp": int(time.time() * 1000)
+            })
+            # #endregion
             
             # Получаем токен для следующей страницы
             pagination = json_data.get("pagination") or {}
@@ -118,6 +191,18 @@ class KufarScraper(BaseScraper):
                     next_token = page.get("token")
                     break
             
+            # #region agent log
+            _write_debug_log({
+                "sessionId": "test-session",
+                "runId": "run1",
+                "hypothesisId": "D",
+                "location": "kufar.py:155",
+                "message": "Kufar pagination token",
+                "data": {"city": city, "page": current_page, "has_next_token": next_token is not None, "max_pages": max_pages},
+                "timestamp": int(time.time() * 1000)
+            })
+            # #endregion
+            
             # Если нет следующей страницы, выходим
             if not next_token:
                 log_info("kufar", f"Достигнута последняя страница ({current_page})")
@@ -127,6 +212,18 @@ class KufarScraper(BaseScraper):
         
         total_found = json_data.get("total", 0) if json_data else 0
         log_info("kufar", f"Загружено {len(all_listings)} объявлений с {current_page} страниц (всего на сайте: {total_found})")
+        
+        # #region agent log
+        _write_debug_log({
+            "sessionId": "test-session",
+            "runId": "run1",
+            "hypothesisId": "A",
+            "location": "kufar.py:170",
+            "message": "Kufar fetch complete",
+            "data": {"city": city, "total_listings": len(all_listings), "pages_loaded": current_page, "total_on_site": total_found, "filters": {"min_rooms": min_rooms, "max_rooms": max_rooms, "min_price": min_price, "max_price": max_price}},
+            "timestamp": int(time.time() * 1000)
+        })
+        # #endregion
         
         return all_listings
     
