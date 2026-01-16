@@ -1570,7 +1570,7 @@ async def select_best_listings(
         # Если объявлений мало - отправляем одним запросом
         batch_size = total_listings
         batches = [listings_for_prompt]
-        else:
+    else:
         # Разбиваем на батчи по 12 объявлений (оптимально для промпта ~3000-4000 токенов)
         batch_size = 12
         batches = []
