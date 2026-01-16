@@ -1644,9 +1644,9 @@ async def select_best_listings(
     async def process_batch(batch_listings: List[Dict[str, Any]], batch_num: int) -> List[Dict[str, Any]]:
         """Обрабатывает один батч объявлений"""
         # Формируем промпт для батча
-        # Для каждого батча выбираем только лучшее объявление (топ-1)
+        # Для каждого батча выбираем 2 лучших объявления (топ-2)
         # Потом все лучшие из батчей будут сравниваться отдельным запросом к ИИ
-        batch_max_results = 1  # Только лучшее объявление из каждого батча
+        batch_max_results = 2  # Два лучших объявления из каждого батча
         prompt = _prepare_selection_prompt_detailed(batch_listings, user_filters, batch_max_results)
         prompt_length = len(prompt)
         estimated_tokens = prompt_length // 4
@@ -1735,8 +1735,127 @@ async def select_best_listings(
         log_info("ai_select", f"Вариантов меньше или равно {max_results}, возвращаю без финального сравнения")
         return unique_results[:max_results]
     
+    # Функция для извлечения score из результата
+    def get_score_for_selection(result):
+        """Извлекает score из результата для сортировки"""
+        if "score" in result:
+            return result["score"]
+        if "final_score" in result:
+            return result["final_score"]
+        reason = result.get("reason", "")
+        score_match = re.search(r'(\d+\.?\d*)/10', reason)
+        if score_match:
+            return float(score_match.group(1))
+        return 0
+    
+    # Если получилось больше 12 вариантов, делаем дополнительные раунды батчей
+    # Каждый раунд обрабатывает результаты предыдущего раунда через батчи по 12
+    current_round_results = unique_results
+    round_num = 1
+    
+    while len(current_round_results) > 12:
+        log_info("ai_select", f"Раунд {round_num}: получено {len(current_round_results)} вариантов, делаю дополнительный раунд батчей...")
+        
+        # Разбиваем на батчи по 12
+        round_batches = []
+        for i in range(0, len(current_round_results), 12):
+            round_batches.append(current_round_results[i:i + 12])
+        
+        log_info("ai_select", f"Раунд {round_num}: разбито на {len(round_batches)} батч(ей)")
+        
+        # Обрабатываем батчи с задержками
+        round_selected_results = []
+        
+        async def process_round_batch(batch_listings: List[Dict[str, Any]], batch_num: int) -> List[Dict[str, Any]]:
+            """Обрабатывает один батч в дополнительном раунде"""
+            # Используем те же параметры что и в основном батче
+            batch_max_results = 2  # Два лучших объявления из каждого батча
+            prompt = _prepare_selection_prompt_detailed(batch_listings, user_filters, batch_max_results)
+            prompt_length = len(prompt)
+            estimated_tokens = prompt_length // 4
+            
+            log_info("ai_select", f"Раунд {round_num}, батч {batch_num + 1}/{len(round_batches)}: {len(batch_listings)} объявлений, промпт ~{estimated_tokens} токенов")
+            
+            # Пробуем провайдеры по очереди для этого батча
+            for provider_name, api_key in providers_to_try:
+                try:
+                    valuator = AIValuator(provider_name)
+                    await valuator.start_session()
+                    
+                    try:
+                        if provider_name == "groq":
+                            selected = await valuator._select_best_groq_detailed(prompt, batch_listings)
+                        else:
+                            continue
+                        
+                        if selected and len(selected) > 0:
+                            log_info("ai_select", f"✅ Раунд {round_num}, батч {batch_num + 1}: выбрано {len(selected)} вариантов")
+                            await valuator.close_session()
+                            return selected
+                        else:
+                            log_warning("ai_select", f"Раунд {round_num}, батч {batch_num + 1}: провайдер {provider_name} вернул пустой результат")
+                    
+                    except Exception as e:
+                        log_warning("ai_select", f"Раунд {round_num}, батч {batch_num + 1}: ошибка {provider_name}: {e}")
+                    finally:
+                        await valuator.close_session()
+                        
+                except Exception as e:
+                    log_warning("ai_select", f"Раунд {round_num}, батч {batch_num + 1}: не удалось инициализировать {provider_name}: {e}")
+                    continue
+            
+            log_warning("ai_select", f"Раунд {round_num}, батч {batch_num + 1}: не удалось получить результат")
+            return []
+        
+        # Обрабатываем батчи последовательно с задержками
+        semaphore = asyncio.Semaphore(1)
+        
+        async def process_round_batch_with_semaphore(batch_listings, batch_num):
+            async with semaphore:
+                if batch_num > 0:
+                    delay = 15  # 15 секунд между батчами
+                    log_info("ai_select", f"Раунд {round_num}: жду {delay} секунд перед обработкой батча {batch_num + 1}...")
+                    await asyncio.sleep(delay)
+                return await process_round_batch(batch_listings, batch_num)
+        
+        round_batch_tasks = [process_round_batch_with_semaphore(batch, i) for i, batch in enumerate(round_batches)]
+        round_batch_results = await asyncio.gather(*round_batch_tasks, return_exceptions=True)
+        
+        # Собираем результаты раунда
+        for i, result in enumerate(round_batch_results):
+            if isinstance(result, Exception):
+                log_error("ai_select", f"Ошибка обработки раунда {round_num}, батча {i + 1}: {result}")
+            elif result:
+                round_selected_results.extend(result)
+        
+        # Удаляем дубликаты
+        seen_ids_round = set()
+        unique_round_results = []
+        for result in round_selected_results:
+            listing = result.get("listing")
+            if listing and listing.id not in seen_ids_round:
+                seen_ids_round.add(listing.id)
+                unique_round_results.append(result)
+        
+        log_info("ai_select", f"Раунд {round_num}: получено {len(unique_round_results)} уникальных вариантов")
+        
+        # Если получили меньше или равно 12, выходим из цикла
+        if len(unique_round_results) <= 12:
+            current_round_results = unique_round_results
+            break
+        
+        # Иначе продолжаем с новыми результатами
+        current_round_results = unique_round_results
+        round_num += 1
+    
+    # Теперь у нас <= 12 вариантов, выбираем топ-12 для финального сравнения
+    current_round_results.sort(key=get_score_for_selection, reverse=True)
+    top_12_for_final = current_round_results[:12]
+    
+    log_info("ai_select", f"Выбрано топ-12 вариантов из {len(current_round_results)} для финального сравнения")
+    
     # Если у нас несколько лучших вариантов из разных батчей, делаем финальное сравнение через ИИ
-    log_info("ai_select", f"Делаю финальное сравнение {len(unique_results)} лучших вариантов из батчей...")
+    log_info("ai_select", f"Делаю финальное сравнение {len(top_12_for_final)} лучших вариантов из батчей...")
     
     # Задержка перед финальным сравнением для соблюдения rate limit
     await asyncio.sleep(15)
@@ -1744,7 +1863,7 @@ async def select_best_listings(
     # Подготавливаем данные для финального сравнения
     # Формат должен соответствовать тому, что ожидает _select_best_groq_detailed
     final_comparison_listings = []
-    for result in unique_results:
+    for result in top_12_for_final:
         listing = result.get("listing")
         if listing:
             # Создаем словарь с данными объявления для финального промпта
@@ -1757,7 +1876,9 @@ async def select_best_listings(
             })
     
     # Формируем промпт для финального сравнения лучших вариантов
-    final_prompt = _prepare_final_comparison_prompt(final_comparison_listings, user_filters, max_results)
+    # В финальном сравнении выбираем топ-3 для пользователя
+    final_max_results = 3
+    final_prompt = _prepare_final_comparison_prompt(final_comparison_listings, user_filters, final_max_results)
     
     # Выполняем финальное сравнение через ИИ с retry логикой
     final_selected = []
@@ -1816,7 +1937,7 @@ async def select_best_listings(
                                     current_prompt = _prepare_final_comparison_prompt(
                                         current_listings_for_final,
                                         user_filters,
-                                        max_results
+                                        final_max_results
                                     )
                                     
                                     log_info("ai_select", f"Финальное сравнение: уменьшено до {len(current_listings_for_final)} вариантов, повторяю попытку...")
@@ -1866,8 +1987,8 @@ async def select_best_listings(
         unique_results.sort(key=get_score, reverse=True)
         return unique_results[:max_results]
     
-    log_info("ai_select", f"Финальное сравнение завершено, возвращаю топ-{max_results}")
-    return final_selected[:max_results]
+    log_info("ai_select", f"Финальное сравнение завершено, возвращаю топ-3")
+    return final_selected[:3]
 
 
 def _prepare_final_comparison_prompt(

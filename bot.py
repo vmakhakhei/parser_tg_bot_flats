@@ -567,25 +567,52 @@ async def check_new_listings_ai_mode(
         # Рассчитываем примерное количество батчей для оценки времени
         total_candidates = len(candidate_listings)
         if total_candidates <= 15:
-            estimated_batches = 1
+            estimated_batches_round1 = 1
         else:
-            estimated_batches = (total_candidates + 11) // 12  # Округляем вверх
+            estimated_batches_round1 = (total_candidates + 11) // 12  # Округляем вверх
         
         # Рассчитываем примерное время обработки
         # Инспекция: ~7 секунд (20 объявлений параллельно)
-        # Батчи: (batches - 1) * 15 сек (задержка между батчами) + batches * 3 сек (обработка батча)
+        # Первый раунд батчей: (batches - 1) * 15 сек (задержка между батчами) + batches * 3 сек (обработка батча)
+        # Дополнительные раунды: если получилось больше 12 вариантов, делаем еще раунды
         # Финальное сравнение: ~20 секунд
         inspection_time = 7
         batch_delay = 15  # Задержка между батчами
         batch_processing_time = 3  # Время обработки одного батча
         final_comparison_time = 20
         
-        if estimated_batches == 1:
-            batch_total_time = batch_processing_time
+        # Время первого раунда батчей
+        if estimated_batches_round1 == 1:
+            round1_time = batch_processing_time
         else:
-            batch_total_time = (estimated_batches - 1) * batch_delay + estimated_batches * batch_processing_time
+            round1_time = (estimated_batches_round1 - 1) * batch_delay + estimated_batches_round1 * batch_processing_time
         
-        estimated_time_seconds = inspection_time + batch_total_time + final_comparison_time
+        # Оцениваем количество дополнительных раундов
+        # Из каждого батча берем 2 варианта, поэтому максимум вариантов после первого раунда = batches * 2
+        max_results_after_round1 = estimated_batches_round1 * 2
+        
+        # Если получилось больше 12, нужен второй раунд
+        additional_rounds_time = 0
+        if max_results_after_round1 > 12:
+            # Второй раунд: разбиваем на батчи по 12
+            estimated_batches_round2 = (max_results_after_round1 + 11) // 12
+            if estimated_batches_round2 == 1:
+                round2_time = batch_processing_time
+            else:
+                round2_time = (estimated_batches_round2 - 1) * batch_delay + estimated_batches_round2 * batch_processing_time
+            additional_rounds_time = round2_time
+            
+            # Если и после второго раунда больше 12, нужен третий раунд (редко, но возможно)
+            max_results_after_round2 = estimated_batches_round2 * 2
+            if max_results_after_round2 > 12:
+                estimated_batches_round3 = (max_results_after_round2 + 11) // 12
+                if estimated_batches_round3 == 1:
+                    round3_time = batch_processing_time
+                else:
+                    round3_time = (estimated_batches_round3 - 1) * batch_delay + estimated_batches_round3 * batch_processing_time
+                additional_rounds_time += round3_time
+        
+        estimated_time_seconds = inspection_time + round1_time + additional_rounds_time + final_comparison_time
         estimated_time_minutes = estimated_time_seconds // 60
         estimated_time_secs = estimated_time_seconds % 60
         
@@ -598,7 +625,7 @@ async def check_new_listings_ai_mode(
             user_id,
             f"🤖 <b>ИИ-анализ запущен</b>\n\n"
             f"📊 Найдено: {len(candidate_listings)} объявлений\n"
-            f"📦 Будет обработано: {estimated_batches} батч(ей)\n"
+            f"📦 Будет обработано: {estimated_batches_round1} батч(ей) в первом раунде\n"
             f"⏱ Примерное время: {time_text}\n\n"
             f"⏳ Анализирую и выбираю лучшие варианты...",
             parse_mode=ParseMode.HTML
@@ -1587,25 +1614,52 @@ async def cb_check_now_ai(callback: CallbackQuery):
         
         # Рассчитываем примерное количество батчей для оценки времени
         if total_count <= 15:
-            estimated_batches = 1
+            estimated_batches_round1 = 1
         else:
-            estimated_batches = (total_count + 11) // 12  # Округляем вверх
+            estimated_batches_round1 = (total_count + 11) // 12  # Округляем вверх
         
         # Рассчитываем примерное время обработки
         # Инспекция: ~7 секунд (20 объявлений параллельно)
-        # Батчи: (batches - 1) * 15 сек (задержка между батчами) + batches * 3 сек (обработка батча)
+        # Первый раунд батчей: (batches - 1) * 15 сек (задержка между батчами) + batches * 3 сек (обработка батча)
+        # Дополнительные раунды: если получилось больше 12 вариантов, делаем еще раунды
         # Финальное сравнение: ~20 секунд
         inspection_time = 7
         batch_delay = 15  # Задержка между батчами
         batch_processing_time = 3  # Время обработки одного батча
         final_comparison_time = 20
         
-        if estimated_batches == 1:
-            batch_total_time = batch_processing_time
+        # Время первого раунда батчей
+        if estimated_batches_round1 == 1:
+            round1_time = batch_processing_time
         else:
-            batch_total_time = (estimated_batches - 1) * batch_delay + estimated_batches * batch_processing_time
+            round1_time = (estimated_batches_round1 - 1) * batch_delay + estimated_batches_round1 * batch_processing_time
         
-        estimated_time_seconds = inspection_time + batch_total_time + final_comparison_time
+        # Оцениваем количество дополнительных раундов
+        # Из каждого батча берем 2 варианта, поэтому максимум вариантов после первого раунда = batches * 2
+        max_results_after_round1 = estimated_batches_round1 * 2
+        
+        # Если получилось больше 12, нужен второй раунд
+        additional_rounds_time = 0
+        if max_results_after_round1 > 12:
+            # Второй раунд: разбиваем на батчи по 12
+            estimated_batches_round2 = (max_results_after_round1 + 11) // 12
+            if estimated_batches_round2 == 1:
+                round2_time = batch_processing_time
+            else:
+                round2_time = (estimated_batches_round2 - 1) * batch_delay + estimated_batches_round2 * batch_processing_time
+            additional_rounds_time = round2_time
+            
+            # Если и после второго раунда больше 12, нужен третий раунд (редко, но возможно)
+            max_results_after_round2 = estimated_batches_round2 * 2
+            if max_results_after_round2 > 12:
+                estimated_batches_round3 = (max_results_after_round2 + 11) // 12
+                if estimated_batches_round3 == 1:
+                    round3_time = batch_processing_time
+                else:
+                    round3_time = (estimated_batches_round3 - 1) * batch_delay + estimated_batches_round3 * batch_processing_time
+                additional_rounds_time += round3_time
+        
+        estimated_time_seconds = inspection_time + round1_time + additional_rounds_time + final_comparison_time
         estimated_time_minutes = estimated_time_seconds // 60
         estimated_time_secs = estimated_time_seconds % 60
         
@@ -1617,7 +1671,7 @@ async def cb_check_now_ai(callback: CallbackQuery):
         await status_msg.edit_text(
             f"🤖 <b>ИИ-анализ</b>\n\n"
             f"📊 Найдено: {total_count} объявлений\n"
-            f"📦 Будет обработано: {estimated_batches} батч(ей)\n"
+            f"📦 Будет обработано: {estimated_batches_round1} батч(ей) в первом раунде\n"
             f"⏱ Примерное время: {time_text}\n\n"
             f"⏳ Анализирую и выбираю {max_results} лучших вариантов...",
             parse_mode=ParseMode.HTML
