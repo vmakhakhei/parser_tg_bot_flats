@@ -142,9 +142,9 @@ class KufarScraper(BaseScraper):
                 "timestamp": int(time.time() * 1000)
             })
             # #endregion
-            
-            # Получаем JSON
-            json_data = await self._fetch_json(url)
+        
+        # Получаем JSON
+        json_data = await self._fetch_json(url)
             
             # Логируем полный ответ API для диагностики
             if json_data:
@@ -169,7 +169,7 @@ class KufarScraper(BaseScraper):
             })
             # #endregion
             
-            if not json_data:
+        if not json_data:
                 log_warning("kufar", f"API вернул пустой ответ для города '{city}' на странице {current_page}")
                 break
             
