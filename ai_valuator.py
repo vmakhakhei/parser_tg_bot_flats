@@ -733,7 +733,7 @@ JSON ответ:
                             if "generateContent" in supported_methods:
                                 # Фильтруем только стабильные модели (исключаем экспериментальные версии 2.0, 2.5)
                                 if any(stable in model_name for stable in ["gemini-1.5", "gemini-pro"]) and not any(exp in model_name for exp in ["2.0", "2.5", "exp"]):
-                                models.append(model_name)
+                                    models.append(model_name)
                     
                     # Сортируем: сначала стабильные модели из списка
                     models_sorted = []
@@ -1463,13 +1463,13 @@ def get_valuator() -> Optional[AIValuator]:
         else:
             # Автоматический выбор: только Groq
             if GROQ_API_KEY:
-            _valuator = AIValuator("groq")
+                _valuator = AIValuator("groq")
                 log_info("ai", "Использую Groq API (30 запросов/минуту, без суточных лимитов)")
-        elif HF_API_KEY:
-            _valuator = AIValuator("huggingface")
+            elif HF_API_KEY:
+                _valuator = AIValuator("huggingface")
                 log_info("ai", "Использую Hugging Face API")
-        elif os.getenv("OLLAMA_URL"):
-            _valuator = AIValuator("ollama")
+            elif os.getenv("OLLAMA_URL"):
+                _valuator = AIValuator("ollama")
                 log_info("ai", "Использую Ollama API")
     
     return _valuator
@@ -1500,16 +1500,16 @@ async def select_best_listings(
         
         # Формируем список для промпта (только базовые данные + ссылки)
         # Исключаем объявления без цены (договорная, 0, None)
-    # Лимит объявлений зависит от размера промпта, обычно до 100 OK
-    listings_to_inspect = []
-    
-    for listing in listings[:100]:  # Максимум 100 объявлений для анализа
+        # Лимит объявлений зависит от размера промпта, обычно до 100 OK
+        listings_to_inspect = []
+        
+        for listing in listings[:100]:  # Максимум 100 объявлений для анализа
             # Пропускаем объявления без цены
             if not listing.price or listing.price <= 0:
                 log_info("ai_select", f"Пропускаю объявление {listing.id}: цена не указана или равна 0")
                 continue
             
-        listings_to_inspect.append(listing)
+            listings_to_inspect.append(listing)
     
     # Инициализируем список для промпта до блока try
     listings_for_prompt = []
