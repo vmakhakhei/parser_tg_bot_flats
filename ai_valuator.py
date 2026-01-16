@@ -1188,7 +1188,7 @@ JSON ответ:
                     await asyncio.sleep(retry_delay)
                     continue
                 return []
-        except Exception as e:
+            except Exception as e:
                 log_error("ai_select", f"Ошибка запроса к Groq API (попытка {attempt + 1}/{max_retries})", e)
                 if attempt < max_retries - 1:
                     await asyncio.sleep(retry_delay)
