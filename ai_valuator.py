@@ -1502,8 +1502,8 @@ def get_valuator() -> Optional[AIValuator]:
             elif HF_API_KEY:
                 _valuator = AIValuator("huggingface")
                 log_info("ai", "Использую Hugging Face API")
-        elif os.getenv("OLLAMA_URL"):
-            _valuator = AIValuator("ollama")
+            elif os.getenv("OLLAMA_URL"):
+                _valuator = AIValuator("ollama")
                 log_info("ai", "Использую Ollama API")
     return _valuator
 
