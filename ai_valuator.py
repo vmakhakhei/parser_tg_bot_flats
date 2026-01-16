@@ -1485,9 +1485,6 @@ def get_valuator() -> Optional[AIValuator]:
         if forced_provider == "groq" and GROQ_API_KEY:
             _valuator = AIValuator("groq")
             log_info("ai", "Использую Groq API (явно указан через AI_PROVIDER)")
-        elif forced_provider == "gemini" and GEMINI_API_KEY:
-            _valuator = AIValuator("gemini")
-            log_info("ai", "Использую Gemini API (явно указан через AI_PROVIDER)")
         elif forced_provider == "huggingface" and HF_API_KEY:
             _valuator = AIValuator("huggingface")
             log_info("ai", "Использую Hugging Face API (явно указан через AI_PROVIDER)")
@@ -1652,9 +1649,8 @@ async def select_best_listings(
                 await valuator.start_session()
                 
                 try:
-                    if provider_name == "gemini":
-                        selected = await valuator._select_best_gemini_detailed(prompt, batch_listings)
-                    elif provider_name == "groq":
+                    # Используем только Groq
+                    if provider_name == "groq":
                         selected = await valuator._select_best_groq_detailed(prompt, batch_listings)
                     else:
                         continue
