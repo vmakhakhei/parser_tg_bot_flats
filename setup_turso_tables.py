@@ -2,16 +2,12 @@
 Скрипт для создания таблиц в Turso Database
 Запустите этот скрипт один раз для инициализации таблицы кэша объявлений
 """
-import asyncio
 import sys
-try:
-    from libsql_client import create_client
-except ImportError:
-    from libsql import create_client
+import libsql
 from config import TURSO_DB_URL, TURSO_AUTH_TOKEN, USE_TURSO_CACHE
 
 
-async def create_tables():
+def create_tables():
     """Создает таблицу cached_listings в Turso"""
     
     if not USE_TURSO_CACHE:
@@ -31,8 +27,8 @@ async def create_tables():
     print(f"URL: {TURSO_DB_URL[:50]}...")
     
     try:
-        client = create_client(
-            url=TURSO_DB_URL,
+        conn = libsql.connect(
+            TURSO_DB_URL,
             auth_token=TURSO_AUTH_TOKEN
         )
         
@@ -40,7 +36,7 @@ async def create_tables():
         
         # Создаем таблицу кэшированных объявлений
         print("\n📋 Создание таблицы cached_listings...")
-        await client.execute("""
+        conn.execute("""
             CREATE TABLE IF NOT EXISTS cached_listings (
                 id TEXT PRIMARY KEY,
                 source TEXT NOT NULL,
@@ -73,52 +69,54 @@ async def create_tables():
         # Создаем индексы для быстрого поиска
         print("\n📋 Создание индексов...")
         
-        await client.execute("""
+        conn.execute("""
             CREATE INDEX IF NOT EXISTS idx_city_rooms_price 
             ON cached_listings(city, rooms, price)
         """)
         print("✅ Индекс idx_city_rooms_price создан")
         
-        await client.execute("""
+        conn.execute("""
             CREATE INDEX IF NOT EXISTS idx_content_hash 
             ON cached_listings(content_hash)
         """)
         print("✅ Индекс idx_content_hash создан")
         
-        await client.execute("""
+        conn.execute("""
             CREATE INDEX IF NOT EXISTS idx_status_last_seen 
             ON cached_listings(status, last_seen_at)
         """)
         print("✅ Индекс idx_status_last_seen создан")
         
-        await client.execute("""
+        conn.execute("""
             CREATE INDEX IF NOT EXISTS idx_source_url 
             ON cached_listings(source, url)
         """)
         print("✅ Индекс idx_source_url создан")
         
+        conn.commit()
+        
         # Проверяем созданные таблицы
         print("\n📋 Проверка созданных таблиц...")
-        result = await client.execute("""
+        cursor = conn.execute("""
             SELECT name FROM sqlite_master 
             WHERE type='table' AND name NOT LIKE 'sqlite_%'
         """)
         
         print("\n✅ Созданные таблицы:")
-        for row in result.rows:
+        for row in cursor.fetchall():
             print(f"   - {row[0]}")
         
         # Проверяем индексы
-        result = await client.execute("""
+        cursor = conn.execute("""
             SELECT name FROM sqlite_master 
             WHERE type='index' AND name NOT LIKE 'sqlite_%'
         """)
         
         print("\n✅ Созданные индексы:")
-        for row in result.rows:
+        for row in cursor.fetchall():
             print(f"   - {row[0]}")
         
-        await client.close()
+        conn.close()
         
         print("\n" + "=" * 60)
         print("✅ Инициализация Turso завершена успешно!")
@@ -134,4 +132,4 @@ async def create_tables():
 
 
 if __name__ == "__main__":
-    asyncio.run(create_tables())
+    create_tables()
