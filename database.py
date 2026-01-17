@@ -137,20 +137,6 @@ async def init_database():
             CREATE INDEX IF NOT EXISTS idx_ai_valuations ON ai_valuations(user_id, listing_id)
         """)
         
-        # Старая таблица filters (для обратной совместимости, можно удалить позже)
-        await db.execute("""
-            CREATE TABLE IF NOT EXISTS filters (
-                id INTEGER PRIMARY KEY DEFAULT 1,
-                city TEXT DEFAULT 'барановичи',
-                min_rooms INTEGER DEFAULT 1,
-                max_rooms INTEGER DEFAULT 4,
-                min_price INTEGER DEFAULT 0,
-                max_price INTEGER DEFAULT 100000,
-                is_active BOOLEAN DEFAULT 1,
-                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            )
-        """)
-        
         await db.commit()
 
 
@@ -221,66 +207,6 @@ async def mark_listing_sent(listing: Dict[str, Any]):
         await db.commit()
 
 
-async def get_filters() -> Dict[str, Any]:
-    """Получает текущие настройки фильтров"""
-    async with aiosqlite.connect(DATABASE_PATH) as db:
-        db.row_factory = aiosqlite.Row
-        cursor = await db.execute("SELECT * FROM filters WHERE id = 1")
-        row = await cursor.fetchone()
-        if row:
-            return dict(row)
-        return {
-            "city": "барановичи",
-            "min_rooms": 1,
-            "max_rooms": 4,
-            "min_price": 0,
-            "max_price": 100000,
-            "is_active": True
-        }
-
-
-async def update_filters(
-    city: Optional[str] = None,
-    min_rooms: Optional[int] = None,
-    max_rooms: Optional[int] = None,
-    min_price: Optional[int] = None,
-    max_price: Optional[int] = None,
-    is_active: Optional[bool] = None
-):
-    """Обновляет настройки фильтров"""
-    current = await get_filters()
-    
-    async with aiosqlite.connect(DATABASE_PATH) as db:
-        await db.execute("""
-            UPDATE filters SET
-                city = ?,
-                min_rooms = ?,
-                max_rooms = ?,
-                min_price = ?,
-                max_price = ?,
-                is_active = ?,
-                updated_at = ?
-            WHERE id = 1
-        """, (
-            city if city is not None else current["city"],
-            min_rooms if min_rooms is not None else current["min_rooms"],
-            max_rooms if max_rooms is not None else current["max_rooms"],
-            min_price if min_price is not None else current["min_price"],
-            max_price if max_price is not None else current["max_price"],
-            is_active if is_active is not None else current["is_active"],
-            datetime.now().isoformat()
-        ))
-        await db.commit()
-
-
-async def get_sent_listings_count() -> int:
-    """Возвращает количество отправленных объявлений"""
-    async with aiosqlite.connect(DATABASE_PATH) as db:
-        cursor = await db.execute("SELECT COUNT(*) FROM sent_listings")
-        result = await cursor.fetchone()
-        return result[0] if result else 0
-
-
 async def clear_old_listings(days: int = 30):
     """Удаляет старые записи об отправленных объявлениях"""
     async with aiosqlite.connect(DATABASE_PATH) as db:
@@ -289,61 +215,6 @@ async def clear_old_listings(days: int = 30):
             WHERE sent_at < datetime('now', ? || ' days')
         """, (f"-{days}",))
         await db.commit()
-
-
-async def get_duplicates_stats() -> Dict[str, Any]:
-    """Возвращает статистику по дубликатам"""
-    async with aiosqlite.connect(DATABASE_PATH) as db:
-        # Общее количество записей
-        cursor = await db.execute("SELECT COUNT(*) FROM sent_listings")
-        total = (await cursor.fetchone())[0]
-        
-        # Количество уникальных хешей
-        cursor = await db.execute("SELECT COUNT(DISTINCT content_hash) FROM sent_listings WHERE content_hash IS NOT NULL")
-        unique_hashes = (await cursor.fetchone())[0]
-        
-        # Количество дубликатов (записей с одинаковым хешем)
-        cursor = await db.execute("""
-            SELECT content_hash, COUNT(*) as cnt, GROUP_CONCAT(source) as sources
-            FROM sent_listings 
-            WHERE content_hash IS NOT NULL
-            GROUP BY content_hash 
-            HAVING cnt > 1
-        """)
-        duplicates = await cursor.fetchall()
-        
-        # Статистика по источникам
-        cursor = await db.execute("""
-            SELECT source, COUNT(*) as cnt 
-            FROM sent_listings 
-            GROUP BY source
-        """)
-        by_source = {row[0]: row[1] for row in await cursor.fetchall()}
-        
-        return {
-            "total_sent": total,
-            "unique_content": unique_hashes,
-            "duplicate_groups": len(duplicates),
-            "by_source": by_source,
-            "duplicate_details": [
-                {"hash": d[0], "count": d[1], "sources": d[2]} 
-                for d in duplicates[:10]  # Первые 10 групп
-            ]
-        }
-
-
-async def get_recent_listings(limit: int = 10) -> List[Dict[str, Any]]:
-    """Возвращает последние отправленные объявления"""
-    async with aiosqlite.connect(DATABASE_PATH) as db:
-        db.row_factory = aiosqlite.Row
-        cursor = await db.execute("""
-            SELECT id, title, price, rooms, area, address, source, sent_at, content_hash
-            FROM sent_listings 
-            ORDER BY sent_at DESC 
-            LIMIT ?
-        """, (limit,))
-        rows = await cursor.fetchall()
-        return [dict(row) for row in rows]
 
 
 # ========== Функции для работы с пользователями ==========

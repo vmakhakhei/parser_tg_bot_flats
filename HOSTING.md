@@ -17,7 +17,6 @@
 3. Загрузите ваш код на GitHub
 4. Добавьте переменные окружения:
    - `BOT_TOKEN` = ваш токен бота
-   - `CHANNEL_ID` = ID вашего канала
 5. Railway автоматически обнаружит Python и запустит проект
 
 Создайте файл `Procfile`:
@@ -54,8 +53,6 @@ services:
     envVars:
       - key: BOT_TOKEN
         sync: false
-      - key: CHANNEL_ID
-        sync: false
 ```
 
 ---
@@ -91,7 +88,7 @@ pip install -r requirements.txt
 
 # Создайте .env файл
 nano .env
-# Добавьте BOT_TOKEN и CHANNEL_ID
+# Добавьте BOT_TOKEN
 
 # Запустите с помощью systemd (см. ниже)
 ```
@@ -166,7 +163,7 @@ sudo journalctl -u apartment-bot -f
 1. Установите flyctl: `curl -L https://fly.io/install.sh | sh`
 2. `fly auth signup`
 3. В папке проекта: `fly launch`
-4. `fly secrets set BOT_TOKEN=xxx CHANNEL_ID=xxx`
+4. `fly secrets set BOT_TOKEN=xxx`
 5. `fly deploy`
 
 Создайте `fly.toml`:

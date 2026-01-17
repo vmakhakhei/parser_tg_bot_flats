@@ -21,14 +21,9 @@ from aiogram.fsm.storage.memory import MemoryStorage
 from config import BOT_TOKEN, MAX_PHOTOS, DATABASE_PATH
 from database import (
     init_database, 
-    get_filters, 
-    update_filters, 
     is_listing_sent,
     is_duplicate_content,
     mark_listing_sent,
-    get_sent_listings_count,
-    get_duplicates_stats,
-    get_recent_listings,
     get_user_filters,
     set_user_filters,
     is_listing_sent_to_user,
@@ -43,22 +38,6 @@ from database import (
 from scrapers.aggregator import ListingsAggregator
 from scrapers.base import Listing
 from error_logger import error_logger, log_error, log_warning, log_info
-
-# Вспомогательная функция для debug логирования
-def _write_debug_log(data):
-    """Записывает debug лог в файл"""
-    try:
-        import os
-        base_dir = os.path.dirname(os.path.abspath(__file__))
-        log_path = os.path.join(base_dir, ".cursor", "debug.log")
-        os.makedirs(os.path.dirname(log_path), exist_ok=True)
-        with open(log_path, "a", encoding="utf-8") as f:
-            f.write(json.dumps(data) + "\n")
-    except Exception as e:
-        try:
-            log_error("bot", f"Debug log error: {e}")
-        except:
-            pass
 
 # ИИ-оценщик (опционально)
 try:
@@ -461,18 +440,6 @@ async def check_new_listings(bot: Bot):
         # Это важно, чтобы скраперы (особенно Kufar) фильтровали на уровне API
         aggregator = ListingsAggregator(enabled_sources=DEFAULT_SOURCES)
         
-        # #region agent log
-        _write_debug_log({
-            "sessionId": "test-session",
-            "runId": "run1",
-            "hypothesisId": "C",
-            "location": "bot.py:395",
-            "message": "check_new_listings fetch start",
-            "data": {"user_id": user_id, "city": user_city, "filters": user_filters},
-            "timestamp": int(time.time() * 1000)
-        })
-        # #endregion
-        
         all_listings = await aggregator.fetch_all_listings(
             city=user_city,
             min_rooms=user_filters.get("min_rooms", 1),
@@ -482,18 +449,6 @@ async def check_new_listings(bot: Bot):
         )
     
         logger.info(f"Для пользователя {user_id} (город: {user_city}) найдено объявлений: {len(all_listings)}")
-        
-        # #region agent log
-        _write_debug_log({
-            "sessionId": "test-session",
-            "runId": "run1",
-            "hypothesisId": "C",
-            "location": "bot.py:410",
-            "message": "check_new_listings fetch complete",
-            "data": {"user_id": user_id, "city": user_city, "total_listings": len(all_listings), "ai_mode": user_filters.get("ai_mode", False)},
-            "timestamp": int(time.time() * 1000)
-        })
-        # #endregion
         
         # Проверяем режим работы пользователя
         if user_filters.get("ai_mode"):
@@ -583,18 +538,6 @@ async def check_new_listings_ai_mode(
     counter = _filter_log_counters.get(user_id, {"filtered": 0, "passed": 0})
     logger.info(f"ИИ-режим: всего {len(all_listings)}, отфильтровано {filtered_out}, кандидатов для анализа {len(candidate_listings)}{seller_filter_text}")
     logger.info(f"[user_{user_id}] 📊 Статистика фильтрации: отфильтровано {counter['filtered']} (логировано), прошло {counter['passed']} (логировано)")
-    
-    # #region agent log
-    _write_debug_log({
-        "sessionId": "test-session",
-        "runId": "run1",
-        "hypothesisId": "C",
-        "location": "bot.py:490",
-        "message": "AI mode filtering complete",
-        "data": {"user_id": user_id, "total_listings": len(all_listings), "filtered_out": filtered_out, "candidates": len(candidate_listings), "counter_filtered": counter.get("filtered", 0), "counter_passed": counter.get("passed", 0)},
-        "timestamp": int(time.time() * 1000)
-    })
-    # #endregion
     
     if not candidate_listings:
         logger.info(f"Пользователю {user_id} нет новых объявлений для ИИ-анализа")
@@ -1029,18 +972,6 @@ def _matches_user_filters(listing: Listing, filters: Dict[str, Any], user_id: Op
         min_rooms = filters.get("min_rooms", 1)
         max_rooms = filters.get("max_rooms", 4)
         if listing.rooms < min_rooms or listing.rooms > max_rooms:
-            # #region agent log
-            if user_id:
-                _write_debug_log({
-                    "sessionId": "test-session",
-                    "runId": "run1",
-                    "hypothesisId": "B",
-                    "location": "bot.py:850",
-                    "message": "Filtered by rooms",
-                    "data": {"user_id": user_id, "listing_id": listing.id, "listing_rooms": listing.rooms, "filter_min": min_rooms, "filter_max": max_rooms, "source": listing.source},
-                    "timestamp": int(time.time() * 1000)
-                })
-            # #endregion
             if log_details and user_id:
                 counter = _filter_log_counters.get(user_id, {"filtered": 0, "passed": 0})
                 if counter["filtered"] < _MAX_FILTERED_LOGS:
@@ -1061,18 +992,6 @@ def _matches_user_filters(listing: Listing, filters: Dict[str, Any], user_id: Op
         min_price = filters.get("min_price", 0)
         max_price = filters.get("max_price", 1000000)  # Используем значение из фильтров или максимум
         if price < min_price or price > max_price:
-            # #region agent log
-            if user_id:
-                _write_debug_log({
-                    "sessionId": "test-session",
-                    "runId": "run1",
-                    "hypothesisId": "B",
-                    "location": "bot.py:870",
-                    "message": "Filtered by price",
-                    "data": {"user_id": user_id, "listing_id": listing.id, "listing_price": price, "filter_min": min_price, "filter_max": max_price, "source": listing.source},
-                    "timestamp": int(time.time() * 1000)
-                })
-            # #endregion
             if log_details and user_id:
                 counter = _filter_log_counters.get(user_id, {"filtered": 0, "passed": 0})
                 if counter["filtered"] < _MAX_FILTERED_LOGS:
@@ -1193,33 +1112,22 @@ async def show_city_selection_menu(message: Message, state: FSMContext):
 @router.message(Command("help"))
 async def cmd_help(message: Message):
     """Обработчик команды /help"""
-    ai_status = "✅ Настроен" if AI_VALUATOR_AVAILABLE and valuate_listing else "❌ Не настроен"
-    
     await message.answer(
-        "📚 <b>Полная справка по командам</b>\n\n"
+        "📚 <b>Справка по командам</b>\n\n"
         "🎛 <b>Настройка фильтров:</b>\n"
-        "• /filters - интерактивное меню с кнопками\n\n"
-        "• /setrooms 2 - только 2-комнатные\n"
-        "• /setrooms 1 3 - от 1 до 3 комнат\n\n"
-        "• /setprice 50000 - до $50,000\n"
-        "• /setprice 20000 50000 - от $20k до $50k\n\n"
-        "• /resetfilters - сбросить все фильтры\n"
-        "• /setcity барановичи - изменить город\n\n"
+        "• /start - пошаговая настройка фильтров\n"
+        "• /filters - показать текущие фильтры\n\n"
         "⚡ <b>Управление:</b>\n"
         "• /start_monitoring - включить авто-мониторинг\n"
         "• /stop_monitoring - выключить мониторинг\n"
         "• /check - проверить объявления сейчас\n\n"
-        "🤖 <b>ИИ-оценщик:</b>\n"
-        f"• /testai - протестировать ИИ-оценщик (Статус: {ai_status})\n\n"
         "📊 <b>Информация:</b>\n"
-        "• /stats - статистика\n"
-        "• /sources - список источников\n"
-        "• /duplicates - статистика дубликатов\n"
-        "• /recent - последние 10 объявлений\n\n"
-        "🔧 <b>Отладка:</b>\n"
-        "• /errors - последние ошибки\n"
-        "• /logs - все логи\n"
-        "• /clearerrors - очистить логи",
+        "• /sources - список источников\n\n"
+        "💡 <b>Как использовать:</b>\n"
+        "1. Используйте /start для настройки фильтров\n"
+        "2. Включите мониторинг командой /start_monitoring\n"
+        "3. Бот будет автоматически присылать новые объявления\n"
+        "4. Вы можете выбрать ИИ-режим для умного анализа объявлений",
         parse_mode=ParseMode.HTML
     )
 
@@ -1255,28 +1163,34 @@ async def cmd_sources(message: Message):
 
 @router.message(Command("filters"))
 async def cmd_filters(message: Message):
-    """Показывает текущие фильтры с кнопками настройки"""
-    filters = await get_filters()
+    """Показывает текущие фильтры пользователя с кнопками настройки"""
+    user_id = message.from_user.id
+    user_filters = await get_user_filters(user_id)
     
-    status = "✅ Активен" if filters.get("is_active", True) else "❌ Отключен"
+    if not user_filters:
+        await message.answer(
+            "⚠️ Фильтры не настроены. Используйте /start для настройки.",
+            parse_mode=ParseMode.HTML
+        )
+        return
+    
+    status = "✅ Активен" if user_filters.get("is_active", True) else "❌ Отключен"
     
     # Создаем inline кнопки
     builder = InlineKeyboardBuilder()
-    builder.button(text="🚪 Комнаты", callback_data="filter_rooms")
-    builder.button(text="💰 Цена", callback_data="filter_price")
-    builder.button(text="🔄 Сброс", callback_data="filter_reset")
+    builder.button(text="⚙️ Настроить фильтры", callback_data="setup_filters")
     
     # Принудительно размещаем по 1 кнопке в ряду
     builder.adjust(1)
     
     await message.answer(
-        f"⚙️ <b>Текущие фильтры</b>\n\n"
-        f"📍 <b>Город:</b> {filters.get('city', 'барановичи').title()}\n"
-        f"🚪 <b>Комнат:</b> от {filters.get('min_rooms', 1)} до {filters.get('max_rooms', 4)}\n"
-        f"💰 <b>Цена:</b> ${filters.get('min_price', 0):,} - ${filters.get('max_price', 100000):,}\n\n"
+        f"⚙️ <b>Ваши фильтры</b>\n\n"
+        f"📍 <b>Город:</b> {user_filters.get('city', 'барановичи').title()}\n"
+        f"🚪 <b>Комнат:</b> от {user_filters.get('min_rooms', 1)} до {user_filters.get('max_rooms', 4)}\n"
+        f"💰 <b>Цена:</b> ${user_filters.get('min_price', 0):,} - ${user_filters.get('max_price', 100000):,}\n"
+        f"🤖 <b>Режим:</b> {'ИИ-режим' if user_filters.get('ai_mode') else 'Обычный режим'}\n\n"
         f"📡 <b>Статус:</b> {status}\n\n"
-        f"<i>Нажмите кнопку для изменения или используйте команды:</i>\n"
-        f"/setrooms, /setprice, /resetfilters",
+        f"<i>Нажмите кнопку для изменения фильтров</i>",
         parse_mode=ParseMode.HTML,
         reply_markup=builder.as_markup()
     )
@@ -3413,445 +3327,57 @@ async def process_max_price_input(message: Message, state: FSMContext):
 
 
 
-@router.callback_query(F.data == "filter_rooms")
-async def cb_filter_rooms(callback: CallbackQuery):
-    """Показывает кнопки выбора комнат (старая версия для обратной совместимости)"""
-    builder = InlineKeyboardBuilder()
-    
-    # Все кнопки на отдельных строках для лучшей читаемости
-    builder.button(text="1 комната", callback_data="rooms_1_1")
-    builder.button(text="2 комнаты", callback_data="rooms_2_2")
-    builder.button(text="3 комнаты", callback_data="rooms_3_3")
-    builder.button(text="1-2 комн.", callback_data="rooms_1_2")
-    builder.button(text="2-3 комн.", callback_data="rooms_2_3")
-    builder.button(text="1-3 комн.", callback_data="rooms_1_3")
-    builder.button(text="1-4 комн.", callback_data="rooms_1_4")
-    builder.button(text="🔙 Назад", callback_data="filter_back")
-    
-    # Принудительно размещаем по 1 кнопке в ряду
-    builder.adjust(1)
-    
-    await callback.message.edit_text(
-        "🚪 <b>Выберите количество комнат:</b>\n\n"
-        "<i>Нажмите на кнопку или введите команду:</i>\n"
-        "<code>/setrooms 2</code> - только 2-комнатные\n"
-        "<code>/setrooms 1 3</code> - от 1 до 3 комнат",
-        parse_mode=ParseMode.HTML,
-        reply_markup=builder.as_markup()
-    )
-    await callback.answer()
-
-
-@router.callback_query(F.data.startswith("rooms_"))
-async def cb_set_rooms(callback: CallbackQuery):
-    """Устанавливает количество комнат"""
-    parts = callback.data.split("_")
-    min_rooms = int(parts[1])
-    max_rooms = int(parts[2])
-    
-    await update_filters(min_rooms=min_rooms, max_rooms=max_rooms)
-    
-    if min_rooms == max_rooms:
-        text = f"✅ Установлено: только {min_rooms}-комнатные"
-    else:
-        text = f"✅ Установлено: {min_rooms}-{max_rooms} комнаты"
-    
-    await callback.message.edit_text(text)
-    await callback.answer(text)
-
-
-@router.callback_query(F.data == "filter_price")
-async def cb_filter_price(callback: CallbackQuery):
-    """Показывает кнопки выбора цены"""
-    builder = InlineKeyboardBuilder()
-    
-    # Все кнопки на отдельных строках для лучшей читаемости
-    builder.button(text="до $30,000", callback_data="price_0_30000")
-    builder.button(text="до $40,000", callback_data="price_0_40000")
-    builder.button(text="до $50,000", callback_data="price_0_50000")
-    builder.button(text="$20k-$40k", callback_data="price_20000_40000")
-    builder.button(text="$30k-$50k", callback_data="price_30000_50000")
-    builder.button(text="$40k-$60k", callback_data="price_40000_60000")
-    builder.button(text="$50k-$80k", callback_data="price_50000_80000")
-    builder.button(text="Любая цена", callback_data="price_0_500000")
-    builder.button(text="🔙 Назад", callback_data="filter_back")
-    
-    # Принудительно размещаем по 1 кнопке в ряду
-    builder.adjust(1)
-    
-    await callback.message.edit_text(
-        "💰 <b>Выберите диапазон цены:</b>\n\n"
-        "<i>Нажмите на кнопку или введите команду:</i>\n"
-        "<code>/setprice 50000</code> - до $50,000\n"
-        "<code>/setprice 20000 40000</code> - от $20,000 до $40,000",
-        parse_mode=ParseMode.HTML,
-        reply_markup=builder.as_markup()
-    )
-    await callback.answer()
-
-
-@router.callback_query(F.data.startswith("price_"))
-async def cb_set_price(callback: CallbackQuery):
-    """Устанавливает диапазон цены"""
-    parts = callback.data.split("_")
-    min_price = int(parts[1])
-    max_price = int(parts[2])
-    
-    await update_filters(min_price=min_price, max_price=max_price)
-    
-    if min_price == 0:
-        text = f"✅ Установлено: до ${max_price:,}"
-    else:
-        text = f"✅ Установлено: ${min_price:,} - ${max_price:,}"
-    
-    await callback.message.edit_text(text)
-    await callback.answer(text)
-
-
-@router.callback_query(F.data == "filter_reset")
-async def cb_filter_reset(callback: CallbackQuery):
-    """Сбрасывает фильтры до значений по умолчанию"""
-    await update_filters(
-        min_rooms=1,
-        max_rooms=4,
-        min_price=0,
-        max_price=100000
-    )
-    await callback.message.edit_text(
-        "🔄 Фильтры сброшены!\n\n"
-        "Комнат: 1-4\n"
-        "Цена: до $100,000"
-    )
-    await callback.answer("Фильтры сброшены!")
-
-
-@router.callback_query(F.data == "filter_back")
-async def cb_filter_back(callback: CallbackQuery):
-    """Возврат к главному меню фильтров"""
-    filters = await get_filters()
-    status = "✅ Активен" if filters.get("is_active", True) else "❌ Отключен"
-    
-    builder = InlineKeyboardBuilder()
-    builder.button(text="🚪 Комнаты", callback_data="filter_rooms")
-    builder.button(text="💰 Цена", callback_data="filter_price")
-    builder.button(text="🔄 Сброс", callback_data="filter_reset")
-    
-    # Принудительно размещаем по 1 кнопке в ряду
-    builder.adjust(1)
-    
-    await callback.message.edit_text(
-        f"⚙️ <b>Текущие фильтры</b>\n\n"
-        f"📍 <b>Город:</b> {filters.get('city', 'барановичи').title()}\n"
-        f"🚪 <b>Комнат:</b> от {filters.get('min_rooms', 1)} до {filters.get('max_rooms', 4)}\n"
-        f"💰 <b>Цена:</b> ${filters.get('min_price', 0):,} - ${filters.get('max_price', 100000):,}\n\n"
-        f"📡 <b>Статус:</b> {status}",
-        parse_mode=ParseMode.HTML,
-        reply_markup=builder.as_markup()
-    )
-    await callback.answer()
-
-
-@router.message(Command("setrooms"))
-async def cmd_set_rooms(message: Message):
-    """Установка фильтра по количеству комнат для пользователя"""
-    user_id = message.from_user.id
-    try:
-        args = message.text.split()[1:]
-        
-        if len(args) == 0:
-            await message.answer(
-                "🚪 <b>Настройка фильтра комнат</b>\n\n"
-                "Используйте диапазоны:\n"
-                "• <code>/setrooms 1 2</code> — 1-2 комнаты\n"
-                "• <code>/setrooms 2 3</code> — 2-3 комнаты\n"
-                "• <code>/setrooms 3 4</code> — 3-4 комнаты\n"
-                "• <code>/setrooms 4 5</code> — 4+ комнат\n\n"
-                "Или нажмите /start для интерактивного выбора",
-                parse_mode=ParseMode.HTML
-            )
-            return
-        
-        if len(args) == 1:
-            rooms = int(args[0])
-            if rooms < 1 or rooms > 5:
-                await message.answer("⚠️ Комнат может быть от 1 до 5.")
-                return
-            min_rooms = max_rooms = rooms
-        else:
-            min_rooms = int(args[0])
-            max_rooms = int(args[1])
-        
-        if min_rooms < 1 or max_rooms > 5 or min_rooms > max_rooms:
-            await message.answer("⚠️ Неверные значения. Комнат может быть от 1 до 5.")
-            return
-        
-        user_filters = await get_user_filters(user_id)
-        await set_user_filters(
-            user_id,
-            city=user_filters.get("city", "барановичи") if user_filters else "барановичи",
-            min_rooms=min_rooms,
-            max_rooms=max_rooms,
-            min_price=user_filters.get("min_price", 0) if user_filters else 0,
-            max_price=user_filters.get("max_price", 1000000) if user_filters else 1000000,
-            is_active=True
-        )
-        
-        if min_rooms == max_rooms:
-            await message.answer(f"✅ Фильтр обновлен!\nТолько {min_rooms}-комнатные квартиры")
-        else:
-            await message.answer(f"✅ Фильтр обновлен!\nКомнат: {min_rooms}-{max_rooms}")
-        
-    except ValueError:
-        await message.answer(
-            "⚠️ Неверный формат!\n\n"
-            "Примеры:\n"
-            "/setrooms 1 2 — 1-2 комнаты\n"
-            "/setrooms 2 3 — 2-3 комнаты"
-        )
-
-
-@router.message(Command("pricefrom"))
-async def cmd_price_from(message: Message):
-    """Установка минимальной цены для пользователя"""
-    user_id = message.from_user.id
-    try:
-        args = message.text.split()[1:]
-        if not args:
-            await message.answer(
-                "💰 <b>Установка минимальной цены</b>\n\n"
-                "Используйте:\n"
-                "• <code>/pricefrom 20000</code> — цена от $20,000\n"
-                "• <code>/pricefrom 0</code> — без ограничения снизу",
-                parse_mode=ParseMode.HTML
-            )
-            return
-        
-        min_price = int(args[0])
-        if min_price < 0 or min_price > 1000000:
-            await message.answer("⚠️ Неверное значение (0 - 1,000,000)")
-            return
-        
-        user_filters = await get_user_filters(user_id)
-        if not user_filters:
-            await set_user_filters(user_id, min_price=min_price)
-        else:
-            await set_user_filters(
-                user_id,
-                city=user_filters.get("city", "барановичи"),
-                min_rooms=user_filters.get("min_rooms", 1),
-                max_rooms=user_filters.get("max_rooms", 4),
-                min_price=min_price,
-                max_price=user_filters.get("max_price", 1000000),
-                is_active=True
-            )
-        
-        await message.answer(f"✅ Минимальная цена установлена: ${min_price:,}")
-        
-    except ValueError:
-        await message.answer("⚠️ Неверный формат! Используйте: /pricefrom 20000")
-
-
-@router.message(Command("priceto"))
-async def cmd_price_to(message: Message):
-    """Установка максимальной цены для пользователя"""
-    user_id = message.from_user.id
-    try:
-        args = message.text.split()[1:]
-        if not args:
-            await message.answer(
-                "💰 <b>Установка максимальной цены</b>\n\n"
-                "Используйте:\n"
-                "• <code>/priceto 50000</code> — цена до $50,000\n"
-                "• <code>/priceto 1000000</code> — без ограничения сверху",
-                parse_mode=ParseMode.HTML
-            )
-            return
-        
-        max_price = int(args[0])
-        if max_price < 0 or max_price > 1000000:
-            await message.answer("⚠️ Неверное значение (0 - 1,000,000)")
-            return
-        
-        user_filters = await get_user_filters(user_id)
-        if not user_filters:
-            await set_user_filters(user_id, max_price=max_price)
-        else:
-            await set_user_filters(
-                user_id,
-                city=user_filters.get("city", "барановичи"),
-                min_rooms=user_filters.get("min_rooms", 1),
-                max_rooms=user_filters.get("max_rooms", 4),
-                min_price=user_filters.get("min_price", 0),
-                max_price=max_price,
-                is_active=True
-            )
-        
-        await message.answer(f"✅ Максимальная цена установлена: ${max_price:,}")
-        
-    except ValueError:
-        await message.answer("⚠️ Неверный формат! Используйте: /priceto 50000")
-
-
-@router.message(Command("setprice"))
-async def cmd_set_price(message: Message):
-    """Установка фильтра по цене (старая команда для обратной совместимости)"""
-    user_id = message.from_user.id
-    try:
-        args = message.text.split()[1:]
-        
-        if len(args) == 0:
-            await message.answer(
-                "💰 <b>Настройка фильтра цены</b>\n\n"
-                "Используйте:\n"
-                "• <code>/setprice 50000</code> — до $50,000\n"
-                "• <code>/setprice 20000 50000</code> — от $20k до $50k\n\n"
-                "Или по отдельности:\n"
-                "• <code>/pricefrom 20000</code> — цена от\n"
-                "• <code>/priceto 50000</code> — цена до",
-                parse_mode=ParseMode.HTML
-            )
-            return
-        
-        if len(args) == 1:
-            max_price = int(args[0])
-            min_price = 0
-        else:
-            min_price = int(args[0])
-            max_price = int(args[1])
-        
-        if min_price < 0 or max_price > 1000000 or min_price > max_price:
-            await message.answer("⚠️ Неверные значения цены (0 - 1,000,000).")
-            return
-        
-        user_filters = await get_user_filters(user_id)
-        await set_user_filters(
-            user_id,
-            city=user_filters.get("city", "барановичи") if user_filters else "барановичи",
-            min_rooms=user_filters.get("min_rooms", 1) if user_filters else 1,
-            max_rooms=user_filters.get("max_rooms", 4) if user_filters else 4,
-            min_price=min_price,
-            max_price=max_price,
-            is_active=True
-        )
-        
-        if min_price == 0:
-            await message.answer(f"✅ Фильтр обновлен!\nЦена: до ${max_price:,}")
-        else:
-            await message.answer(f"✅ Фильтр обновлен!\nЦена: ${min_price:,} - ${max_price:,}")
-        
-    except ValueError:
-        await message.answer(
-            "⚠️ Неверный формат!\n\n"
-            "Примеры:\n"
-            "/setprice 50000 — до $50,000\n"
-            "/setprice 20000 50000 — от $20k до $50k"
-        )
-
-
-@router.message(Command("setcity"))
-async def cmd_set_city(message: Message, state: FSMContext):
-    """Установка города для пользователя"""
-    user_id = message.from_user.id
-    try:
-        args = message.text.split()[1:]
-        
-        if not args:
-            # Показываем меню выбора города
-            builder = InlineKeyboardBuilder()
-            builder.button(text="📍 Выбрать город", callback_data="user_filter_city")
-            
-            await message.answer(
-                "📍 <b>Настройка города</b>\n\n"
-                "Вы можете:\n"
-                "• Использовать кнопку ниже для выбора из списка\n"
-                "• Или ввести команду: <code>/setcity минск</code>\n\n"
-                "<b>Доступные города:</b>\n"
-                "🏛 Областные центры: Минск, Гомель, Могилёв, Витебск, Гродно, Брест\n"
-                "🏘 Крупные города: Барановичи, Бобруйск, Пинск, Орша, Мозырь, Солигорск и др.\n\n"
-                "Также можно ввести название города вручную.",
-                parse_mode=ParseMode.HTML,
-                reply_markup=builder.as_markup()
-            )
-            return
-        
-        city_input = " ".join(args).lower().strip()
-        
-        # Валидируем город
-        is_valid, normalized_city = validate_city(city_input)
-        
-        if not is_valid:
-            await message.answer(
-                "❌ <b>Неверный формат города</b>\n\n"
-                "Пожалуйста, введите название города заново.\n"
-                "Название должно содержать минимум 2 символа.\n\n"
-                "<i>Примеры: /setcity минск, /setcity гомель, /setcity барановичи</i>",
-                parse_mode=ParseMode.HTML
-            )
-            return
-        
-        # Проверяем, есть ли город в списке известных
-        city_found = False
-        display_name = normalized_city.title()
-        for display, normalized in BELARUS_CITIES:
-            if normalized == normalized_city:
-                display_name = display
-                city_found = True
-                break
-        
-        # Сохраняем город для пользователя
-        user_filters = await get_user_filters(user_id)
-        await set_user_filters(
-            user_id,
-            city=normalized_city,
-            min_rooms=user_filters.get("min_rooms", 1) if user_filters else 1,
-            max_rooms=user_filters.get("max_rooms", 4) if user_filters else 4,
-            min_price=user_filters.get("min_price", 0) if user_filters else 0,
-            max_price=user_filters.get("max_price", 100000) if user_filters else 100000,
-            is_active=True
-        )
-        
-        if not city_found:
-            await message.answer(
-                f"⚠️ <b>Город \"{city_input}\" не найден в списке известных городов.</b>\n\n"
-                f"Я сохраню его как: <b>{display_name}</b>\n\n"
-                f"Если название введено неправильно, вы можете изменить его позже.",
-                parse_mode=ParseMode.HTML
-            )
-        else:
-            await message.answer(f"✅ Город установлен: {display_name}")
-        
-    except Exception as e:
-        await message.answer(f"⚠️ Ошибка: {e}")
-
-
-@router.message(Command("resetfilters"))
-async def cmd_reset_filters(message: Message):
-    """Сброс фильтров до значений по умолчанию"""
-    await update_filters(
-        min_rooms=1,
-        max_rooms=4,
-        min_price=0,
-        max_price=100000
-    )
-    await message.answer(
-        "🔄 <b>Фильтры сброшены!</b>\n\n"
-        "Комнат: 1-4\n"
-        "Цена: до $100,000",
-        parse_mode=ParseMode.HTML
-    )
-
-
 @router.message(Command("start_monitoring"))
 async def cmd_start_monitoring(message: Message):
-    """Включение мониторинга"""
-    await update_filters(is_active=True)
+    """Включение мониторинга для пользователя"""
+    user_id = message.from_user.id
+    user_filters = await get_user_filters(user_id)
+    
+    if not user_filters:
+        await message.answer(
+            "⚠️ Фильтры не настроены. Используйте /start для настройки.",
+            parse_mode=ParseMode.HTML
+        )
+        return
+    
+    await set_user_filters(
+        user_id=user_id,
+        city=user_filters.get("city", "барановичи"),
+        min_rooms=user_filters.get("min_rooms", 1),
+        max_rooms=user_filters.get("max_rooms", 4),
+        min_price=user_filters.get("min_price", 0),
+        max_price=user_filters.get("max_price", 100000),
+        is_active=True,
+        ai_mode=user_filters.get("ai_mode", False),
+        seller_type=user_filters.get("seller_type")
+    )
     await message.answer("✅ Мониторинг включен!")
 
 
 @router.message(Command("stop_monitoring"))
 async def cmd_stop_monitoring(message: Message):
-    """Выключение мониторинга"""
-    await update_filters(is_active=False)
+    """Выключение мониторинга для пользователя"""
+    user_id = message.from_user.id
+    user_filters = await get_user_filters(user_id)
+    
+    if not user_filters:
+        await message.answer(
+            "⚠️ Фильтры не настроены. Используйте /start для настройки.",
+            parse_mode=ParseMode.HTML
+        )
+        return
+    
+    await set_user_filters(
+        user_id=user_id,
+        city=user_filters.get("city", "барановичи"),
+        min_rooms=user_filters.get("min_rooms", 1),
+        max_rooms=user_filters.get("max_rooms", 4),
+        min_price=user_filters.get("min_price", 0),
+        max_price=user_filters.get("max_price", 100000),
+        is_active=False,
+        ai_mode=user_filters.get("ai_mode", False),
+        seller_type=user_filters.get("seller_type")
+    )
     await message.answer("❌ Мониторинг отключен.")
 
 
@@ -3861,257 +3387,6 @@ async def cmd_check(message: Message):
     await message.answer("🔍 Проверяю новые объявления со всех источников...\nЭто может занять 30-60 секунд.")
     await check_new_listings(message.bot)
     await message.answer("✅ Проверка завершена!")
-
-
-@router.message(Command("stats"))
-async def cmd_stats(message: Message):
-    """Статистика"""
-    count = await get_sent_listings_count()
-    filters = await get_filters()
-    status = "✅ Активен" if filters.get("is_active", True) else "❌ Отключен"
-    error_stats = error_logger.get_stats()
-    dup_stats = await get_duplicates_stats()
-    
-    await message.answer(
-        f"📊 <b>Статистика</b>\n\n"
-        f"📨 Отправлено объявлений: {count}\n"
-        f"📡 Статус мониторинга: {status}\n"
-        f"🌐 Источников: {len(DEFAULT_SOURCES)}\n\n"
-        f"🔍 <b>Дедупликация:</b>\n"
-        f"  • Уникальных объявлений: {dup_stats.get('unique_content', 0)}\n"
-        f"  • Групп дубликатов: {dup_stats.get('duplicate_groups', 0)}\n\n"
-        f"⚠️ <b>Ошибки:</b> {error_stats['total_errors']}\n"
-        f"⚡ <b>Предупреждения:</b> {error_stats['total_warnings']}",
-        parse_mode=ParseMode.HTML
-    )
-
-
-@router.message(Command("duplicates"))
-async def cmd_duplicates(message: Message):
-    """Показывает статистику по дубликатам"""
-    stats = await get_duplicates_stats()
-    
-    lines = ["🔍 <b>Статистика дубликатов</b>", ""]
-    lines.append(f"📨 Всего отправлено: {stats.get('total_sent', 0)}")
-    lines.append(f"🆔 Уникальных по контенту: {stats.get('unique_content', 0)}")
-    lines.append(f"👯 Групп дубликатов: {stats.get('duplicate_groups', 0)}")
-    lines.append("")
-    
-    # По источникам
-    if stats.get("by_source"):
-        lines.append("<b>По источникам:</b>")
-        for source, count in stats["by_source"].items():
-            lines.append(f"  • {source or 'неизвестно'}: {count}")
-        lines.append("")
-    
-    # Детали дубликатов
-    if stats.get("duplicate_details"):
-        lines.append("<b>Примеры дубликатов:</b>")
-        for dup in stats["duplicate_details"][:5]:
-            lines.append(f"  • Хеш {dup['hash'][:8]}...: {dup['count']} шт ({dup['sources']})")
-    
-    await message.answer("\n".join(lines), parse_mode=ParseMode.HTML)
-
-
-@router.message(Command("recent"))
-async def cmd_recent(message: Message):
-    """Показывает последние отправленные объявления"""
-    listings = await get_recent_listings(10)
-    
-    if not listings:
-        await message.answer("📭 Еще нет отправленных объявлений.")
-        return
-    
-    lines = ["📋 <b>Последние 10 отправленных объявлений:</b>", ""]
-    
-    for i, l in enumerate(listings, 1):
-        source = l.get("source", "?")
-        rooms = l.get("rooms", "?")
-        area = l.get("area", "?")
-        price = l.get("price", 0)
-        sent = l.get("sent_at", "")[:16] if l.get("sent_at") else "?"
-        
-        lines.append(f"{i}. [{source}] {rooms}к, {area}м², {price:,}".replace(",", " "))
-        lines.append(f"   🕐 {sent}")
-    
-    await message.answer("\n".join(lines), parse_mode=ParseMode.HTML)
-
-
-@router.message(Command("errors"))
-async def cmd_errors(message: Message):
-    """Показывает последние ошибки"""
-    errors = error_logger.get_errors(limit=15)
-    
-    if not errors:
-        await message.answer("✅ Ошибок нет! Все работает отлично.")
-        return
-    
-    # Формируем сообщение
-    text = "🚨 <b>Последние ошибки:</b>\n\n"
-    
-    for i, err in enumerate(reversed(errors), 1):
-        timestamp = err.get("timestamp", "")
-        source = err.get("source", "unknown")
-        msg = err.get("message", "")
-        exc = err.get("exception", "")
-        
-        text += f"<b>{i}.</b> [{source}] {timestamp}\n"
-        text += f"   📝 {msg[:100]}\n"
-        if exc:
-            text += f"   ⚠️ <code>{exc[:150]}</code>\n"
-        text += "\n"
-    
-    # Telegram ограничивает длину сообщения
-    if len(text) > 4000:
-        text = text[:4000] + "\n\n... (сокращено)"
-    
-    await message.answer(text, parse_mode=ParseMode.HTML)
-
-
-@router.message(Command("warnings"))
-async def cmd_warnings(message: Message):
-    """Показывает последние предупреждения"""
-    warnings = error_logger.get_warnings(limit=10)
-    
-    if not warnings:
-        await message.answer("✅ Предупреждений нет!")
-        return
-    
-    text = "⚡ <b>Последние предупреждения:</b>\n\n"
-    
-    for i, warn in enumerate(reversed(warnings), 1):
-        timestamp = warn.get("timestamp", "")
-        source = warn.get("source", "unknown")
-        msg = warn.get("message", "")
-        
-        text += f"<b>{i}.</b> [{source}] {timestamp}\n"
-        text += f"   📝 {msg[:100]}\n\n"
-    
-    await message.answer(text, parse_mode=ParseMode.HTML)
-
-
-@router.message(Command("clearerrors"))
-async def cmd_clear_errors(message: Message):
-    """Очищает все логи ошибок"""
-    error_logger.clear()
-    await message.answer("🗑 Все логи ошибок очищены!")
-
-
-@router.message(Command("logs"))
-async def cmd_logs(message: Message):
-    """Показывает все последние логи"""
-    logs = error_logger.get_all_logs(limit=20)
-    stats = error_logger.get_stats()
-    
-    if not logs:
-        await message.answer("📋 Логов пока нет.")
-        return
-    
-    text = f"📋 <b>Последние логи</b>\n"
-    text += f"Ошибок: {stats['total_errors']} | Предупреждений: {stats['total_warnings']}\n\n"
-    
-    # По источникам
-    if stats['errors_by_source']:
-        text += "<b>Ошибки по источникам:</b>\n"
-        for source, count in stats['errors_by_source'].items():
-            text += f"  • {source}: {count}\n"
-        text += "\n"
-    
-    text += "<b>Последние записи:</b>\n\n"
-    
-    for log in logs[:15]:
-        timestamp = log.get("timestamp", "")[-8:]  # Только время
-        source = log.get("source", "?")
-        msg = log.get("message", "")[:60]
-        log_type = "🔴" if log.get("type") == "error" else "🟡"
-        
-        text += f"{log_type} <code>{timestamp}</code> [{source}]\n   {msg}\n"
-    
-    if len(text) > 4000:
-        text = text[:4000] + "\n..."
-    
-    await message.answer(text, parse_mode=ParseMode.HTML)
-
-
-@router.message(Command("testai"))
-async def cmd_test_ai(message: Message):
-    """Тестирует ИИ-оценщик на примере объявления"""
-    if not AI_VALUATOR_AVAILABLE or not valuate_listing:
-        await message.answer(
-            "❌ <b>ИИ-оценщик не настроен</b>\n\n"
-            "Для активации:\n"
-            "1. Получи API ключ Groq: https://console.groq.com/keys\n"
-            "2. Добавь переменную GROQ_API_KEY в Railway\n\n"
-            "Подробнее: см. AI_SETUP.md",
-            parse_mode=ParseMode.HTML
-        )
-        return
-    
-    await message.answer("🤖 Тестирую ИИ-оценщик...")
-    
-    # Создаем тестовое объявление
-    from scrapers.base import Listing
-    test_listing = Listing(
-        id="test_123",
-        source="Test",
-        title="2-комн. квартира",
-        price=35000,
-        price_formatted="$35,000",
-        rooms=2,
-        area=50.0,
-        address="ул. Советская, Барановичи",
-        url="https://example.com",
-        floor="3/5",
-        year_built="2010",
-        currency="USD",
-        price_usd=35000,
-        price_byn=0,
-        price_per_sqm=700,
-        price_per_sqm_formatted="700 $/м²"
-    )
-    
-    try:
-        ai_valuation = await asyncio.wait_for(valuate_listing(test_listing), timeout=10.0)
-        
-        if ai_valuation:
-            fair_price = ai_valuation.get("fair_price_usd", 0)
-            is_overpriced = ai_valuation.get("is_overpriced", False)
-            assessment = ai_valuation.get("assessment", "")
-            
-            status = "🔴 Завышена" if is_overpriced else "🟢 Справедлива"
-            
-            await message.answer(
-                f"✅ <b>ИИ-оценщик работает!</b>\n\n"
-                f"📊 <b>Тестовое объявление:</b>\n"
-                f"2-комн., 50 м², $35,000\n\n"
-                f"🤖 <b>ИИ-оценка:</b>\n"
-                f"Справедливая цена: ${fair_price:,}\n"
-                f"Статус: {status}\n\n"
-                f"💡 <i>{assessment}</i>",
-                parse_mode=ParseMode.HTML
-            )
-        else:
-            await message.answer(
-                "⚠️ <b>ИИ-оценщик не вернул результат</b>\n\n"
-                "Проверь:\n"
-                "• Правильность API ключа\n"
-                "• Логи ошибок: /logs",
-                parse_mode=ParseMode.HTML
-            )
-    except asyncio.TimeoutError:
-        await message.answer(
-            "⏱ <b>Таймаут запроса</b>\n\n"
-            "ИИ-оценщик не ответил за 10 секунд.\n"
-            "Проверь подключение к интернету.",
-            parse_mode=ParseMode.HTML
-        )
-    except Exception as e:
-        await message.answer(
-            f"❌ <b>Ошибка тестирования</b>\n\n"
-            f"Детали: {str(e)}\n\n"
-            f"Проверь логи: /logs",
-            parse_mode=ParseMode.HTML
-        )
 
 
 async def create_bot() -> tuple[Bot, Dispatcher]:
