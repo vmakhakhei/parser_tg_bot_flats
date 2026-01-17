@@ -6,7 +6,15 @@ import json
 import logging
 from typing import Optional, List, Dict, Any
 from datetime import datetime
-from libsql import create_client, Client
+try:
+    from libsql_client import create_client, Client
+except ImportError:
+    try:
+        from libsql import create_client, Client
+    except ImportError:
+        # Fallback для разных версий пакета
+        create_client = None
+        Client = None
 from config import TURSO_DB_URL, TURSO_AUTH_TOKEN, USE_TURSO_CACHE
 from database import generate_content_hash
 from scrapers.base import Listing

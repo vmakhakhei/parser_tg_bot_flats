@@ -9,7 +9,7 @@ Brotli==1.1.0
 
 # Database
 aiosqlite==0.19.0
-libsql>=0.1.0
+libsql-client>=0.1.0
 
 # Environment Variables
 python-dotenv==1.0.0

@@ -4,7 +4,10 @@
 """
 import asyncio
 import sys
-from libsql import create_client
+try:
+    from libsql_client import create_client
+except ImportError:
+    from libsql import create_client
 from config import TURSO_DB_URL, TURSO_AUTH_TOKEN, USE_TURSO_CACHE
 
 
