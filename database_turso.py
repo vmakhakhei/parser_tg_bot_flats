@@ -6,20 +6,28 @@ import json
 import logging
 from typing import Optional, List, Dict, Any
 from datetime import datetime
+
+logger = logging.getLogger(__name__)
+
+# Импорт libsql с обработкой ошибок
 try:
-    from libsql_client import create_client, Client
-except ImportError:
+    # Попробуем разные варианты импорта
     try:
-        from libsql import create_client, Client
+        from libsql_client import create_client, Client
     except ImportError:
-        # Fallback для разных версий пакета
-        create_client = None
-        Client = None
+        try:
+            from libsql.client import create_client, Client
+        except ImportError:
+            from libsql import create_client, Client
+except ImportError as e:
+    logger.error(f"Не удалось импортировать libsql: {e}")
+    logger.error("Установите правильный пакет: pip install libsql")
+    create_client = None
+    Client = None
+
 from config import TURSO_DB_URL, TURSO_AUTH_TOKEN, USE_TURSO_CACHE
 from database import generate_content_hash
 from scrapers.base import Listing
-
-logger = logging.getLogger(__name__)
 
 
 def get_turso_client() -> Optional[Client]:
