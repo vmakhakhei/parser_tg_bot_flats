@@ -435,18 +435,70 @@ async def check_new_listings(bot: Bot):
         # Получаем город пользователя
         user_city = user_filters.get("city")
         
-        # Получаем объявления для города пользователя
-        # ИСПРАВЛЕНИЕ: Используем фильтры пользователя вместо широких диапазонов
-        # Это важно, чтобы скраперы (особенно Kufar) фильтровали на уровне API
-        aggregator = ListingsAggregator(enabled_sources=DEFAULT_SOURCES)
-        
-        all_listings = await aggregator.fetch_all_listings(
-            city=user_city,
-            min_rooms=user_filters.get("min_rooms", 1),
-            max_rooms=user_filters.get("max_rooms", 5),
-            min_price=user_filters.get("min_price", 0),
-            max_price=user_filters.get("max_price", 1000000),
+        # ========== КЭШИРОВАНИЕ: Сначала проверяем кэш в Turso ==========
+        from database_turso import (
+            get_cached_listings_by_filters, 
+            cache_listings_batch,
+            cached_listing_to_listing
         )
+        from config import USE_TURSO_CACHE
+        
+        cached_listings = []
+        if USE_TURSO_CACHE:
+            try:
+                cached_data = await get_cached_listings_by_filters(
+                    city=user_city,
+                    min_rooms=user_filters.get("min_rooms", 1),
+                    max_rooms=user_filters.get("max_rooms", 5),
+                    min_price=user_filters.get("min_price", 0),
+                    max_price=user_filters.get("max_price", 1000000),
+                    limit=200  # Берем больше, чтобы было из чего выбирать
+                )
+                
+                # Конвертируем из словарей в объекты Listing
+                for cached_dict in cached_data:
+                    try:
+                        listing = cached_listing_to_listing(cached_dict)
+                        cached_listings.append(listing)
+                    except Exception as e:
+                        logger.warning(f"Ошибка конвертации объявления из кэша: {e}")
+                        continue
+                
+                logger.info(f"📦 Найдено {len(cached_listings)} объявлений в кэше для пользователя {user_id}")
+            except Exception as e:
+                logger.warning(f"Ошибка получения данных из кэша, используем парсинг: {e}")
+        
+        # Получаем объявления для города пользователя
+        # Парсим сайты только если кэша нет или мало объявлений
+        all_listings = []
+        if len(cached_listings) < 10:  # Если в кэше меньше 10 объявлений - парсим
+            logger.info(f"🔍 В кэше мало объявлений ({len(cached_listings)}), парсим сайты...")
+            aggregator = ListingsAggregator(enabled_sources=DEFAULT_SOURCES)
+            
+            parsed_listings = await aggregator.fetch_all_listings(
+                city=user_city,
+                min_rooms=user_filters.get("min_rooms", 1),
+                max_rooms=user_filters.get("max_rooms", 5),
+                min_price=user_filters.get("min_price", 0),
+                max_price=user_filters.get("max_price", 1000000),
+            )
+            
+            # Сохраняем все найденные объявления в кэш
+            if USE_TURSO_CACHE and parsed_listings:
+                try:
+                    saved_count = await cache_listings_batch(parsed_listings)
+                    logger.info(f"💾 Сохранено {saved_count} объявлений в кэш")
+                except Exception as e:
+                    logger.warning(f"Ошибка сохранения в кэш: {e}")
+            
+            # Объединяем кэш и новые объявления (убираем дубликаты по ID)
+            existing_ids = {l.id for l in cached_listings}
+            new_listings = [l for l in parsed_listings if l.id not in existing_ids]
+            all_listings = cached_listings + new_listings
+        else:
+            # Используем только кэш
+            logger.info(f"✅ Используем кэш ({len(cached_listings)} объявлений), парсинг не требуется")
+            all_listings = cached_listings
     
         logger.info(f"Для пользователя {user_id} (город: {user_city}) найдено объявлений: {len(all_listings)}")
         

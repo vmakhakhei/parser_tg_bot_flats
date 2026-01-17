@@ -9,7 +9,7 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.interval import IntervalTrigger
 
 from bot import create_bot, check_new_listings
-from config import CHECK_INTERVAL, BOT_TOKEN
+from config import CHECK_INTERVAL, BOT_TOKEN, USE_TURSO_CACHE
 from database import init_database, clear_old_listings
 
 # Настройка логирования
@@ -57,6 +57,15 @@ async def main():
     await init_database()
     logger.info("✅ База данных инициализирована")
     
+    # Инициализация Turso (если включено)
+    if USE_TURSO_CACHE:
+        try:
+            from database_turso import ensure_tables_exist
+            await ensure_tables_exist()
+        except Exception as e:
+            logger.warning(f"⚠️ Не удалось инициализировать Turso: {e}")
+            logger.warning("💡 Проверьте переменные окружения TURSO_DB_URL и TURSO_AUTH_TOKEN")
+    
     # Проверка ИИ-оценщика
     try:
         from ai_valuator import get_valuator
@@ -98,6 +107,25 @@ async def main():
         name='Очистка старых записей',
         replace_existing=True
     )
+    
+    # Ежедневное обновление кэша Turso (если включено)
+    if USE_TURSO_CACHE:
+        async def update_turso_cache():
+            """Обновление кэша Turso"""
+            try:
+                from database_turso import update_cached_listings_daily
+                await update_cached_listings_daily()
+            except Exception as e:
+                logger.error(f"Ошибка обновления кэша Turso: {e}")
+        
+        scheduler.add_job(
+            update_turso_cache,
+            trigger=IntervalTrigger(days=1),
+            id='update_turso_cache',
+            name='Обновление кэша Turso',
+            replace_existing=True
+        )
+        logger.info("✅ Задача ежедневного обновления кэша Turso добавлена")
     
     scheduler.start()
     interval_hours = CHECK_INTERVAL / 60
