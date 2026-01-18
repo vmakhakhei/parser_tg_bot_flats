@@ -557,9 +557,10 @@ async def check_new_listings(bot: Any) -> None:
             )
             total_sent += user_new_count
 
+    # ДИАГНОСТИКА: финальная статистика
     if total_sent > 0:
         log_info("search", f"✅ Всего отправлено новых объявлений: {total_sent}")
     else:
-        log_info("search", "Новых объявлений нет")
+        log_warning("search", "⚠️ Новых объявлений нет - проверьте фильтры и логи выше")
 
     log_info("search", "=" * 50)
