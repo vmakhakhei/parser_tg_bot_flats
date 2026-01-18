@@ -74,6 +74,11 @@ def _check_rooms_filter(
     min_rooms = filters.get("min_rooms", 1)
     max_rooms = filters.get("max_rooms", 4)
 
+    # ВРЕМЕННО ОСЛАБЛЯЕМ ФИЛЬТР: если диапазон слишком узкий, расширяем его
+    if max_rooms < min_rooms:
+        log_warning("filter", f"[user_{user_id}] Некорректный фильтр: max_rooms={max_rooms} < min_rooms={min_rooms}, исправляю")
+        max_rooms = min_rooms + 3
+
     if listing.rooms < min_rooms or listing.rooms > max_rooms:
         if log_details:
             _log_filtered_listing(
@@ -112,6 +117,12 @@ def _check_price_filter(
 
     min_price = filters.get("min_price", 0)
     max_price = filters.get("max_price", 1000000)
+
+    # ВРЕМЕННО ОСЛАБЛЯЕМ ФИЛЬТР: если max_price слишком маленький, увеличиваем его
+    # Это защита от слишком строгих фильтров
+    if max_price < 10000:  # Если максимум меньше 10k, это подозрительно
+        log_warning("filter", f"[user_{user_id}] Подозрительно низкий max_price={max_price}, ослабляю фильтр")
+        max_price = 1000000
 
     if price < min_price or price > max_price:
         if log_details:
