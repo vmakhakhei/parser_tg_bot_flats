@@ -130,19 +130,25 @@ class ListingsAggregator:
                 log_error("aggregator", f"Scraper '{source_name}' завершился с ошибкой: {type(result).__name__}", result)
                 source_stats[source_name] = {"error": str(result), "count": 0}
                 failed_sources += 1
+            elif result is None:
+                # КРИТИЧНО: None считается ошибкой
+                log_error("aggregator", f"Scraper '{source_name}' вернул None - это ошибка!")
+                source_stats[source_name] = {"error": "Вернул None", "count": 0}
+                failed_sources += 1
             elif isinstance(result, list):
-                all_listings.extend(result)
                 count = len(result)
+                all_listings.extend(result)
                 source_stats[source_name] = {"count": count, "error": None}
                 successful_sources += 1
                 log_info("aggregator", f"✅ Scraper '{source_name}': получено {count} объявлений")
             else:
-                log_warning("aggregator", f"Scraper '{source_name}': неожиданный тип результата: {type(result)}")
+                log_error("aggregator", f"Scraper '{source_name}': неожиданный тип результата: {type(result)}, значение: {result}")
                 source_stats[source_name] = {"error": f"Неожиданный тип результата: {type(result)}", "count": 0}
                 failed_sources += 1
         
         # Логируем итоговую статистику
         log_info("aggregator", f"Парсинг завершен: успешно {successful_sources}/{len(source_names)}, ошибок {failed_sources}")
+        log_info("aggregator", f"📊 Всего объявлений до дедупликации: {len(all_listings)}")
         
         # Удаляем дубликаты по ID
         unique_listings = self._remove_duplicates(all_listings)
@@ -154,6 +160,11 @@ class ListingsAggregator:
         unique_listings.sort(key=lambda x: x.price if x.price > 0 else 999999999)
         
         log_info("aggregator", f"Итого уникальных объявлений: {len(unique_listings)}")
+        
+        # КРИТИЧНО: явно возвращаем список
+        if not isinstance(unique_listings, list):
+            log_error("aggregator", f"ОШИБКА: _remove_duplicates вернул не список: {type(unique_listings)}")
+            return []
         
         return unique_listings
     
@@ -202,12 +213,25 @@ class ListingsAggregator:
                         max_price=max_price,
                     )
                     
-                    # Проверяем результат
-                    if not isinstance(listings, list):
-                        log_warning("aggregator", f"Scraper '{scraper_name}' вернул не список: {type(listings)}")
+                    # Проверяем результат - КРИТИЧНО: должен быть список, не None
+                    if listings is None:
+                        log_error("aggregator", f"Scraper '{scraper_name}' вернул None вместо списка - это ошибка!")
                         return []
                     
-                    log_info("aggregator", f"✅ Scraper '{scraper_name}': получено {len(listings)} объявлений")
+                    if not isinstance(listings, list):
+                        log_error("aggregator", f"Scraper '{scraper_name}' вернул не список: {type(listings)}, значение: {listings}")
+                        return []
+                    
+                    # Логируем результат с деталями
+                    count = len(listings)
+                    log_info("aggregator", f"✅ Scraper '{scraper_name}': получено {count} объявлений")
+                    
+                    # Проверяем, что все элементы - это Listing объекты
+                    if count > 0:
+                        first_item = listings[0]
+                        if not isinstance(first_item, Listing):
+                            log_warning("aggregator", f"Scraper '{scraper_name}': первый элемент не Listing, а {type(first_item)}")
+                    
                     return listings
                     
             except asyncio.TimeoutError as e:

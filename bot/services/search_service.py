@@ -287,6 +287,17 @@ async def _parse_and_cache_listings(
         max_price=user_filters.get("max_price", 1000000),
     )
 
+    # ДИАГНОСТИКА: проверяем результат парсинга
+    if parsed_listings is None:
+        log_error("search", "❌ Aggregator вернул None вместо списка объявлений!")
+        return cached_listings
+
+    if not isinstance(parsed_listings, list):
+        log_error("search", f"❌ Aggregator вернул не список: {type(parsed_listings)}")
+        return cached_listings
+
+    log_info("search", f"📥 Парсеры вернули {len(parsed_listings)} объявлений")
+
     # Сохраняем все найденные объявления в кэш
     if USE_TURSO_CACHE and parsed_listings:
         try:
@@ -300,6 +311,8 @@ async def _parse_and_cache_listings(
     # Объединяем кэш и новые объявления (убираем дубликаты по ID)
     existing_ids = {listing.id for listing in cached_listings}
     new_listings = [listing for listing in parsed_listings if listing.id not in existing_ids]
+
+    log_info("search", f"📊 Объединение: кэш={len(cached_listings)}, новых={len(new_listings)}, итого={len(cached_listings) + len(new_listings)}")
 
     return cached_listings + new_listings
 
@@ -410,18 +423,67 @@ async def _process_user_listings_normal_mode(
     """
     import asyncio
 
+    # ДИАГНОСТИКА: логируем сколько объявлений получено
+    log_info("search", f"[user_{user_id}] 📥 Получено объявлений для обработки: {len(all_listings)}")
+
+    if not all_listings:
+        log_warning("search", f"[user_{user_id}] ⚠️ Нет объявлений для обработки!")
+        return 0
+
     user_new_count = 0
+    filtered_count = 0
+    already_sent_count = 0
+    duplicate_count = 0
 
     for listing in all_listings:
+        # Проверяем фильтры
+        if not matches_user_filters(listing, user_filters, user_id=user_id, log_details=False):
+            filtered_count += 1
+            continue
+
+        # Проверяем, не отправляли ли уже
+        if await is_listing_sent_to_user(user_id, listing.id):
+            already_sent_count += 1
+            continue
+
+        # Проверяем дубликаты
+        dup_check = await is_duplicate_content(
+            rooms=listing.rooms,
+            area=listing.area,
+            address=listing.address,
+            price=listing.price,
+        )
+
+        if dup_check["is_duplicate"]:
+            duplicate_count += 1
+            continue
+
+        # Отправляем объявление
         if await _process_listing_for_user(bot, user_id, listing, user_filters):
             user_new_count += 1
             # Задержка между сообщениями чтобы не получить бан
             await asyncio.sleep(2)
 
+    # ДИАГНОСТИКА: логируем статистику фильтрации
+    log_info(
+        "search",
+        f"[user_{user_id}] 📊 Статистика обработки: "
+        f"всего={len(all_listings)}, "
+        f"отфильтровано={filtered_count}, "
+        f"уже отправлено={already_sent_count}, "
+        f"дубликаты={duplicate_count}, "
+        f"отправлено={user_new_count}",
+    )
+
     if user_new_count > 0:
         log_info(
             "search",
             f"Пользователю {user_id} отправлено: {user_new_count} объявлений",
+        )
+    elif len(all_listings) > 0:
+        log_warning(
+            "search",
+            f"[user_{user_id}] ⚠️ Все {len(all_listings)} объявлений были отфильтрованы или уже отправлены!",
         )
 
     return user_new_count
@@ -461,6 +523,17 @@ async def check_new_listings(bot: Any) -> None:
 
         # Получаем объявления для пользователя
         all_listings = await fetch_listings_for_user(user_id, user_filters)
+
+        # ДИАГНОСТИКА: проверяем результат получения объявлений
+        if all_listings is None:
+            log_error("search", f"[user_{user_id}] ❌ fetch_listings_for_user вернул None!")
+            continue
+
+        if not isinstance(all_listings, list):
+            log_error("search", f"[user_{user_id}] ❌ fetch_listings_for_user вернул не список: {type(all_listings)}")
+            continue
+
+        log_info("search", f"[user_{user_id}] 📥 Получено объявлений: {len(all_listings)}")
 
         # Проверяем режим работы пользователя
         if user_filters.get("ai_mode"):
