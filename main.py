@@ -248,8 +248,11 @@ async def main():
                     raise
     finally:
         scheduler.shutdown()
-        if bot.session and not bot.session.closed:
-            await bot.session.close()
+        if bot.session:
+            try:
+                await bot.session.close()
+            except Exception as e:
+                logger.warning(f"Ошибка при закрытии сессии: {e}")
         logger.info("👋 Бот остановлен")
 
 

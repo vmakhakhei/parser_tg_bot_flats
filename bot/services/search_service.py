@@ -289,6 +289,12 @@ async def _parse_and_cache_listings(
         f"🔍 В кэше мало объявлений ({len(cached_listings)}), парсим сайты...",
     )
 
+    # #region agent log
+    try:
+        with open('/Users/vmakhakei/TG BOT/.cursor/debug.log', 'a') as f:
+            f.write(json.dumps({"sessionId":"debug-session","runId":"run1","hypothesisId":"C","location":"search_service.py:292","message":"Starting aggregator fetch","data":{"city":user_city,"min_rooms":user_filters.get("min_rooms",1),"max_rooms":user_filters.get("max_rooms",5),"min_price":user_filters.get("min_price",0),"max_price":user_filters.get("max_price",1000000)},"timestamp":int(time.time()*1000)})+'\n')
+    except: pass
+    # #endregion
     aggregator = ListingsAggregator(enabled_sources=DEFAULT_SOURCES)
     parsed_listings = await aggregator.fetch_all_listings(
         city=user_city,
@@ -297,6 +303,12 @@ async def _parse_and_cache_listings(
         min_price=user_filters.get("min_price", 0),
         max_price=user_filters.get("max_price", 1000000),
     )
+    # #region agent log
+    try:
+        with open('/Users/vmakhakei/TG BOT/.cursor/debug.log', 'a') as f:
+            f.write(json.dumps({"sessionId":"debug-session","runId":"run1","hypothesisId":"C","location":"search_service.py:300","message":"Aggregator fetch completed","data":{"count":len(parsed_listings) if parsed_listings else 0,"is_none":parsed_listings is None,"type":str(type(parsed_listings))},"timestamp":int(time.time()*1000)})+'\n')
+    except: pass
+    # #endregion
 
     # ДИАГНОСТИКА: проверяем результат парсинга
     if parsed_listings is None:
@@ -448,8 +460,20 @@ async def _process_user_listings_normal_mode(
 
     for listing in all_listings:
         # Проверяем фильтры
+        # #region agent log
+        try:
+            with open('/Users/vmakhakei/TG BOT/.cursor/debug.log', 'a') as f:
+                f.write(json.dumps({"sessionId":"debug-session","runId":"run1","hypothesisId":"D","location":"search_service.py:450","message":"Checking listing filters","data":{"user_id":user_id,"listing_price":listing.price,"listing_rooms":listing.rooms,"min_price":user_filters.get("min_price"),"max_price":user_filters.get("max_price"),"min_rooms":user_filters.get("min_rooms"),"max_rooms":user_filters.get("max_rooms")},"timestamp":int(time.time()*1000)})+'\n')
+        except: pass
+        # #endregion
         if not matches_user_filters(listing, user_filters, user_id=user_id, log_details=False):
             filtered_count += 1
+            # #region agent log
+            try:
+                with open('/Users/vmakhakei/TG BOT/.cursor/debug.log', 'a') as f:
+                    f.write(json.dumps({"sessionId":"debug-session","runId":"run1","hypothesisId":"D","location":"search_service.py:453","message":"Listing filtered out","data":{"user_id":user_id,"listing_id":listing.id},"timestamp":int(time.time()*1000)})+'\n')
+            except: pass
+            # #endregion
             continue
 
         # Проверяем, не отправляли ли уже
@@ -510,7 +534,21 @@ async def check_new_listings(bot: Any) -> None:
     log_info("search", "Проверка новых объявлений со всех источников...")
 
     # Получаем список активных пользователей
+    # #region agent log
+    import json
+    import time
+    try:
+        with open('/Users/vmakhakei/TG BOT/.cursor/debug.log', 'a') as f:
+            f.write(json.dumps({"sessionId":"debug-session","runId":"run1","hypothesisId":"A","location":"search_service.py:513","message":"check_new_listings: calling get_active_users","data":{},"timestamp":int(time.time()*1000)})+'\n')
+    except: pass
+    # #endregion
     active_users = await get_active_users()
+    # #region agent log
+    try:
+        with open('/Users/vmakhakei/TG BOT/.cursor/debug.log', 'a') as f:
+            f.write(json.dumps({"sessionId":"debug-session","runId":"run1","hypothesisId":"A","location":"search_service.py:516","message":"check_new_listings: get_active_users result","data":{"count":len(active_users),"user_ids":active_users},"timestamp":int(time.time()*1000)})+'\n')
+    except: pass
+    # #endregion
 
     if not active_users:
         log_info("search", "Нет активных пользователей")
@@ -522,8 +560,26 @@ async def check_new_listings(bot: Any) -> None:
 
     # Для каждого пользователя проверяем объявления по его фильтрам
     for user_id in active_users:
+        # #region agent log
+        try:
+            with open('/Users/vmakhakei/TG BOT/.cursor/debug.log', 'a') as f:
+                f.write(json.dumps({"sessionId":"debug-session","runId":"run1","hypothesisId":"A","location":"search_service.py:524","message":"Processing user","data":{"user_id":user_id},"timestamp":int(time.time()*1000)})+'\n')
+        except: pass
+        # #endregion
         user_filters = await get_user_filters(user_id)
+        # #region agent log
+        try:
+            with open('/Users/vmakhakei/TG BOT/.cursor/debug.log', 'a') as f:
+                f.write(json.dumps({"sessionId":"debug-session","runId":"run1","hypothesisId":"A","location":"search_service.py:526","message":"User filters retrieved","data":{"user_id":user_id,"has_filters":user_filters is not None,"is_active":user_filters.get("is_active") if user_filters else None},"timestamp":int(time.time()*1000)})+'\n')
+        except: pass
+        # #endregion
         if not user_filters or not user_filters.get("is_active"):
+            # #region agent log
+            try:
+                with open('/Users/vmakhakei/TG BOT/.cursor/debug.log', 'a') as f:
+                    f.write(json.dumps({"sessionId":"debug-session","runId":"run1","hypothesisId":"A","location":"search_service.py:528","message":"Skipping user - no filters or inactive","data":{"user_id":user_id,"has_filters":user_filters is not None,"is_active":user_filters.get("is_active") if user_filters else None},"timestamp":int(time.time()*1000)})+'\n')
+            except: pass
+            # #endregion
             continue
 
         # Проверяем валидность фильтров

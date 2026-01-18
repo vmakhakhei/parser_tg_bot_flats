@@ -319,12 +319,59 @@ async def mark_listing_sent_to_user(user_id: int, listing_id: str):
 
 async def get_active_users() -> List[int]:
     """Возвращает список ID активных пользователей (с включенными фильтрами)"""
+    # #region agent log
+    import json
+    import time
+    try:
+        with open('/Users/vmakhakei/TG BOT/.cursor/debug.log', 'a') as f:
+            f.write(json.dumps({"sessionId":"debug-session","runId":"run1","hypothesisId":"A","location":"database.py:320","message":"get_active_users entry","data":{"DATABASE_PATH":DATABASE_PATH},"timestamp":int(time.time()*1000)})+'\n')
+    except: pass
+    # #endregion
+    
+    # Проверяем, используется ли Turso
+    from config import USE_TURSO_CACHE
+    # #region agent log
+    try:
+        with open('/Users/vmakhakei/TG BOT/.cursor/debug.log', 'a') as f:
+            f.write(json.dumps({"sessionId":"debug-session","runId":"run1","hypothesisId":"B","location":"database.py:325","message":"USE_TURSO_CACHE check","data":{"USE_TURSO_CACHE":USE_TURSO_CACHE},"timestamp":int(time.time()*1000)})+'\n')
+    except: pass
+    # #endregion
+    
+    if USE_TURSO_CACHE:
+        try:
+            from database_turso import get_active_users_turso
+            result = await get_active_users_turso()
+            # #region agent log
+            try:
+                with open('/Users/vmakhakei/TG BOT/.cursor/debug.log', 'a') as f:
+                    f.write(json.dumps({"sessionId":"debug-session","runId":"run1","hypothesisId":"B","location":"database.py:332","message":"get_active_users_turso result","data":{"count":len(result),"user_ids":result},"timestamp":int(time.time()*1000)})+'\n')
+            except: pass
+            # #endregion
+            return result
+        except Exception as e:
+            # #region agent log
+            try:
+                with open('/Users/vmakhakei/TG BOT/.cursor/debug.log', 'a') as f:
+                    f.write(json.dumps({"sessionId":"debug-session","runId":"run1","hypothesisId":"B","location":"database.py:337","message":"get_active_users_turso error","data":{"error":str(e)},"timestamp":int(time.time()*1000)})+'\n')
+            except: pass
+            # #endregion
+            # Fallback to SQLite
+            pass
+    
+    # SQLite fallback
     async with aiosqlite.connect(DATABASE_PATH) as db:
         cursor = await db.execute(
             "SELECT user_id FROM user_filters WHERE is_active = 1"
         )
         rows = await cursor.fetchall()
-        return [row[0] for row in rows]
+        result = [row[0] for row in rows]
+        # #region agent log
+        try:
+            with open('/Users/vmakhakei/TG BOT/.cursor/debug.log', 'a') as f:
+                f.write(json.dumps({"sessionId":"debug-session","runId":"run1","hypothesisId":"A","location":"database.py:350","message":"get_active_users SQLite result","data":{"count":len(result),"user_ids":result},"timestamp":int(time.time()*1000)})+'\n')
+        except: pass
+        # #endregion
+        return result
 
 
 async def save_ai_selected_listings(user_id: int, selected_listings: List[Dict[str, Any]]):
