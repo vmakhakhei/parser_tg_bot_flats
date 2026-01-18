@@ -58,6 +58,72 @@ logger = logging.getLogger(__name__)
 # Роутер для обработки команд
 router = Router()
 
+
+# ========== ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ДЛЯ СИНХРОНИЗАЦИИ С TURSO ==========
+
+async def sync_user_filters_to_turso(
+    user_id: int,
+    city: str = "барановичи",
+    min_rooms: int = 1,
+    max_rooms: int = 4,
+    min_price: int = 0,
+    max_price: int = 100000,
+    is_active: bool = True,
+    ai_mode: bool = False,
+    seller_type: Optional[str] = None
+) -> bool:
+    """
+    Синхронизирует фильтры пользователя в Turso
+    Конвертирует формат из старой БД (min_rooms/max_rooms) в новый формат (rooms как список)
+    """
+    try:
+        from database_turso import set_user_filters_turso
+        
+        # Конвертируем min_rooms/max_rooms в список комнат
+        rooms = list(range(min_rooms, max_rooms + 1)) if min_rooms > 0 and max_rooms > 0 else None
+        
+        return await set_user_filters_turso(
+            user_id=user_id,
+            min_price=min_price,
+            max_price=max_price if max_price < 1000000 else None,
+            rooms=rooms,
+            region=city,
+            active=is_active,
+            ai_mode=ai_mode,
+            seller_type=seller_type
+        )
+    except Exception as e:
+        logger.warning(f"Не удалось синхронизировать фильтры в Turso: {e}")
+        return False
+
+
+async def get_user_filters_unified(user_id: int) -> Optional[Dict[str, Any]]:
+    """
+    Получает фильтры пользователя из Turso или старой БД
+    Приоритет: Turso > старая БД
+    """
+    # Сначала пробуем Turso
+    try:
+        from database_turso import get_user_filters_turso
+        turso_filters = await get_user_filters_turso(user_id)
+        if turso_filters:
+            # Конвертируем формат для совместимости
+            rooms = turso_filters.get("rooms", [])
+            if rooms and len(rooms) > 0:
+                turso_filters["min_rooms"] = min(rooms)
+                turso_filters["max_rooms"] = max(rooms)
+            else:
+                turso_filters["min_rooms"] = 1
+                turso_filters["max_rooms"] = 4
+            turso_filters["is_active"] = turso_filters.get("active", True)
+            turso_filters["city"] = turso_filters.get("region", "барановичи")
+            return turso_filters
+    except Exception as e:
+        logger.warning(f"Не удалось получить фильтры из Turso: {e}")
+    
+    # Если не получилось из Turso, используем старую БД
+    return await get_user_filters(user_id)
+
 # FSM состояния для ввода цены
 class PriceStates(StatesGroup):
     waiting_for_min_price = State()
@@ -437,6 +503,14 @@ async def check_new_listings(bot: Bot):
         
         # ========== КЭШИРОВАНИЕ: Сначала проверяем кэш в Turso ==========
         from database_turso import (
+            create_or_update_user,
+            get_user_filters_turso,
+            set_user_filters_turso,
+            get_active_users_turso,
+            sync_ads_from_kufar,
+            build_dynamic_query,
+            check_api_query_cache,
+            save_api_query_cache,
             get_cached_listings_by_filters, 
             cache_listings_batch,
             cached_listing_to_listing
@@ -1089,8 +1163,40 @@ async def cmd_start(message: Message, state: FSMContext):
     """Обработчик команды /start - пошаговая настройка фильтров"""
     user_id = message.from_user.id
     
-    # Проверяем, есть ли у пользователя фильтры
+    # Создаем/обновляем пользователя в Turso
+    try:
+        from database_turso import create_or_update_user
+        await create_or_update_user(
+            user_id=user_id,
+            username=message.from_user.username,
+            first_name=message.from_user.first_name,
+            last_name=message.from_user.last_name
+        )
+    except Exception as e:
+        logger.warning(f"Не удалось создать пользователя в Turso: {e}")
+    
+    # Проверяем, есть ли у пользователя фильтры (из старой БД или Turso)
     user_filters = await get_user_filters(user_id)
+    
+    # Если фильтров нет в старой БД, проверяем Turso
+    if not user_filters:
+        try:
+            from database_turso import get_user_filters_turso
+            user_filters = await get_user_filters_turso(user_id)
+            # Конвертируем формат фильтров из Turso в формат старой БД для совместимости
+            if user_filters:
+                # Конвертируем rooms из списка в min_rooms/max_rooms
+                rooms = user_filters.get("rooms", [])
+                if rooms and len(rooms) > 0:
+                    user_filters["min_rooms"] = min(rooms)
+                    user_filters["max_rooms"] = max(rooms)
+                else:
+                    user_filters["min_rooms"] = 1
+                    user_filters["max_rooms"] = 4
+                user_filters["is_active"] = user_filters.get("active", True)
+                user_filters["city"] = user_filters.get("region", "барановичи")
+        except Exception as e:
+            logger.warning(f"Не удалось получить фильтры из Turso: {e}")
     
     if not user_filters:
         # Первый запуск - начинаем пошаговую настройку
