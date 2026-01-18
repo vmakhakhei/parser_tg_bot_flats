@@ -224,13 +224,65 @@ class HTTPClient:
         Returns:
             HTML текст или None при ошибке
         """
-        response = await self.get(url, headers=headers, params=params, source_name=source_name)
-        if response:
-            try:
-                return await response.text()
-            except Exception as e:
-                log_error(source_name, f"Ошибка чтения HTML из {url}", e)
+        await self.start_session()
+        
+        # Объединяем заголовки
+        request_headers = {**self.base_headers}
+        if headers:
+            request_headers.update(headers)
+        
+        for attempt in range(1, self.retry_count + 1):
+            # Проверяем и пересоздаем сессию перед каждой попыткой
+            if self.session is None or self.session.closed:
+                await self.start_session()
+            
+            if self.session is None:
+                log_error(source_name, f"Не удалось создать сессию для {url}")
                 return None
+            
+            try:
+                async with self.session.get(url, headers=request_headers, params=params) as response:
+                    if response.status == 200:
+                        # Читаем тело ответа ВНУТРИ async with блока
+                        try:
+                            text = await response.text()
+                            if attempt > 1:
+                                log_info(source_name, f"Успешный запрос к {url} после {attempt} попытки")
+                            return text
+                        except Exception as e:
+                            log_error(source_name, f"Ошибка чтения HTML из {url}", e)
+                            if attempt < self.retry_count:
+                                await asyncio.sleep(self.retry_delay * attempt)
+                                continue
+                            return None
+                    else:
+                        error_msg = f"HTTP {response.status} для {url}"
+                        if attempt < self.retry_count:
+                            log_warning(source_name, f"{error_msg}, попытка {attempt}/{self.retry_count}")
+                            await asyncio.sleep(self.retry_delay * attempt)
+                        else:
+                            log_error(source_name, error_msg)
+                            return None
+                            
+            except (asyncio.TimeoutError, aiohttp.ClientError, AttributeError) as e:
+                if attempt < self.retry_count:
+                    log_warning(source_name, f"Ошибка для {url}, попытка {attempt}/{self.retry_count}: {type(e).__name__}")
+                    if isinstance(e, (aiohttp.ClientConnectionError, aiohttp.ClientOSError, AttributeError)):
+                        await self.start_session()
+                    await asyncio.sleep(self.retry_delay * attempt)
+                else:
+                    log_error(source_name, f"Ошибка для {url} после {self.retry_count} попыток", e)
+                    return None
+            except Exception as e:
+                if attempt < self.retry_count:
+                    log_warning(source_name, f"Неожиданная ошибка для {url}, попытка {attempt}/{self.retry_count}: {type(e).__name__}")
+                    if isinstance(e, (aiohttp.ClientConnectionError, aiohttp.ClientOSError)):
+                        await self.start_session()
+                    await asyncio.sleep(self.retry_delay * attempt)
+                else:
+                    log_error(source_name, f"Неожиданная ошибка для {url} после {self.retry_count} попыток", e)
+                    return None
+        
         return None
     
     async def fetch_json(
@@ -252,6 +304,8 @@ class HTTPClient:
         Returns:
             JSON данные или None при ошибке
         """
+        await self.start_session()
+        
         # Устанавливаем заголовок для JSON
         json_headers = {"Accept": "application/json, text/plain, */*"}
         if headers:
@@ -259,13 +313,58 @@ class HTTPClient:
         else:
             json_headers = {**self.base_headers, **json_headers}
         
-        response = await self.get(url, headers=json_headers, params=params, source_name=source_name)
-        if response:
-            try:
-                return await response.json()
-            except Exception as e:
-                log_error(source_name, f"Ошибка чтения JSON из {url}", e)
+        for attempt in range(1, self.retry_count + 1):
+            # Проверяем и пересоздаем сессию перед каждой попыткой
+            if self.session is None or self.session.closed:
+                await self.start_session()
+            
+            if self.session is None:
+                log_error(source_name, f"Не удалось создать сессию для {url}")
                 return None
+            
+            try:
+                async with self.session.get(url, headers=json_headers, params=params) as response:
+                    if response.status == 200:
+                        # Читаем тело ответа ВНУТРИ async with блока
+                        try:
+                            data = await response.json()
+                            if attempt > 1:
+                                log_info(source_name, f"Успешный запрос к {url} после {attempt} попытки")
+                            return data
+                        except Exception as e:
+                            log_error(source_name, f"Ошибка чтения JSON из {url}", e)
+                            if attempt < self.retry_count:
+                                await asyncio.sleep(self.retry_delay * attempt)
+                                continue
+                            return None
+                    else:
+                        error_msg = f"HTTP {response.status} для {url}"
+                        if attempt < self.retry_count:
+                            log_warning(source_name, f"{error_msg}, попытка {attempt}/{self.retry_count}")
+                            await asyncio.sleep(self.retry_delay * attempt)
+                        else:
+                            log_error(source_name, error_msg)
+                            return None
+                            
+            except (asyncio.TimeoutError, aiohttp.ClientError, AttributeError) as e:
+                if attempt < self.retry_count:
+                    log_warning(source_name, f"Ошибка для {url}, попытка {attempt}/{self.retry_count}: {type(e).__name__}")
+                    if isinstance(e, (aiohttp.ClientConnectionError, aiohttp.ClientOSError, AttributeError)):
+                        await self.start_session()
+                    await asyncio.sleep(self.retry_delay * attempt)
+                else:
+                    log_error(source_name, f"Ошибка для {url} после {self.retry_count} попыток", e)
+                    return None
+            except Exception as e:
+                if attempt < self.retry_count:
+                    log_warning(source_name, f"Неожиданная ошибка для {url}, попытка {attempt}/{self.retry_count}: {type(e).__name__}")
+                    if isinstance(e, (aiohttp.ClientConnectionError, aiohttp.ClientOSError)):
+                        await self.start_session()
+                    await asyncio.sleep(self.retry_delay * attempt)
+                else:
+                    log_error(source_name, f"Неожиданная ошибка для {url} после {self.retry_count} попыток", e)
+                    return None
+        
         return None
 
 
