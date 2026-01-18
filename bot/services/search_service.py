@@ -494,10 +494,38 @@ async def _process_user_listings_normal_mode(
             continue
 
         # Отправляем объявление
-        if await _process_listing_for_user(bot, user_id, listing, user_filters):
-            user_new_count += 1
-            # Задержка между сообщениями чтобы не получить бан
-            await asyncio.sleep(2)
+        # ВАЖНО: не проверяем фильтры повторно в _process_listing_for_user,
+        # так как они уже проверены выше
+        try:
+            from bot.services.notification_service import send_listing_to_user
+            
+            # Проверяем, не отправляли ли уже этому пользователю (уже проверено выше, но для надежности)
+            if await is_listing_sent_to_user(user_id, listing.id):
+                already_sent_count += 1
+                continue
+            
+            # Проверяем глобальную дедупликацию по контенту (уже проверено выше, но для надежности)
+            dup_check = await is_duplicate_content(
+                rooms=listing.rooms,
+                area=listing.area,
+                address=listing.address,
+                price=listing.price,
+            )
+            if dup_check["is_duplicate"]:
+                duplicate_count += 1
+                continue
+            
+            # Отправляем объявление пользователю БЕЗ ИИ-оценки (обычный режим)
+            if await send_listing_to_user(bot, user_id, listing, use_ai_valuation=False):
+                user_new_count += 1
+                log_info("search", f"[user_{user_id}] ✅ Отправлено объявление {listing.id} ({user_new_count}/{len(all_listings)})")
+                # Задержка между сообщениями чтобы не получить бан
+                await asyncio.sleep(2)
+            else:
+                log_warning("search", f"[user_{user_id}] ⚠️ Не удалось отправить объявление {listing.id}")
+        except Exception as e:
+            log_error("search", f"[user_{user_id}] ❌ Ошибка отправки объявления {listing.id}", e)
+            continue
 
     # ДИАГНОСТИКА: логируем статистику фильтрации
     log_info(

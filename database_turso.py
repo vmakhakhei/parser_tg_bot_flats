@@ -184,11 +184,39 @@ async def get_cached_listings_by_filters(
             """, (city, min_rooms, max_rooms, min_price, max_price, status, limit))
             return cursor.fetchall()
         
-        rows = await asyncio.to_thread(_execute)
+        # Выполняем запрос и получаем колонки
+        def _execute_with_columns():
+            cursor = conn.execute("""
+                SELECT * FROM cached_listings
+                WHERE city = ? 
+                AND rooms >= ? AND rooms <= ?
+                AND price >= ? AND price <= ?
+                AND status = ?
+                ORDER BY updated_at DESC
+                LIMIT ?
+            """, (city, min_rooms, max_rooms, min_price, max_price, status, limit))
+            rows = cursor.fetchall()
+            columns = [desc[0] for desc in cursor.description]
+            return rows, columns
+        
+        rows, columns = await asyncio.to_thread(_execute_with_columns)
         
         listings = []
         for row in rows:
-            listing_dict = dict(row)
+            try:
+                # Правильная конвертация Row в словарь
+                if hasattr(row, '_asdict'):
+                    # Если это Row объект с методом _asdict
+                    listing_dict = row._asdict()
+                elif isinstance(row, dict):
+                    # Если уже словарь
+                    listing_dict = row
+                else:
+                    # Если это кортеж или список - используем zip с колонками
+                    listing_dict = dict(zip(columns, row))
+            except Exception as e:
+                log_error("turso_cache", f"Ошибка конвертации строки в словарь: {e}, row={row}, columns={columns}")
+                continue
             # Конвертируем photos из JSON строки в список
             if listing_dict.get("photos"):
                 try:
