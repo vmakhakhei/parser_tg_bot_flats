@@ -91,6 +91,12 @@ class HTTPClient:
     async def start_session(self):
         """Создает HTTP сессию"""
         if self.session is None or self.session.closed:
+            # Закрываем старую сессию, если она существует
+            if self.session is not None and not self.session.closed:
+                try:
+                    await self.session.close()
+                except Exception:
+                    pass  # Игнорируем ошибки при закрытии
             self.session = aiohttp.ClientSession(
                 headers=self.base_headers,
                 timeout=self.timeout
@@ -131,6 +137,15 @@ class HTTPClient:
         last_exception = None
         
         for attempt in range(1, self.retry_count + 1):
+            # Проверяем и пересоздаем сессию перед каждой попыткой
+            if self.session is None or self.session.closed:
+                await self.start_session()
+            
+            # Дополнительная проверка на случай, если сессия все еще None
+            if self.session is None:
+                log_error(source_name, f"Не удалось создать сессию для {url}")
+                return None
+            
             try:
                 async with self.session.get(url, headers=request_headers, params=params) as response:
                     if response.status == 200:
@@ -158,15 +173,31 @@ class HTTPClient:
                 last_exception = e
                 if attempt < self.retry_count:
                     log_warning(source_name, f"Ошибка клиента для {url}, попытка {attempt}/{self.retry_count}: {type(e).__name__}")
+                    # Пересоздаем сессию при ошибке соединения
+                    if isinstance(e, (aiohttp.ClientConnectionError, aiohttp.ClientOSError)):
+                        await self.start_session()
                     await asyncio.sleep(self.retry_delay * attempt)
                 else:
                     log_error(source_name, f"Ошибка клиента для {url} после {self.retry_count} попыток", e)
                     return None
                     
+            except AttributeError as e:
+                # Ошибка "NoneType object has no attribute 'get'" - сессия была закрыта
+                last_exception = e
+                if attempt < self.retry_count:
+                    log_warning(source_name, f"Сессия закрыта для {url}, пересоздаю сессию, попытка {attempt}/{self.retry_count}")
+                    await self.start_session()  # Пересоздаем сессию
+                    await asyncio.sleep(self.retry_delay * attempt)
+                else:
+                    log_error(source_name, f"Не удалось создать сессию для {url} после {self.retry_count} попыток", e)
+                    return None
             except Exception as e:
                 last_exception = e
                 if attempt < self.retry_count:
                     log_warning(source_name, f"Неожиданная ошибка для {url}, попытка {attempt}/{self.retry_count}: {type(e).__name__}")
+                    # Пересоздаем сессию при ошибке соединения
+                    if isinstance(e, (aiohttp.ClientConnectionError, aiohttp.ClientOSError)):
+                        await self.start_session()
                     await asyncio.sleep(self.retry_delay * attempt)
                 else:
                     log_error(source_name, f"Неожиданная ошибка для {url} после {self.retry_count} попыток", e)
