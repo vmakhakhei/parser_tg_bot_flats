@@ -253,21 +253,32 @@ async def send_listing_to_user(
                     media_group.append(InputMediaPhoto(media=photo_url))
 
             # Отправляем медиагруппу через безопасную обертку
-            await safe_send_media_group(bot=bot, chat_id=user_id, media=media_group)
+            sent_messages = await safe_send_media_group(bot=bot, chat_id=user_id, media=media_group)
+            
+            # Проверяем успешность отправки
+            if sent_messages is None or len(sent_messages) == 0:
+                log_error(
+                    "notification",
+                    f"Не удалось отправить медиагруппу для объявления {listing.id} пользователю {user_id}",
+                )
+                return False
 
             # Если есть кнопка ИИ-оценки, отправляем её отдельным сообщением после медиагруппы
             # (Telegram не поддерживает кнопки в медиагруппе напрямую)
             if reply_markup:
-                await safe_send_message(
+                ai_button_msg = await safe_send_message(
                     bot=bot,
                     chat_id=user_id,
                     text="🤖 <b>Хотите получить ИИ-оценку этой квартиры?</b>",
                     parse_mode=ParseMode.HTML,
                     reply_markup=reply_markup,
                 )
+                # Кнопка ИИ-оценки не критична, продолжаем даже если не отправилась
+                if ai_button_msg is None:
+                    log_warning("notification", f"Не удалось отправить кнопку ИИ-оценки для {listing.id}")
         else:
             # Без фотографий - просто текст с кнопкой
-            await safe_send_message(
+            sent_message = await safe_send_message(
                 bot=bot,
                 chat_id=user_id,
                 text=message_text,
@@ -275,8 +286,16 @@ async def send_listing_to_user(
                 disable_web_page_preview=False,
                 reply_markup=reply_markup,
             )
+            
+            # Проверяем успешность отправки
+            if sent_message is None:
+                log_error(
+                    "notification",
+                    f"Не удалось отправить сообщение для объявления {listing.id} пользователю {user_id}",
+                )
+                return False
 
-        # Отмечаем как отправленное пользователю и глобально
+        # Отмечаем как отправленное пользователю и глобально только если отправка успешна
         await mark_listing_sent_to_user(user_id, listing.id)
         await mark_listing_sent(listing.to_dict())  # Глобальная дедупликация
         log_info(
