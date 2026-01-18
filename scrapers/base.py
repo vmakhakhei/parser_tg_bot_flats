@@ -1,13 +1,16 @@
 """
 Базовый класс для всех парсеров недвижимости
 """
-import aiohttp
 import asyncio
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from typing import List, Optional, Dict, Any
-from fake_useragent import UserAgent
 import hashlib
+
+# Импортируем унифицированный HTTP-клиент
+from scrapers.http_client import HTTPClient, get_http_client
+# Импортируем DTO для валидации
+from scrapers.dto import ListingDTO
 
 
 @dataclass
@@ -93,73 +96,101 @@ class BaseScraper(ABC):
     BASE_URL = ""
     
     def __init__(self):
-        self.session: Optional[aiohttp.ClientSession] = None
-        self.ua = UserAgent()
+        """Инициализация парсера с унифицированным HTTP-клиентом"""
+        self.http_client: Optional[HTTPClient] = None
         
     async def __aenter__(self):
+        """Context manager entry - инициализирует HTTP-клиент"""
         await self.start_session()
         return self
         
     async def __aexit__(self, exc_type, exc_val, exc_tb):
+        """Context manager exit - закрывает HTTP-клиент"""
         await self.close_session()
-        
+    
     async def start_session(self):
-        """Создает HTTP сессию"""
-        if self.session is None or self.session.closed:
-            headers = self._get_headers()
-            timeout = aiohttp.ClientTimeout(total=30)
-            self.session = aiohttp.ClientSession(headers=headers, timeout=timeout)
+        """Создает HTTP-клиент"""
+        if self.http_client is None:
+            self.http_client = get_http_client()
+        await self.http_client.start_session()
     
     async def close_session(self):
-        """Закрывает HTTP сессию"""
-        if self.session and not self.session.closed:
-            await self.session.close()
-            
-    def _get_headers(self) -> Dict[str, str]:
-        """Возвращает заголовки для запросов"""
-        return {
-            "User-Agent": self.ua.random,
-            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
-            "Accept-Language": "ru-RU,ru;q=0.9,en-US;q=0.8,en;q=0.7",
-            "Accept-Encoding": "gzip, deflate, br",
-            "Connection": "keep-alive",
-            "Cache-Control": "max-age=0",
-        }
+        """Закрывает HTTP-клиент"""
+        if self.http_client:
+            await self.http_client.close_session()
     
-    async def _fetch_html(self, url: str) -> Optional[str]:
-        """Получает HTML страницы"""
+    async def _fetch_html(self, url: str, headers: Optional[Dict[str, str]] = None) -> Optional[str]:
+        """
+        Получает HTML страницы через унифицированный HTTP-клиент
+        
+        Args:
+            url: URL для запроса
+            headers: Дополнительные заголовки (опционально)
+        
+        Returns:
+            HTML текст или None при ошибке
+        """
         await self.start_session()
-        try:
-            async with self.session.get(url) as response:
-                if response.status == 200:
-                    return await response.text()
-                else:
-                    print(f"[{self.SOURCE_NAME}] Ошибка {response.status} для {url}")
-                    return None
-        except asyncio.TimeoutError:
-            print(f"[{self.SOURCE_NAME}] Таймаут для {url}")
-            return None
-        except Exception as e:
-            print(f"[{self.SOURCE_NAME}] Ошибка: {e}")
-            return None
+        return await self.http_client.fetch_html(
+            url=url,
+            headers=headers,
+            source_name=self.SOURCE_NAME
+        )
     
-    async def _fetch_json(self, url: str) -> Optional[Dict]:
-        """Получает JSON данные"""
+    async def _fetch_json(self, url: str, headers: Optional[Dict[str, str]] = None, params: Optional[Dict[str, Any]] = None) -> Optional[Dict]:
+        """
+        Получает JSON данные через унифицированный HTTP-клиент
+        
+        Args:
+            url: URL для запроса
+            headers: Дополнительные заголовки (опционально)
+            params: Параметры запроса (опционально)
+        
+        Returns:
+            JSON данные или None при ошибке
+        """
         await self.start_session()
+        return await self.http_client.fetch_json(
+            url=url,
+            headers=headers,
+            params=params,
+            source_name=self.SOURCE_NAME
+        )
+    
+    def validate_listing_data(
+        self,
+        title: str,
+        price: int,
+        url: str,
+        location: str,
+        source: Optional[str] = None
+    ) -> Optional[ListingDTO]:
+        """
+        Валидирует данные объявления через ListingDTO
+        
+        Args:
+            title: Заголовок объявления
+            price: Цена
+            url: URL объявления
+            location: Адрес/локация
+            source: Источник (по умолчанию SOURCE_NAME)
+        
+        Returns:
+            ListingDTO если данные валидны, None иначе
+        """
+        source_name = source or self.SOURCE_NAME
+        
         try:
-            headers = self._get_headers()
-            headers["Accept"] = "application/json, text/plain, */*"
-            async with self.session.get(url, headers=headers) as response:
-                if response.status == 200:
-                    return await response.json()
-                else:
-                    print(f"[{self.SOURCE_NAME}] Ошибка {response.status} для {url}")
-                    return None
-        except asyncio.TimeoutError:
-            print(f"[{self.SOURCE_NAME}] Таймаут для {url}")
-            return None
-        except Exception as e:
-            print(f"[{self.SOURCE_NAME}] Ошибка: {e}")
+            dto = ListingDTO(
+                title=title,
+                price=price,
+                url=url,
+                location=location or "",  # Пустая строка вместо None
+                source=source_name
+            )
+            return dto
+        except ValueError as e:
+            # Ошибка валидации уже залогирована в ListingDTO
             return None
     
     @abstractmethod

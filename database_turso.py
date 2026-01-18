@@ -1,14 +1,31 @@
 """
 Модуль для работы с Turso Database (кэширование объявлений)
 Используется для экономии трафика и API вызовов
+
+Особенности:
+- Контекстные менеджеры для транзакций
+- Автоматический rollback при ошибках
+- Атомарность всех операций записи
 """
 import json
 import logging
 import asyncio
 from typing import Optional, List, Dict, Any
 from datetime import datetime
+from contextlib import contextmanager
 
 logger = logging.getLogger(__name__)
+
+# Импортируем error_logger для логирования ошибок
+try:
+    from error_logger import log_error, log_warning, log_info
+except ImportError:
+    def log_error(source, message, exception=None):
+        logger.error(f"[{source}] {message}: {exception}")
+    def log_warning(source, message):
+        logger.warning(f"[{source}] {message}")
+    def log_info(source, message):
+        logger.info(f"[{source}] {message}")
 
 # Импорт libsql с обработкой ошибок
 try:
@@ -23,6 +40,91 @@ except ImportError as e:
 from config import TURSO_DB_URL, TURSO_AUTH_TOKEN, USE_TURSO_CACHE
 from database import generate_content_hash
 from scrapers.base import Listing
+
+
+class TursoTransaction:
+    """
+    Контекстный менеджер для транзакций Turso
+    
+    Обеспечивает:
+    - Атомарность операций
+    - Автоматический rollback при ошибках
+    - Автоматическое закрытие соединения
+    """
+    
+    def __init__(self):
+        self.conn = None
+        self._in_transaction = False
+    
+    def __enter__(self):
+        """Вход в контекст - создаем соединение и начинаем транзакцию"""
+        self.conn = get_turso_connection()
+        if not self.conn:
+            raise RuntimeError("Не удалось создать соединение с Turso")
+        
+        # Начинаем транзакцию (в SQLite транзакция начинается автоматически)
+        # Но для явности можно использовать BEGIN
+        try:
+            self.conn.execute("BEGIN")
+            self._in_transaction = True
+        except Exception as e:
+            log_error("turso_transaction", "Ошибка начала транзакции", e)
+            if self.conn:
+                self.conn.close()
+            raise
+        
+        return self.conn
+    
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        """Выход из контекста - commit или rollback"""
+        if not self.conn:
+            return False
+        
+        try:
+            if exc_type is None:
+                # Нет ошибки - делаем commit
+                if self._in_transaction:
+                    self.conn.commit()
+                    log_info("turso_transaction", "Транзакция успешно зафиксирована")
+            else:
+                # Есть ошибка - делаем rollback
+                if self._in_transaction:
+                    self.conn.rollback()
+                    log_warning("turso_transaction", f"Транзакция откачена из-за ошибки: {exc_type.__name__}")
+        except Exception as e:
+            log_error("turso_transaction", "Ошибка при завершении транзакции", e)
+        finally:
+            # Всегда закрываем соединение
+            try:
+                if self.conn:
+                    self.conn.close()
+            except Exception as e:
+                log_error("turso_transaction", "Ошибка закрытия соединения", e)
+        
+        # Возвращаем False, чтобы не подавлять исключение
+        return False
+
+
+@contextmanager
+def turso_transaction():
+    """
+    Контекстный менеджер для транзакций Turso (удобная функция)
+    
+    Использование:
+        with turso_transaction() as conn:
+            conn.execute("INSERT INTO ...")
+            conn.execute("UPDATE ...")
+            # При выходе автоматически commit или rollback
+    """
+    transaction = TursoTransaction()
+    try:
+        conn = transaction.__enter__()
+        yield conn
+    except Exception as e:
+        transaction.__exit__(type(e), e, e.__traceback__)
+        raise
+    else:
+        transaction.__exit__(None, None, None)
 
 
 def get_turso_connection():
@@ -115,15 +217,11 @@ async def get_cached_listings_by_filters(
 
 async def cache_listing(listing: Listing) -> bool:
     """
-    Сохраняет объявление в кэш
+    Сохраняет объявление в кэш (атомарная операция с транзакцией)
     
     Returns:
         True если успешно, False при ошибке
     """
-    conn = get_turso_connection()
-    if not conn:
-        return False
-    
     try:
         content_hash = generate_content_hash(
             listing.rooms,
@@ -139,57 +237,57 @@ async def cache_listing(listing: Listing) -> bool:
         is_company_int = 1 if listing.is_company is True else (0 if listing.is_company is False else None)
         
         def _execute():
-            # Проверяем, существует ли запись
-            cursor = conn.execute("SELECT first_seen_at FROM cached_listings WHERE id = ?", (listing.id,))
-            existing = cursor.fetchone()
-            first_seen = datetime.now().isoformat()
-            if existing:
-                first_seen = existing[0] if existing[0] else first_seen
-            
-            conn.execute("""
-                INSERT OR REPLACE INTO cached_listings 
-                (id, source, title, price, rooms, area, address, url, city, 
-                 price_usd, currency, floor, year_built, description, photos, 
-                 is_company, content_hash, status, updated_at, first_seen_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """, (
-                listing.id,
-                listing.source,
-                listing.title,
-                listing.price,
-                listing.rooms,
-                listing.area,
-                listing.address,
-                listing.url,
-                _extract_city_from_address(listing.address),
-                listing.price_usd,
-                listing.currency,
-                listing.floor,
-                listing.year_built,
-                listing.description,
-                photos_json,
-                is_company_int,
-                content_hash,
-                "active",
-                datetime.now().isoformat(),
-                first_seen
-            ))
-            conn.commit()
+            with turso_transaction() as conn:
+                # Проверяем, существует ли запись
+                cursor = conn.execute("SELECT first_seen_at FROM cached_listings WHERE id = ?", (listing.id,))
+                existing = cursor.fetchone()
+                first_seen = datetime.now().isoformat()
+                if existing:
+                    first_seen = existing[0] if existing[0] else first_seen
+                
+                conn.execute("""
+                    INSERT OR REPLACE INTO cached_listings 
+                    (id, source, title, price, rooms, area, address, url, city, 
+                     price_usd, currency, floor, year_built, description, photos, 
+                     is_company, content_hash, status, updated_at, first_seen_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """, (
+                    listing.id,
+                    listing.source,
+                    listing.title,
+                    listing.price,
+                    listing.rooms,
+                    listing.area,
+                    listing.address,
+                    listing.url,
+                    _extract_city_from_address(listing.address),
+                    listing.price_usd,
+                    listing.currency,
+                    listing.floor,
+                    listing.year_built,
+                    listing.description,
+                    photos_json,
+                    is_company_int,
+                    content_hash,
+                    "active",
+                    datetime.now().isoformat(),
+                    first_seen
+                ))
+                # Commit происходит автоматически при выходе из контекста
         
         await asyncio.to_thread(_execute)
         return True
         
     except Exception as e:
-        logger.error(f"Ошибка сохранения объявления в кэш: {e}")
+        log_error("turso_cache", f"Ошибка сохранения объявления {listing.id} в кэш", e)
         return False
-    finally:
-        if conn:
-            conn.close()
 
 
 async def cache_listings_batch(listings: List[Listing]) -> int:
     """
-    Сохраняет несколько объявлений в кэш батчем
+    Сохраняет несколько объявлений в кэш батчем (атомарная операция)
+    
+    Все объявления сохраняются в одной транзакции - либо все успешно, либо все откатываются.
     
     Returns:
         Количество успешно сохраненных объявлений
@@ -197,48 +295,97 @@ async def cache_listings_batch(listings: List[Listing]) -> int:
     if not listings:
         return 0
     
-    saved_count = 0
-    
-    for listing in listings:
-        if await cache_listing(listing):
-            saved_count += 1
-    
-    logger.info(f"Сохранено {saved_count} из {len(listings)} объявлений в кэш")
-    return saved_count
+    try:
+        def _execute_batch():
+            saved_count = 0
+            with turso_transaction() as conn:
+                for listing in listings:
+                    try:
+                        content_hash = generate_content_hash(
+                            listing.rooms,
+                            listing.area,
+                            listing.address,
+                            listing.price
+                        )
+                        
+                        photos_json = json.dumps(listing.photos) if listing.photos else "[]"
+                        is_company_int = 1 if listing.is_company is True else (0 if listing.is_company is False else None)
+                        
+                        # Проверяем, существует ли запись
+                        cursor = conn.execute("SELECT first_seen_at FROM cached_listings WHERE id = ?", (listing.id,))
+                        existing = cursor.fetchone()
+                        first_seen = datetime.now().isoformat()
+                        if existing:
+                            first_seen = existing[0] if existing[0] else first_seen
+                        
+                        conn.execute("""
+                            INSERT OR REPLACE INTO cached_listings 
+                            (id, source, title, price, rooms, area, address, url, city, 
+                             price_usd, currency, floor, year_built, description, photos, 
+                             is_company, content_hash, status, updated_at, first_seen_at)
+                            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        """, (
+                            listing.id,
+                            listing.source,
+                            listing.title,
+                            listing.price,
+                            listing.rooms,
+                            listing.area,
+                            listing.address,
+                            listing.url,
+                            _extract_city_from_address(listing.address),
+                            listing.price_usd,
+                            listing.currency,
+                            listing.floor,
+                            listing.year_built,
+                            listing.description,
+                            photos_json,
+                            is_company_int,
+                            content_hash,
+                            "active",
+                            datetime.now().isoformat(),
+                            first_seen
+                        ))
+                        saved_count += 1
+                    except Exception as e:
+                        log_error("turso_cache", f"Ошибка сохранения объявления {listing.id} в батче", e)
+                        # Продолжаем с другими объявлениями, но транзакция откатится при выходе
+                        raise  # Пробрасываем ошибку, чтобы транзакция откатилась
+                
+                # Если все успешно, транзакция зафиксируется автоматически
+                return saved_count
+        
+        saved_count = await asyncio.to_thread(_execute_batch)
+        log_info("turso_cache", f"Сохранено {saved_count} из {len(listings)} объявлений в кэш (атомарно)")
+        return saved_count
+        
+    except Exception as e:
+        log_error("turso_cache", f"Ошибка батчевого сохранения объявлений: все изменения откачены", e)
+        return 0
 
 
 async def mark_listing_deleted(listing_id: str) -> bool:
-    """Отмечает объявление как удаленное"""
-    conn = get_turso_connection()
-    if not conn:
-        return False
-    
+    """Отмечает объявление как удаленное (атомарная операция)"""
     try:
         def _execute():
-            conn.execute("""
-                UPDATE cached_listings 
-                SET status = 'deleted', updated_at = ?
-                WHERE id = ?
-            """, (datetime.now().isoformat(), listing_id))
-            conn.commit()
+            with turso_transaction() as conn:
+                conn.execute("""
+                    UPDATE cached_listings 
+                    SET status = 'deleted', updated_at = ?
+                    WHERE id = ?
+                """, (datetime.now().isoformat(), listing_id))
+                # Commit происходит автоматически
         
         await asyncio.to_thread(_execute)
         return True
         
     except Exception as e:
-        logger.error(f"Ошибка отметки объявления как удаленного: {e}")
+        log_error("turso_cache", f"Ошибка отметки объявления {listing_id} как удаленного", e)
         return False
-    finally:
-        if conn:
-            conn.close()
 
 
 async def update_cached_listing(listing: Listing) -> bool:
-    """Обновляет объявление в кэше"""
-    conn = get_turso_connection()
-    if not conn:
-        return False
-    
+    """Обновляет объявление в кэше (атомарная операция)"""
     try:
         content_hash = generate_content_hash(
             listing.rooms,
@@ -251,41 +398,39 @@ async def update_cached_listing(listing: Listing) -> bool:
         is_company_int = 1 if listing.is_company is True else (0 if listing.is_company is False else None)
         
         def _execute():
-            conn.execute("""
-                UPDATE cached_listings 
-                SET title = ?, price = ?, rooms = ?, area = ?, address = ?,
-                    price_usd = ?, currency = ?, floor = ?, year_built = ?,
-                    description = ?, photos = ?, is_company = ?, content_hash = ?,
-                    status = 'active', updated_at = ?
-                WHERE id = ?
-            """, (
-                listing.title,
-                listing.price,
-                listing.rooms,
-                listing.area,
-                listing.address,
-                listing.price_usd,
-                listing.currency,
-                listing.floor,
-                listing.year_built,
-                listing.description,
-                photos_json,
-                is_company_int,
-                content_hash,
-                datetime.now().isoformat(),
-                listing.id
-            ))
-            conn.commit()
+            with turso_transaction() as conn:
+                conn.execute("""
+                    UPDATE cached_listings 
+                    SET title = ?, price = ?, rooms = ?, area = ?, address = ?,
+                        price_usd = ?, currency = ?, floor = ?, year_built = ?,
+                        description = ?, photos = ?, is_company = ?, content_hash = ?,
+                        status = 'active', updated_at = ?
+                    WHERE id = ?
+                """, (
+                    listing.title,
+                    listing.price,
+                    listing.rooms,
+                    listing.area,
+                    listing.address,
+                    listing.price_usd,
+                    listing.currency,
+                    listing.floor,
+                    listing.year_built,
+                    listing.description,
+                    photos_json,
+                    is_company_int,
+                    content_hash,
+                    datetime.now().isoformat(),
+                    listing.id
+                ))
+                # Commit происходит автоматически
         
         await asyncio.to_thread(_execute)
         return True
         
     except Exception as e:
-        logger.error(f"Ошибка обновления объявления в кэше: {e}")
+        log_error("turso_cache", f"Ошибка обновления объявления {listing.id} в кэше", e)
         return False
-    finally:
-        if conn:
-            conn.close()
 
 
 async def is_listing_cached(listing_id: str) -> bool:
@@ -356,265 +501,250 @@ async def get_listing_by_url(url: str) -> Optional[Dict[str, Any]]:
 
 async def update_cached_listings_daily():
     """
-    Ежедневное обновление кэша: проверка статуса объявлений
+    Ежедневное обновление кэша: проверка статуса объявлений (атомарная операция)
     Отмечает удаленные объявления и обновляет измененные
     """
-    conn = get_turso_connection()
-    if not conn:
-        logger.warning("Turso недоступен, пропускаем ежедневное обновление кэша")
-        return
-    
     try:
-        logger.info("🔄 Начало ежедневного обновления кэша...")
+        log_info("turso_daily", "🔄 Начало ежедневного обновления кэша...")
         
         def _execute():
-            # Получаем все активные объявления старше 1 дня
-            cursor = conn.execute("""
-                SELECT id, url, source FROM cached_listings
-                WHERE status = 'active'
-                AND last_seen_at < datetime('now', '-1 day')
-                LIMIT 100
-            """)
-            rows = cursor.fetchall()
-            
-            updated_count = 0
-            for row in rows:
-                listing_id = row[0]
-                # Просто обновляем last_seen_at для активных объявлений
+            with turso_transaction() as conn:
+                # Получаем все активные объявления старше 1 дня
+                cursor = conn.execute("""
+                    SELECT id, url, source FROM cached_listings
+                    WHERE status = 'active'
+                    AND last_seen_at < datetime('now', '-1 day')
+                    LIMIT 100
+                """)
+                rows = cursor.fetchall()
+                
+                updated_count = 0
+                for row in rows:
+                    listing_id = row[0]
+                    # Просто обновляем last_seen_at для активных объявлений
+                    conn.execute("""
+                        UPDATE cached_listings
+                        SET last_seen_at = ?
+                        WHERE id = ?
+                    """, (datetime.now().isoformat(), listing_id))
+                    updated_count += 1
+                
+                # Удаляем очень старые удаленные объявления (старше 7 дней)
                 conn.execute("""
-                    UPDATE cached_listings
-                    SET last_seen_at = ?
-                    WHERE id = ?
-                """, (datetime.now().isoformat(), listing_id))
-                updated_count += 1
-            
-            # Удаляем очень старые удаленные объявления (старше 7 дней)
-            conn.execute("""
-                DELETE FROM cached_listings
-                WHERE status = 'deleted'
-                AND updated_at < datetime('now', '-7 days')
-            """)
-            conn.commit()
-            
-            return updated_count
+                    DELETE FROM cached_listings
+                    WHERE status = 'deleted'
+                    AND updated_at < datetime('now', '-7 days')
+                """)
+                # Commit происходит автоматически при выходе из контекста
+                
+                return updated_count
         
         updated_count = await asyncio.to_thread(_execute)
         
-        logger.info(f"✅ Ежедневное обновление кэша завершено:")
-        logger.info(f"   Обновлено: {updated_count} объявлений")
+        log_info("turso_daily", f"✅ Ежедневное обновление кэша завершено: обновлено {updated_count} объявлений")
         
     except Exception as e:
-        logger.error(f"Ошибка ежедневного обновления кэша: {e}")
-    finally:
-        if conn:
-            conn.close()
+        log_error("turso_daily", "Ошибка ежедневного обновления кэша", e)
 
 
 async def ensure_tables_exist():
     """
-    Проверяет и создает все необходимые таблицы если их нет
+    Проверяет и создает все необходимые таблицы если их нет (атомарная операция)
     Вызывается автоматически при запуске бота
     """
-    conn = get_turso_connection()
-    if not conn:
-        logger.warning("Turso недоступен, пропускаем создание таблиц")
-        return False
-    
     try:
         def _check_and_create():
-            # 1. Таблица users
-            cursor = conn.execute("""
-                SELECT name FROM sqlite_master 
-                WHERE type='table' AND name='users'
-            """)
-            if not cursor.fetchone():
-                logger.info("📋 Создание таблицы users...")
-                conn.execute("""
-                    CREATE TABLE IF NOT EXISTS users (
-                        user_id INTEGER PRIMARY KEY,
-                        username TEXT,
-                        first_name TEXT,
-                        last_name TEXT,
-                        last_activity TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-                    )
+            with turso_transaction() as conn:
+                # 1. Таблица users
+                cursor = conn.execute("""
+                    SELECT name FROM sqlite_master 
+                    WHERE type='table' AND name='users'
                 """)
-                conn.execute("""
-                    CREATE INDEX IF NOT EXISTS idx_users_last_activity 
-                    ON users(last_activity)
-                """)
-                logger.info("✅ Таблица users создана")
-            
-            # 2. Таблица user_filters (новая структура)
-            cursor = conn.execute("""
-                SELECT name FROM sqlite_master 
-                WHERE type='table' AND name='user_filters'
-            """)
-            if not cursor.fetchone():
-                logger.info("📋 Создание таблицы user_filters...")
-                conn.execute("""
-                    CREATE TABLE IF NOT EXISTS user_filters (
-                        id INTEGER PRIMARY KEY AUTOINCREMENT,
-                        user_id INTEGER NOT NULL,
-                        min_price INTEGER DEFAULT 0,
-                        max_price INTEGER,
-                        rooms TEXT,  -- JSON массив [1,2,3]
-                        region TEXT DEFAULT 'барановичи',
-                        active INTEGER DEFAULT 1,
-                        ai_mode INTEGER DEFAULT 0,
-                        seller_type TEXT,
-                        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                        FOREIGN KEY (user_id) REFERENCES users(user_id)
-                    )
-                """)
-                conn.execute("""
-                    CREATE INDEX IF NOT EXISTS idx_user_filters_user_id 
-                    ON user_filters(user_id)
-                """)
-                conn.execute("""
-                    CREATE INDEX IF NOT EXISTS idx_user_filters_active 
-                    ON user_filters(active)
-                """)
-                logger.info("✅ Таблица user_filters создана")
-            
-            # 3. Таблица apartments (основная таблица объявлений)
-            cursor = conn.execute("""
-                SELECT name FROM sqlite_master 
-                WHERE type='table' AND name='apartments'
-            """)
-            if not cursor.fetchone():
-                logger.info("📋 Создание таблицы apartments...")
-                conn.execute("""
-                    CREATE TABLE IF NOT EXISTS apartments (
-                        ad_id TEXT PRIMARY KEY,
-                        source TEXT NOT NULL,
-                        price_usd INTEGER,
-                        price_byn INTEGER,
-                        rooms INTEGER,
-                        floor TEXT,
-                        total_area REAL,
-                        list_time TIMESTAMP,
-                        last_checked TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                        is_active INTEGER DEFAULT 1,
-                        url TEXT NOT NULL,
-                        address TEXT,
-                        raw_json TEXT,
-                        title TEXT,
-                        description TEXT,
-                        photos TEXT,
-                        currency TEXT,
-                        year_built TEXT,
-                        is_company INTEGER,
-                        balcony TEXT,
-                        bathroom TEXT,
-                        total_floors TEXT,
-                        house_type TEXT,
-                        renovation_state TEXT,
-                        kitchen_area REAL,
-                        living_area REAL,
-                        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-                    )
-                """)
+                if not cursor.fetchone():
+                    logger.info("📋 Создание таблицы users...")
+                    conn.execute("""
+                        CREATE TABLE IF NOT EXISTS users (
+                            user_id INTEGER PRIMARY KEY,
+                            username TEXT,
+                            first_name TEXT,
+                            last_name TEXT,
+                            last_activity TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                        )
+                    """)
+                    conn.execute("""
+                        CREATE INDEX IF NOT EXISTS idx_users_last_activity 
+                        ON users(last_activity)
+                    """)
+                    logger.info("✅ Таблица users создана")
                 
-                # Создаем индексы для быстрого поиска
-                conn.execute("""
-                    CREATE INDEX IF NOT EXISTS idx_apartments_price_usd 
-                    ON apartments(price_usd)
+                # 2. Таблица user_filters (новая структура)
+                cursor = conn.execute("""
+                    SELECT name FROM sqlite_master 
+                    WHERE type='table' AND name='user_filters'
                 """)
-                conn.execute("""
-                    CREATE INDEX IF NOT EXISTS idx_apartments_rooms 
-                    ON apartments(rooms)
+                if not cursor.fetchone():
+                    logger.info("📋 Создание таблицы user_filters...")
+                    conn.execute("""
+                        CREATE TABLE IF NOT EXISTS user_filters (
+                            id INTEGER PRIMARY KEY AUTOINCREMENT,
+                            user_id INTEGER NOT NULL,
+                            min_price INTEGER DEFAULT 0,
+                            max_price INTEGER,
+                            rooms TEXT,  -- JSON массив [1,2,3]
+                            region TEXT DEFAULT 'барановичи',
+                            active INTEGER DEFAULT 1,
+                            ai_mode INTEGER DEFAULT 0,
+                            seller_type TEXT,
+                            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                            FOREIGN KEY (user_id) REFERENCES users(user_id)
+                        )
+                    """)
+                    conn.execute("""
+                        CREATE INDEX IF NOT EXISTS idx_user_filters_user_id 
+                        ON user_filters(user_id)
+                    """)
+                    conn.execute("""
+                        CREATE INDEX IF NOT EXISTS idx_user_filters_active 
+                        ON user_filters(active)
+                    """)
+                    logger.info("✅ Таблица user_filters создана")
+                
+                # 3. Таблица apartments (основная таблица объявлений)
+                cursor = conn.execute("""
+                    SELECT name FROM sqlite_master 
+                    WHERE type='table' AND name='apartments'
                 """)
-                conn.execute("""
-                    CREATE INDEX IF NOT EXISTS idx_apartments_source 
-                    ON apartments(source)
+                if not cursor.fetchone():
+                    logger.info("📋 Создание таблицы apartments...")
+                    conn.execute("""
+                        CREATE TABLE IF NOT EXISTS apartments (
+                            ad_id TEXT PRIMARY KEY,
+                            source TEXT NOT NULL,
+                            price_usd INTEGER,
+                            price_byn INTEGER,
+                            rooms INTEGER,
+                            floor TEXT,
+                            total_area REAL,
+                            list_time TIMESTAMP,
+                            last_checked TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                            is_active INTEGER DEFAULT 1,
+                            url TEXT NOT NULL,
+                            address TEXT,
+                            raw_json TEXT,
+                            title TEXT,
+                            description TEXT,
+                            photos TEXT,
+                            currency TEXT,
+                            year_built TEXT,
+                            is_company INTEGER,
+                            balcony TEXT,
+                            bathroom TEXT,
+                            total_floors TEXT,
+                            house_type TEXT,
+                            renovation_state TEXT,
+                            kitchen_area REAL,
+                            living_area REAL,
+                            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                        )
+                    """)
+                    
+                    # Создаем индексы для быстрого поиска
+                    conn.execute("""
+                        CREATE INDEX IF NOT EXISTS idx_apartments_price_usd 
+                        ON apartments(price_usd)
+                    """)
+                    conn.execute("""
+                        CREATE INDEX IF NOT EXISTS idx_apartments_rooms 
+                        ON apartments(rooms)
+                    """)
+                    conn.execute("""
+                        CREATE INDEX IF NOT EXISTS idx_apartments_source 
+                        ON apartments(source)
+                    """)
+                    conn.execute("""
+                        CREATE INDEX IF NOT EXISTS idx_apartments_list_time 
+                        ON apartments(list_time)
+                    """)
+                    conn.execute("""
+                        CREATE INDEX IF NOT EXISTS idx_apartments_last_checked 
+                        ON apartments(last_checked)
+                    """)
+                    conn.execute("""
+                        CREATE INDEX IF NOT EXISTS idx_apartments_is_active 
+                        ON apartments(is_active)
+                    """)
+                    conn.execute("""
+                        CREATE INDEX IF NOT EXISTS idx_apartments_source_active 
+                        ON apartments(source, is_active)
+                    """)
+                    logger.info("✅ Таблица apartments и индексы созданы")
+                
+                # 4. Таблица api_query_cache (для кэширования запросов)
+                cursor = conn.execute("""
+                    SELECT name FROM sqlite_master 
+                    WHERE type='table' AND name='api_query_cache'
                 """)
-                conn.execute("""
-                    CREATE INDEX IF NOT EXISTS idx_apartments_list_time 
-                    ON apartments(list_time)
+                if not cursor.fetchone():
+                    logger.info("📋 Создание таблицы api_query_cache...")
+                    conn.execute("""
+                        CREATE TABLE IF NOT EXISTS api_query_cache (
+                            query_hash TEXT PRIMARY KEY,
+                            last_fetched TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                            result_count INTEGER DEFAULT 0,
+                            query_params TEXT
+                        )
+                    """)
+                    conn.execute("""
+                        CREATE INDEX IF NOT EXISTS idx_query_cache_last_fetched 
+                        ON api_query_cache(last_fetched)
+                    """)
+                    logger.info("✅ Таблица api_query_cache создана")
+                
+                # 5. Старая таблица cached_listings (оставляем для совместимости, но не используем)
+                cursor = conn.execute("""
+                    SELECT name FROM sqlite_master 
+                    WHERE type='table' AND name='cached_listings'
                 """)
-                conn.execute("""
-                    CREATE INDEX IF NOT EXISTS idx_apartments_last_checked 
-                    ON apartments(last_checked)
-                """)
-                conn.execute("""
-                    CREATE INDEX IF NOT EXISTS idx_apartments_is_active 
-                    ON apartments(is_active)
-                """)
-                conn.execute("""
-                    CREATE INDEX IF NOT EXISTS idx_apartments_source_active 
-                    ON apartments(source, is_active)
-                """)
-                logger.info("✅ Таблица apartments и индексы созданы")
-            
-            # 4. Таблица api_query_cache (для кэширования запросов)
-            cursor = conn.execute("""
-                SELECT name FROM sqlite_master 
-                WHERE type='table' AND name='api_query_cache'
-            """)
-            if not cursor.fetchone():
-                logger.info("📋 Создание таблицы api_query_cache...")
-                conn.execute("""
-                    CREATE TABLE IF NOT EXISTS api_query_cache (
-                        query_hash TEXT PRIMARY KEY,
-                        last_fetched TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                        result_count INTEGER DEFAULT 0,
-                        query_params TEXT
-                    )
-                """)
-                conn.execute("""
-                    CREATE INDEX IF NOT EXISTS idx_query_cache_last_fetched 
-                    ON api_query_cache(last_fetched)
-                """)
-                logger.info("✅ Таблица api_query_cache создана")
-            
-            # 5. Старая таблица cached_listings (оставляем для совместимости, но не используем)
-            cursor = conn.execute("""
-                SELECT name FROM sqlite_master 
-                WHERE type='table' AND name='cached_listings'
-            """)
-            if not cursor.fetchone():
-                logger.info("📋 Создание таблицы cached_listings (legacy)...")
-                conn.execute("""
-                    CREATE TABLE IF NOT EXISTS cached_listings (
-                        id TEXT PRIMARY KEY,
-                        source TEXT NOT NULL,
-                        title TEXT,
-                        price INTEGER,
-                        rooms INTEGER,
-                        area REAL,
-                        address TEXT,
-                        url TEXT NOT NULL UNIQUE,
-                        city TEXT,
-                        price_usd INTEGER,
-                        currency TEXT,
-                        floor TEXT,
-                        year_built TEXT,
-                        description TEXT,
-                        photos TEXT,
-                        is_company INTEGER DEFAULT 0,
-                        content_hash TEXT,
-                        status TEXT DEFAULT 'active',
-                        last_seen_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                        first_seen_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-                    )
-                """)
-                logger.info("✅ Таблица cached_listings (legacy) создана")
-            
-            conn.commit()
+                if not cursor.fetchone():
+                    logger.info("📋 Создание таблицы cached_listings (legacy)...")
+                    conn.execute("""
+                        CREATE TABLE IF NOT EXISTS cached_listings (
+                            id TEXT PRIMARY KEY,
+                            source TEXT NOT NULL,
+                            title TEXT,
+                            price INTEGER,
+                            rooms INTEGER,
+                            area REAL,
+                            address TEXT,
+                            url TEXT NOT NULL UNIQUE,
+                            city TEXT,
+                            price_usd INTEGER,
+                            currency TEXT,
+                            floor TEXT,
+                            year_built TEXT,
+                            description TEXT,
+                            photos TEXT,
+                            is_company INTEGER DEFAULT 0,
+                            content_hash TEXT,
+                            status TEXT DEFAULT 'active',
+                            last_seen_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                            first_seen_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                        )
+                    """)
+                    logger.info("✅ Таблица cached_listings (legacy) создана")
+                
+                # Commit происходит автоматически при выходе из контекста
         
         await asyncio.to_thread(_check_and_create)
         return True
         
     except Exception as e:
-        logger.error(f"Ошибка создания таблиц Turso: {e}")
+        log_error("turso_tables", "Ошибка создания таблиц Turso", e)
         return False
-    finally:
-        if conn:
-            conn.close()
 
 
 def cached_listing_to_listing(cached_dict: Dict[str, Any]) -> Listing:
@@ -679,34 +809,28 @@ async def create_or_update_user(
     last_name: Optional[str] = None
 ) -> bool:
     """
-    Создает или обновляет пользователя в таблице users
+    Создает или обновляет пользователя в таблице users (атомарная операция)
     Автоматически обновляет last_activity
     """
-    conn = get_turso_connection()
-    if not conn:
-        return False
-    
     try:
         def _execute():
-            conn.execute("""
-                INSERT INTO users (user_id, username, first_name, last_name, last_activity, created_at)
-                VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
-                ON CONFLICT(user_id) DO UPDATE SET
-                    username = COALESCE(excluded.username, username),
-                    first_name = COALESCE(excluded.first_name, first_name),
-                    last_name = COALESCE(excluded.last_name, last_name),
-                    last_activity = CURRENT_TIMESTAMP
-            """, (user_id, username, first_name, last_name))
-            conn.commit()
+            with turso_transaction() as conn:
+                conn.execute("""
+                    INSERT INTO users (user_id, username, first_name, last_name, last_activity, created_at)
+                    VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+                    ON CONFLICT(user_id) DO UPDATE SET
+                        username = COALESCE(excluded.username, username),
+                        first_name = COALESCE(excluded.first_name, first_name),
+                        last_name = COALESCE(excluded.last_name, last_name),
+                        last_activity = CURRENT_TIMESTAMP
+                """, (user_id, username, first_name, last_name))
+                # Commit происходит автоматически
         
         await asyncio.to_thread(_execute)
         return True
     except Exception as e:
-        logger.error(f"Ошибка создания/обновления пользователя {user_id}: {e}")
+        log_error("turso_users", f"Ошибка создания/обновления пользователя {user_id}", e)
         return False
-    finally:
-        if conn:
-            conn.close()
 
 
 async def get_user_filters_turso(user_id: int) -> Optional[Dict[str, Any]]:
@@ -765,51 +889,45 @@ async def set_user_filters_turso(
     seller_type: Optional[str] = None
 ) -> bool:
     """
-    Устанавливает фильтры пользователя в Turso
+    Устанавливает фильтры пользователя в Turso (атомарная операция)
     rooms передается как список [1,2,3] и сохраняется как JSON
     """
-    conn = get_turso_connection()
-    if not conn:
-        return False
-    
     try:
         def _execute():
             # Конвертируем rooms в JSON строку
             rooms_json = json.dumps(rooms) if rooms else None
             
-            conn.execute("""
-                INSERT INTO user_filters 
-                (user_id, min_price, max_price, rooms, region, active, ai_mode, seller_type, updated_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
-                ON CONFLICT(user_id) DO UPDATE SET
-                    min_price = excluded.min_price,
-                    max_price = excluded.max_price,
-                    rooms = excluded.rooms,
-                    region = excluded.region,
-                    active = excluded.active,
-                    ai_mode = excluded.ai_mode,
-                    seller_type = excluded.seller_type,
-                    updated_at = CURRENT_TIMESTAMP
-            """, (
-                user_id,
-                min_price,
-                max_price,
-                rooms_json,
-                region,
-                1 if active else 0,
-                1 if ai_mode else 0,
-                seller_type
-            ))
-            conn.commit()
+            with turso_transaction() as conn:
+                conn.execute("""
+                    INSERT INTO user_filters 
+                    (user_id, min_price, max_price, rooms, region, active, ai_mode, seller_type, updated_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+                    ON CONFLICT(user_id) DO UPDATE SET
+                        min_price = excluded.min_price,
+                        max_price = excluded.max_price,
+                        rooms = excluded.rooms,
+                        region = excluded.region,
+                        active = excluded.active,
+                        ai_mode = excluded.ai_mode,
+                        seller_type = excluded.seller_type,
+                        updated_at = CURRENT_TIMESTAMP
+                """, (
+                    user_id,
+                    min_price,
+                    max_price,
+                    rooms_json,
+                    region,
+                    1 if active else 0,
+                    1 if ai_mode else 0,
+                    seller_type
+                ))
+                # Commit происходит автоматически
         
         await asyncio.to_thread(_execute)
         return True
     except Exception as e:
-        logger.error(f"Ошибка установки фильтров пользователя {user_id}: {e}")
+        log_error("turso_filters", f"Ошибка установки фильтров пользователя {user_id}", e)
         return False
-    finally:
-        if conn:
-            conn.close()
 
 
 async def get_active_users_turso() -> List[int]:
@@ -951,137 +1069,134 @@ async def sync_apartment_from_kufar(
         raw_json: Полный JSON ответ от API
         source: Источник объявления (по умолчанию "kufar")
     """
-    conn = get_turso_connection()
-    if not conn:
-        return False
-    
     try:
         def _execute():
-            # Извлекаем list_time из ad_data или raw_json
-            list_time = None
-            if ad_data.get("list_time"):
-                try:
-                    list_time_val = ad_data["list_time"]
-                    # Если это timestamp в миллисекундах
-                    if len(str(list_time_val)) > 10:
-                        timestamp = int(list_time_val) / 1000
-                    else:
-                        timestamp = int(list_time_val)
-                    list_time = datetime.fromtimestamp(timestamp).isoformat()
-                except:
-                    pass
-            
-            # Парсим raw_json если list_time не найден
-            if not list_time:
-                try:
-                    raw_data = json.loads(raw_json) if isinstance(raw_json, str) else raw_json
-                    list_time_val = raw_data.get("list_time")
-                    if list_time_val:
+            with turso_transaction() as conn:
+                # Извлекаем list_time из ad_data или raw_json
+                list_time = None
+                if ad_data.get("list_time"):
+                    try:
+                        list_time_val = ad_data["list_time"]
+                        # Если это timestamp в миллисекундах
                         if len(str(list_time_val)) > 10:
                             timestamp = int(list_time_val) / 1000
                         else:
                             timestamp = int(list_time_val)
                         list_time = datetime.fromtimestamp(timestamp).isoformat()
-                except:
-                    pass
-            
-            # Проверяем существующее объявление
-            cursor = conn.execute("""
-                SELECT list_time, last_checked, is_active 
-                FROM apartments 
-                WHERE ad_id = ?
-            """, (ad_id,))
-            existing = cursor.fetchone()
-            
-            current_time = datetime.now().isoformat()
-            
-            if existing:
-                existing_list_time = existing[0]
-                existing_last_checked = existing[1]
-                existing_is_active = existing[2]
-                
-                # Проверяем нужно ли обновление данных
-                should_update_data = False
-                if list_time and existing_list_time:
-                    # Сравниваем timestamps
-                    try:
-                        existing_ts = datetime.fromisoformat(existing_list_time.replace("Z", "+00:00"))
-                        new_ts = datetime.fromisoformat(list_time.replace("Z", "+00:00"))
-                        if new_ts > existing_ts:
-                            should_update_data = True
                     except:
-                        # Если не удалось сравнить, обновляем на всякий случай
-                        should_update_data = True
-                elif list_time and not existing_list_time:
-                    should_update_data = True
+                        pass
                 
-                if should_update_data:
-                    # Обновляем данные объявления
-                    conn.execute("""
-                        UPDATE apartments SET
-                            price_usd = ?,
-                            price_byn = ?,
-                            rooms = ?,
-                            floor = ?,
-                            total_area = ?,
-                            list_time = ?,
-                            last_checked = ?,
-                            is_active = 1,
-                            url = ?,
-                            address = ?,
-                            raw_json = ?,
-                            title = ?,
-                            description = ?,
-                            photos = ?,
-                            currency = ?,
-                            year_built = ?,
-                            is_company = ?,
-                            balcony = ?,
-                            bathroom = ?,
-                            total_floors = ?,
-                            house_type = ?,
-                            renovation_state = ?,
-                            kitchen_area = ?,
-                            living_area = ?,
-                            updated_at = ?
-                        WHERE ad_id = ?
-                    """, (
-                        ad_data.get("price_usd", 0),
-                        ad_data.get("price_byn", 0),
-                        ad_data.get("rooms", 0),
-                        ad_data.get("floor", ""),
-                        ad_data.get("total_area", 0.0),
-                        list_time or current_time,
-                        current_time,
-                        ad_data.get("url", ""),
-                        ad_data.get("address", ""),
-                        raw_json,
-                        ad_data.get("title", ""),
-                        ad_data.get("description", ""),
-                        json.dumps(ad_data.get("photos", [])),
-                        ad_data.get("currency", "USD"),
-                        ad_data.get("year_built", ""),
-                        1 if ad_data.get("is_company") else 0,
-                        ad_data.get("balcony", ""),
-                        ad_data.get("bathroom", ""),
-                        ad_data.get("total_floors", ""),
-                        ad_data.get("house_type", ""),
-                        ad_data.get("renovation_state", ""),
-                        ad_data.get("kitchen_area", 0.0),
-                        ad_data.get("living_area", 0.0),
-                        current_time,
-                        ad_id
-                    ))
+                # Парсим raw_json если list_time не найден
+                if not list_time:
+                    try:
+                        raw_data = json.loads(raw_json) if isinstance(raw_json, str) else raw_json
+                        list_time_val = raw_data.get("list_time")
+                        if list_time_val:
+                            if len(str(list_time_val)) > 10:
+                                timestamp = int(list_time_val) / 1000
+                            else:
+                                timestamp = int(list_time_val)
+                            list_time = datetime.fromtimestamp(timestamp).isoformat()
+                    except:
+                        pass
+                
+                # Проверяем существующее объявление
+                cursor = conn.execute("""
+                    SELECT list_time, last_checked, is_active 
+                    FROM apartments 
+                    WHERE ad_id = ?
+                """, (ad_id,))
+                existing = cursor.fetchone()
+                
+                current_time = datetime.now().isoformat()
+                
+                if existing:
+                    existing_list_time = existing[0]
+                    existing_last_checked = existing[1]
+                    existing_is_active = existing[2]
+                    
+                    # Проверяем нужно ли обновление данных
+                    should_update_data = False
+                    if list_time and existing_list_time:
+                        # Сравниваем timestamps
+                        try:
+                            existing_ts = datetime.fromisoformat(existing_list_time.replace("Z", "+00:00"))
+                            new_ts = datetime.fromisoformat(list_time.replace("Z", "+00:00"))
+                            if new_ts > existing_ts:
+                                should_update_data = True
+                        except:
+                            # Если не удалось сравнить, обновляем на всякий случай
+                            should_update_data = True
+                    elif list_time and not existing_list_time:
+                        should_update_data = True
+                    
+                    if should_update_data:
+                        # Обновляем данные объявления
+                        conn.execute("""
+                            UPDATE apartments SET
+                                price_usd = ?,
+                                price_byn = ?,
+                                rooms = ?,
+                                floor = ?,
+                                total_area = ?,
+                                list_time = ?,
+                                last_checked = ?,
+                                is_active = 1,
+                                url = ?,
+                                address = ?,
+                                raw_json = ?,
+                                title = ?,
+                                description = ?,
+                                photos = ?,
+                                currency = ?,
+                                year_built = ?,
+                                is_company = ?,
+                                balcony = ?,
+                                bathroom = ?,
+                                total_floors = ?,
+                                house_type = ?,
+                                renovation_state = ?,
+                                kitchen_area = ?,
+                                living_area = ?,
+                                updated_at = ?
+                            WHERE ad_id = ?
+                        """, (
+                            ad_data.get("price_usd", 0),
+                            ad_data.get("price_byn", 0),
+                            ad_data.get("rooms", 0),
+                            ad_data.get("floor", ""),
+                            ad_data.get("total_area", 0.0),
+                            list_time or current_time,
+                            current_time,
+                            ad_data.get("url", ""),
+                            ad_data.get("address", ""),
+                            raw_json,
+                            ad_data.get("title", ""),
+                            ad_data.get("description", ""),
+                            json.dumps(ad_data.get("photos", [])),
+                            ad_data.get("currency", "USD"),
+                            ad_data.get("year_built", ""),
+                            1 if ad_data.get("is_company") else 0,
+                            ad_data.get("balcony", ""),
+                            ad_data.get("bathroom", ""),
+                            ad_data.get("total_floors", ""),
+                            ad_data.get("house_type", ""),
+                            ad_data.get("renovation_state", ""),
+                            ad_data.get("kitchen_area", 0.0),
+                            ad_data.get("living_area", 0.0),
+                            current_time,
+                            ad_id
+                        ))
+                    else:
+                        # Обновляем только last_checked
+                        conn.execute("""
+                            UPDATE apartments 
+                            SET last_checked = ?, updated_at = ?
+                            WHERE ad_id = ?
+                        """, (current_time, current_time, ad_id))
                 else:
-                    # Обновляем только last_checked
+                    # Вставляем новое объявление
                     conn.execute("""
-                        UPDATE apartments 
-                        SET last_checked = ?, updated_at = ?
-                        WHERE ad_id = ?
-                    """, (current_time, current_time, ad_id))
-            else:
-                # Вставляем новое объявление
-                conn.execute("""
                     INSERT INTO apartments (
                         ad_id, source, price_usd, price_byn, rooms, floor, total_area,
                         list_time, last_checked, is_active, url, address, raw_json,
@@ -1120,15 +1235,14 @@ async def sync_apartment_from_kufar(
                     current_time
                 ))
             
-            # Помечаем объявления как неактивные, если last_checked старше 48 часов
-            conn.execute("""
-                UPDATE apartments 
-                SET is_active = 0 
-                WHERE last_checked < datetime('now', '-48 hours')
-                AND is_active = 1
-            """)
-            
-            conn.commit()
+                # Помечаем объявления как неактивные, если last_checked старше 48 часов
+                conn.execute("""
+                    UPDATE apartments 
+                    SET is_active = 0 
+                    WHERE last_checked < datetime('now', '-48 hours')
+                    AND is_active = 1
+                """)
+                # Commit происходит автоматически при выходе из контекста
         
         await asyncio.to_thread(_execute)
         return True
@@ -1280,30 +1394,23 @@ async def save_api_query_cache(
     query_params: str
 ) -> bool:
     """
-    Сохраняет результат API запроса в кэш
+    Сохраняет результат API запроса в кэш (атомарная операция)
     """
-    conn = get_turso_connection()
-    if not conn:
-        return False
-    
     try:
         def _execute():
-            conn.execute("""
-                INSERT INTO api_query_cache (query_hash, last_fetched, result_count, query_params)
-                VALUES (?, CURRENT_TIMESTAMP, ?, ?)
-                ON CONFLICT(query_hash) DO UPDATE SET
-                    last_fetched = CURRENT_TIMESTAMP,
-                    result_count = excluded.result_count,
-                    query_params = excluded.query_params
-            """, (query_hash, result_count, query_params))
-            conn.commit()
+            with turso_transaction() as conn:
+                conn.execute("""
+                    INSERT INTO api_query_cache (query_hash, last_fetched, result_count, query_params)
+                    VALUES (?, CURRENT_TIMESTAMP, ?, ?)
+                    ON CONFLICT(query_hash) DO UPDATE SET
+                        last_fetched = CURRENT_TIMESTAMP,
+                        result_count = excluded.result_count,
+                        query_params = excluded.query_params
+                """, (query_hash, result_count, query_params))
+                # Commit происходит автоматически при выходе из контекста
         
         await asyncio.to_thread(_execute)
         return True
     except Exception as e:
-        logger.error(f"Ошибка сохранения кэша запросов: {e}")
+        log_error("turso_cache", f"Ошибка сохранения кэша запросов {query_hash}", e)
         return False
-    finally:
-        if conn:
-            conn.close()
-    return "барановичи"

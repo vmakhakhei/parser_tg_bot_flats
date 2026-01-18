@@ -1,6 +1,13 @@
 """
 Модуль для работы с базой данных SQLite
 Хранит информацию об уже отправленных объявлениях и настройках фильтров
+
+Абстракция для работы с БД:
+- SQLite (локальная БД) - основная реализация
+- Turso (кэширование) - опциональная реализация через абстракцию
+
+ВАЖНО: Весь код должен использовать только интерфейс из этого модуля,
+а не конкретную реализацию Turso (database_turso) напрямую.
 """
 import aiosqlite
 import hashlib
@@ -387,4 +394,390 @@ async def get_listing_by_id(listing_id: str) -> Optional[Dict[str, Any]]:
         if row:
             return dict(row)
         return None
+
+
+# ========== АБСТРАКЦИЯ ДЛЯ TURSO (кэширование) ==========
+# Все функции Turso доступны через этот интерфейс
+# Код не должен импортировать database_turso напрямую
+
+async def ensure_turso_tables_exist() -> bool:
+    """
+    Проверяет и создает все необходимые таблицы Turso если их нет
+    
+    Returns:
+        True если успешно, False при ошибке
+    """
+    from config import USE_TURSO_CACHE
+    if not USE_TURSO_CACHE:
+        return False
+    
+    try:
+        from database_turso import ensure_tables_exist
+        return await ensure_tables_exist()
+    except Exception as e:
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.warning(f"Не удалось создать таблицы Turso: {e}")
+        return False
+
+
+async def create_or_update_user_turso(
+    user_id: int,
+    username: Optional[str] = None,
+    first_name: Optional[str] = None,
+    last_name: Optional[str] = None
+) -> bool:
+    """
+    Создает или обновляет пользователя в Turso
+    
+    Returns:
+        True если успешно, False при ошибке
+    """
+    from config import USE_TURSO_CACHE
+    if not USE_TURSO_CACHE:
+        return False
+    
+    try:
+        from database_turso import create_or_update_user
+        return await create_or_update_user(user_id, username, first_name, last_name)
+    except Exception as e:
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.warning(f"Не удалось создать/обновить пользователя в Turso: {e}")
+        return False
+
+
+async def get_user_filters_turso(user_id: int) -> Optional[Dict[str, Any]]:
+    """
+    Получает фильтры пользователя из Turso
+    
+    Returns:
+        Словарь с фильтрами или None
+    """
+    from config import USE_TURSO_CACHE
+    if not USE_TURSO_CACHE:
+        return None
+    
+    try:
+        from database_turso import get_user_filters_turso
+        return await get_user_filters_turso(user_id)
+    except Exception as e:
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.warning(f"Не удалось получить фильтры из Turso: {e}")
+        return None
+
+
+async def set_user_filters_turso(
+    user_id: int,
+    min_price: int = 0,
+    max_price: Optional[int] = None,
+    rooms: Optional[List[int]] = None,
+    region: str = "барановичи",
+    active: bool = True,
+    ai_mode: bool = False,
+    seller_type: Optional[str] = None
+) -> bool:
+    """
+    Устанавливает фильтры пользователя в Turso
+    
+    Returns:
+        True если успешно, False при ошибке
+    """
+    from config import USE_TURSO_CACHE
+    if not USE_TURSO_CACHE:
+        return False
+    
+    try:
+        from database_turso import set_user_filters_turso
+        return await set_user_filters_turso(
+            user_id, min_price, max_price, rooms, region, active, ai_mode, seller_type
+        )
+    except Exception as e:
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.warning(f"Не удалось установить фильтры в Turso: {e}")
+        return False
+
+
+async def get_cached_listings_by_filters_turso(
+    city: str,
+    min_rooms: int,
+    max_rooms: int,
+    min_price: int,
+    max_price: int,
+    limit: int = 100,
+    status: str = "active"
+) -> List[Dict[str, Any]]:
+    """
+    Получает объявления из кэша Turso по фильтрам
+    
+    Returns:
+        Список объявлений из кэша или пустой список при ошибке
+    """
+    from config import USE_TURSO_CACHE
+    if not USE_TURSO_CACHE:
+        return []
+    
+    try:
+        from database_turso import get_cached_listings_by_filters
+        return await get_cached_listings_by_filters(
+            city, min_rooms, max_rooms, min_price, max_price, limit, status
+        )
+    except Exception as e:
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.warning(f"Не удалось получить объявления из кэша Turso: {e}")
+        return []
+
+
+def cached_listing_to_listing_turso(cached_dict: Dict[str, Any]):
+    """
+    Конвертирует объявление из кэша Turso (словарь) в объект Listing
+    
+    Returns:
+        Объект Listing или None при ошибке
+    """
+    try:
+        from database_turso import cached_listing_to_listing
+        return cached_listing_to_listing(cached_dict)
+    except Exception as e:
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.warning(f"Не удалось конвертировать объявление из кэша: {e}")
+        return None
+
+
+async def cache_listings_batch_turso(listings: List) -> int:
+    """
+    Сохраняет несколько объявлений в кэш Turso батчем
+    
+    Args:
+        listings: Список объектов Listing
+    
+    Returns:
+        Количество успешно сохраненных объявлений
+    """
+    from config import USE_TURSO_CACHE
+    if not USE_TURSO_CACHE:
+        return 0
+    
+    try:
+        from database_turso import cache_listings_batch
+        return await cache_listings_batch(listings)
+    except Exception as e:
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.warning(f"Не удалось сохранить объявления в кэш Turso: {e}")
+        return 0
+
+
+async def update_cached_listings_daily_turso():
+    """
+    Ежедневное обновление кэша Turso: проверка статуса объявлений
+    """
+    from config import USE_TURSO_CACHE
+    if not USE_TURSO_CACHE:
+        return
+    
+    try:
+        from database_turso import update_cached_listings_daily
+        await update_cached_listings_daily()
+    except Exception as e:
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.warning(f"Не удалось обновить кэш Turso: {e}")
+
+
+# ========== АБСТРАКЦИЯ ДЛЯ TURSO (кэширование) ==========
+# Все функции Turso доступны через этот интерфейс
+# Код не должен импортировать database_turso напрямую
+
+async def ensure_turso_tables_exist() -> bool:
+    """
+    Проверяет и создает все необходимые таблицы Turso если их нет
+    
+    Returns:
+        True если успешно, False при ошибке
+    """
+    from config import USE_TURSO_CACHE
+    if not USE_TURSO_CACHE:
+        return False
+    
+    try:
+        from database_turso import ensure_tables_exist
+        return await ensure_tables_exist()
+    except Exception as e:
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.warning(f"Не удалось создать таблицы Turso: {e}")
+        return False
+
+
+async def create_or_update_user_turso(
+    user_id: int,
+    username: Optional[str] = None,
+    first_name: Optional[str] = None,
+    last_name: Optional[str] = None
+) -> bool:
+    """
+    Создает или обновляет пользователя в Turso
+    
+    Returns:
+        True если успешно, False при ошибке
+    """
+    from config import USE_TURSO_CACHE
+    if not USE_TURSO_CACHE:
+        return False
+    
+    try:
+        from database_turso import create_or_update_user
+        return await create_or_update_user(user_id, username, first_name, last_name)
+    except Exception as e:
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.warning(f"Не удалось создать/обновить пользователя в Turso: {e}")
+        return False
+
+
+async def get_user_filters_turso(user_id: int) -> Optional[Dict[str, Any]]:
+    """
+    Получает фильтры пользователя из Turso
+    
+    Returns:
+        Словарь с фильтрами или None
+    """
+    from config import USE_TURSO_CACHE
+    if not USE_TURSO_CACHE:
+        return None
+    
+    try:
+        from database_turso import get_user_filters_turso
+        return await get_user_filters_turso(user_id)
+    except Exception as e:
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.warning(f"Не удалось получить фильтры из Turso: {e}")
+        return None
+
+
+async def set_user_filters_turso(
+    user_id: int,
+    min_price: int = 0,
+    max_price: Optional[int] = None,
+    rooms: Optional[List[int]] = None,
+    region: str = "барановичи",
+    active: bool = True,
+    ai_mode: bool = False,
+    seller_type: Optional[str] = None
+) -> bool:
+    """
+    Устанавливает фильтры пользователя в Turso
+    
+    Returns:
+        True если успешно, False при ошибке
+    """
+    from config import USE_TURSO_CACHE
+    if not USE_TURSO_CACHE:
+        return False
+    
+    try:
+        from database_turso import set_user_filters_turso
+        return await set_user_filters_turso(
+            user_id, min_price, max_price, rooms, region, active, ai_mode, seller_type
+        )
+    except Exception as e:
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.warning(f"Не удалось установить фильтры в Turso: {e}")
+        return False
+
+
+async def get_cached_listings_by_filters_turso(
+    city: str,
+    min_rooms: int,
+    max_rooms: int,
+    min_price: int,
+    max_price: int,
+    limit: int = 100,
+    status: str = "active"
+) -> List[Dict[str, Any]]:
+    """
+    Получает объявления из кэша Turso по фильтрам
+    
+    Returns:
+        Список объявлений из кэша или пустой список при ошибке
+    """
+    from config import USE_TURSO_CACHE
+    if not USE_TURSO_CACHE:
+        return []
+    
+    try:
+        from database_turso import get_cached_listings_by_filters
+        return await get_cached_listings_by_filters(
+            city, min_rooms, max_rooms, min_price, max_price, limit, status
+        )
+    except Exception as e:
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.warning(f"Не удалось получить объявления из кэша Turso: {e}")
+        return []
+
+
+def cached_listing_to_listing_turso(cached_dict: Dict[str, Any]):
+    """
+    Конвертирует объявление из кэша Turso (словарь) в объект Listing
+    
+    Returns:
+        Объект Listing
+    """
+    try:
+        from database_turso import cached_listing_to_listing
+        return cached_listing_to_listing(cached_dict)
+    except Exception as e:
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.warning(f"Не удалось конвертировать объявление из кэша: {e}")
+        return None
+
+
+async def cache_listings_batch_turso(listings: List) -> int:
+    """
+    Сохраняет несколько объявлений в кэш Turso батчем
+    
+    Args:
+        listings: Список объектов Listing
+    
+    Returns:
+        Количество успешно сохраненных объявлений
+    """
+    from config import USE_TURSO_CACHE
+    if not USE_TURSO_CACHE:
+        return 0
+    
+    try:
+        from database_turso import cache_listings_batch
+        return await cache_listings_batch(listings)
+    except Exception as e:
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.warning(f"Не удалось сохранить объявления в кэш Turso: {e}")
+        return 0
+
+
+async def update_cached_listings_daily_turso():
+    """
+    Ежедневное обновление кэша Turso: проверка статуса объявлений
+    """
+    from config import USE_TURSO_CACHE
+    if not USE_TURSO_CACHE:
+        return
+    
+    try:
+        from database_turso import update_cached_listings_daily
+        await update_cached_listings_daily()
+    except Exception as e:
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.warning(f"Не удалось обновить кэш Turso: {e}")
 

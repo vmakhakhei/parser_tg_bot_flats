@@ -1,61 +1,246 @@
 """
 Система логирования ошибок для бота
+
+Особенности:
+- Логирование с уровнями INFO / WARNING / ERROR
+- Запись в файл logs/app.log
+- Логирование traceback для ошибок
+- Совместимость с существующим API
+- Безопасность: фильтрация токенов и чувствительных данных из логов
 """
 import logging
+import sys
+import traceback
+import os
+import re
 from datetime import datetime
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 from collections import deque
+from pathlib import Path
 
 
-# Стандартный логгер Python
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-)
-logger = logging.getLogger("error_logger")
+# Создаем директорию для логов, если её нет
+LOG_DIR = Path("logs")
+LOG_DIR.mkdir(exist_ok=True)
+LOG_FILE = LOG_DIR / "app.log"
+
+
+def setup_logging():
+    """Настраивает систему логирования"""
+    # Создаем форматтер
+    formatter = logging.Formatter(
+        fmt='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+        datefmt='%Y-%m-%d %H:%M:%S'
+    )
+    
+    # Создаем файловый handler для записи в logs/app.log
+    file_handler = logging.FileHandler(LOG_FILE, encoding='utf-8')
+    file_handler.setLevel(logging.DEBUG)  # В файл пишем все уровни
+    file_handler.setFormatter(formatter)
+    
+    # Создаем консольный handler для вывода в stdout
+    console_handler = logging.StreamHandler(sys.stdout)
+    console_handler.setLevel(logging.INFO)  # В консоль только INFO и выше
+    console_handler.setFormatter(formatter)
+    
+    # Настраиваем корневой логгер
+    root_logger = logging.getLogger()
+    root_logger.setLevel(logging.DEBUG)
+    
+    # Удаляем существующие handlers, чтобы избежать дублирования
+    root_logger.handlers.clear()
+    
+    # Добавляем наши handlers
+    root_logger.addHandler(file_handler)
+    root_logger.addHandler(console_handler)
+    
+    return root_logger
+
+
+# Инициализируем логирование при импорте модуля
+setup_logging()
+
+
+def sanitize_sensitive_data(text: str) -> str:
+    """
+    Удаляет чувствительные данные из текста перед логированием
+    
+    Фильтрует:
+    - Токены бота (BOT_TOKEN) - формат: 123456789:ABCdefGHIjklMNOpqrsTUVwxyz
+    - Токены Turso (TURSO_AUTH_TOKEN) - длинные строки
+    - API ключи и секреты
+    - Пароли
+    - Полные сообщения пользователей
+    - Персональные данные (username, first_name, last_name, phone, email)
+    
+    Args:
+        text: Текст для очистки
+    
+    Returns:
+        Очищенный текст
+    """
+    if not text:
+        return text
+    
+    # Паттерны для поиска чувствительных данных (в порядке приоритета)
+    patterns = [
+        # Переменные окружения с токенами (самый приоритетный - заменяем полностью)
+        (r'(BOT_TOKEN|TURSO_AUTH_TOKEN|API_KEY|SECRET|PASSWORD|AUTH_TOKEN)\s*[:=]\s*["\']?[A-Za-z0-9_:_-]{20,}["\']?', r'\1=[REDACTED]'),
+        # Токены бота Telegram (формат: 123456789:ABCdefGHIjklMNOpqrsTUVwxyz)
+        # Очень специфичный паттерн для токенов бота (цифры:буквы_цифры_дефисы)
+        # Должен быть перед общим паттерном token, чтобы не перехватывался
+        # Ищем токены бота в любом контексте (с пробелами, в кавычках, после = и т.д.)
+        # Токены бота обычно имеют 8+ цифр, двоеточие и 20+ символов после
+        (r'\d{8,}:[A-Za-z0-9_-]{20,}', '[BOT_TOKEN]'),
+        # Токены в URL или connection strings (но не токены бота, которые уже обработаны)
+        (r'(auth_token|token|api_key|apikey)\s*[:=]\s*["\']?[A-Za-z0-9_-]{20,}["\']?', r'\1=[REDACTED]'),
+        # Длинные токены (40+ символов) - могут быть токенами Turso или другими
+        # Но только если это не часть URL или другого контекста
+        (r'\b[A-Za-z0-9_-]{40,}\b', '[TOKEN]'),
+        # API ключи в различных форматах
+        (r'\b(api[_-]?key|apikey|api_key)\s*[:=]\s*["\']?[A-Za-z0-9_-]{20,}["\']?', r'\1=[API_KEY]'),
+        # Секреты и пароли
+        (r'\b(secret|password|passwd|pwd|pass)\s*[:=]\s*["\']?[^\s"\']+["\']?', r'\1=[REDACTED]'),
+        # Email адреса
+        (r'\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b', '[EMAIL]'),
+        # Телефонные номера (различные форматы) - но не токены бота
+        (r'\b\+?\d{1,3}[-.\s]?\(?\d{1,4}\)?[-.\s]?\d{1,4}[-.\s]?\d{1,9}\b(?!:)', '[PHONE]'),
+        # Полные сообщения пользователей (оставляем только ID)
+        (r'message\.text\s*[:=]\s*["\'][^"\']+["\']', 'message.text=[REDACTED]'),
+        (r'message\.from_user\.(username|first_name|last_name|phone_number)\s*[:=]\s*["\'][^"\']+["\']', r'message.from_user.\1=[REDACTED]'),
+        # Данные пользователя в словарях
+        (r'["\'](username|first_name|last_name|phone_number|email)["\']\s*:\s*["\'][^"\']+["\']', r'"\1":"[REDACTED]"'),
+    ]
+    
+    sanitized = text
+    for pattern, replacement in patterns:
+        sanitized = re.sub(pattern, replacement, sanitized, flags=re.IGNORECASE)
+    
+    return sanitized
 
 
 class ErrorLogger:
-    """Класс для сбора и хранения ошибок"""
+    """Класс для сбора и хранения ошибок с логированием в файл"""
     
     def __init__(self, max_errors: int = 50, max_warnings: int = 30):
+        """
+        Инициализация логгера ошибок
+        
+        Args:
+            max_errors: Максимальное количество хранимых ошибок в памяти
+            max_warnings: Максимальное количество хранимых предупреждений в памяти
+        """
         self.errors: deque = deque(maxlen=max_errors)
         self.warnings: deque = deque(maxlen=max_warnings)
-        self._logger = logging.getLogger("bot")
+        
+        # Создаем отдельный логгер для этого модуля
+        self._logger = logging.getLogger("error_logger")
+        self._logger.setLevel(logging.DEBUG)
     
-    def log_error(self, source: str, message: str, exception: Exception = None):
-        """Логирует ошибку"""
+    def log_error(
+        self, 
+        source: str, 
+        message: str, 
+        exception: Optional[Exception] = None,
+        exc_info: bool = True
+    ):
+        """
+        Логирует ошибку с полным traceback
+        
+        Args:
+            source: Источник ошибки (модуль/компонент)
+            message: Сообщение об ошибке
+            exception: Объект исключения (опционально)
+            exc_info: Логировать ли traceback (по умолчанию True)
+        """
         timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        
+        # Очищаем чувствительные данные из сообщения
+        sanitized_message = sanitize_sensitive_data(message)
+        
+        # Формируем полное сообщение
+        full_message = f"[{source}] {sanitized_message}"
+        
+        # Если передан exception, добавляем его информацию (также очищенную)
+        exception_str = None
+        if exception:
+            exception_str = str(exception)
+            exception_str = sanitize_sensitive_data(exception_str)
+            full_message += f": {exception_str}"
+        
+        # Записываем в память (только очищенные данные)
         error_entry = {
             "timestamp": timestamp,
             "source": source,
-            "message": message,
-            "exception": str(exception) if exception else None,
+            "message": sanitized_message,
+            "exception": exception_str,
             "type": "error"
         }
         self.errors.append(error_entry)
         
-        # Также в стандартный логгер
-        if exception:
-            self._logger.error(f"[{source}] {message}: {exception}")
+        # Логируем с traceback если нужно
+        # ВАЖНО: traceback может содержать чувствительные данные (токены, пароли)
+        # Поэтому мы очищаем traceback перед логированием
+        if exc_info and exception:
+            try:
+                # Получаем traceback и очищаем его от чувствительных данных
+                import traceback as tb
+                tb_str = ''.join(tb.format_exception(type(exception), exception, exception.__traceback__))
+                # Очищаем traceback от токенов и чувствительных данных
+                tb_str = sanitize_sensitive_data(tb_str)
+                # Логируем очищенный traceback
+                self._logger.error(f"{full_message}\n{tb_str}")
+            except Exception:
+                # Если не удалось получить или очистить traceback, логируем только сообщение
+                self._logger.error(full_message)
         else:
-            self._logger.error(f"[{source}] {message}")
+            # Логируем без traceback
+            self._logger.error(full_message)
     
     def log_warning(self, source: str, message: str):
-        """Логирует предупреждение"""
+        """
+        Логирует предупреждение
+        
+        Args:
+            source: Источник предупреждения
+            message: Сообщение
+        """
         timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        
+        # Очищаем чувствительные данные из сообщения
+        sanitized_message = sanitize_sensitive_data(message)
+        
+        # Записываем в память (только очищенные данные)
         warning_entry = {
             "timestamp": timestamp,
             "source": source,
-            "message": message,
+            "message": sanitized_message,
             "type": "warning"
         }
         self.warnings.append(warning_entry)
-        self._logger.warning(f"[{source}] {message}")
+        
+        # Логируем
+        self._logger.warning(f"[{source}] {sanitized_message}")
     
     def log_info(self, source: str, message: str):
-        """Логирует информацию"""
+        """
+        Логирует информационное сообщение
+        
+        Args:
+            source: Источник информации
+            message: Сообщение
+        """
         self._logger.info(f"[{source}] {message}")
+    
+    def log_debug(self, source: str, message: str):
+        """
+        Логирует отладочное сообщение
+        
+        Args:
+            source: Источник отладки
+            message: Сообщение
+        """
+        self._logger.debug(f"[{source}] {message}")
     
     def get_errors(self, limit: int = 20) -> List[Dict]:
         """Возвращает последние ошибки"""
@@ -73,10 +258,10 @@ class ErrorLogger:
         return all_logs[:limit]
     
     def clear(self):
-        """Очищает все логи"""
+        """Очищает все логи из памяти"""
         self.errors.clear()
         self.warnings.clear()
-        self._logger.info("Логи ошибок очищены")
+        self._logger.info("Логи ошибок очищены из памяти")
     
     def get_stats(self) -> Dict:
         """Возвращает статистику ошибок"""
@@ -84,6 +269,7 @@ class ErrorLogger:
             "total_errors": len(self.errors),
             "total_warnings": len(self.warnings),
             "errors_by_source": self._count_by_source(self.errors),
+            "warnings_by_source": self._count_by_source(self.warnings),
         }
     
     def _count_by_source(self, logs: deque) -> Dict[str, int]:
@@ -127,17 +313,67 @@ error_logger = ErrorLogger()
 
 
 # Удобные функции для импорта
-def log_error(source: str, message: str, exception: Exception = None):
-    """Быстрое логирование ошибки"""
-    error_logger.log_error(source, message, exception)
+def log_error(
+    source: str, 
+    message: str, 
+    exception: Optional[Exception] = None,
+    exc_info: bool = True
+):
+    """
+    Быстрое логирование ошибки с traceback
+    
+    Args:
+        source: Источник ошибки
+        message: Сообщение об ошибке
+        exception: Объект исключения (опционально)
+        exc_info: Логировать ли traceback (по умолчанию True)
+    
+    Пример использования:
+        try:
+            # какой-то код
+        except Exception as e:
+            log_error("module_name", "Описание ошибки", e)
+    """
+    error_logger.log_error(source, message, exception, exc_info)
 
 
 def log_warning(source: str, message: str):
-    """Быстрое логирование предупреждения"""
+    """
+    Быстрое логирование предупреждения
+    
+    Args:
+        source: Источник предупреждения
+        message: Сообщение
+    
+    Пример использования:
+        log_warning("module_name", "Предупреждение о чем-то")
+    """
     error_logger.log_warning(source, message)
 
 
 def log_info(source: str, message: str):
-    """Быстрое логирование информации"""
+    """
+    Быстрое логирование информации
+    
+    Args:
+        source: Источник информации
+        message: Сообщение
+    
+    Пример использования:
+        log_info("module_name", "Информационное сообщение")
+    """
     error_logger.log_info(source, message)
 
+
+def log_debug(source: str, message: str):
+    """
+    Быстрое логирование отладочного сообщения
+    
+    Args:
+        source: Источник отладки
+        message: Сообщение
+    
+    Пример использования:
+        log_debug("module_name", "Отладочное сообщение")
+    """
+    error_logger.log_debug(source, message)

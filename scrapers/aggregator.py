@@ -1,11 +1,17 @@
 """
 Агрегатор всех парсеров - собирает объявления со всех источников
+
+Особенности:
+- Каждый scraper обернут в try/except
+- При падении одного scraper остальные продолжают работать
+- Детальное логирование ошибок с указанием имени scraper
 """
 import asyncio
 import sys
 import os
 import time
 import json
+import aiohttp
 from typing import List, Dict, Any, Optional
 
 # Добавляем родительскую директорию в path для импорта
@@ -68,6 +74,9 @@ class ListingsAggregator:
         """
         Получает объявления со всех включенных источников
         
+        Каждый scraper обернут в try/except, при падении одного
+        остальные продолжают работать.
+        
         Returns:
             Объединенный список объявлений со всех сайтов
         """
@@ -75,60 +84,145 @@ class ListingsAggregator:
         tasks = []
         source_names = []
         
+        log_info("aggregator", f"Начинаю парсинг с {len(self.enabled_sources)} источников: {', '.join(self.enabled_sources)}")
+        
         # Создаем задачи для каждого парсера
         for source_name in self.enabled_sources:
             if source_name in self.SCRAPERS:
-                scraper_class = self.SCRAPERS[source_name]
-                task = self._fetch_from_source(
-                    scraper_class(),
-                    city, min_rooms, max_rooms, min_price, max_price
-                )
-                tasks.append(task)
-                source_names.append(source_name)
+                try:
+                    scraper_class = self.SCRAPERS[source_name]
+                    # Создаем экземпляр scraper'а с защитой от ошибок инициализации
+                    try:
+                        scraper_instance = scraper_class()
+                    except Exception as e:
+                        log_error("aggregator", f"Ошибка создания экземпляра scraper '{source_name}'", e)
+                        continue
+                    
+                    # Создаем задачу с защитой от падений
+                    task = self._fetch_from_source(
+                        scraper_instance,
+                        source_name,
+                        city, min_rooms, max_rooms, min_price, max_price
+                    )
+                    tasks.append(task)
+                    source_names.append(source_name)
+                except Exception as e:
+                    log_error("aggregator", f"Ошибка подготовки scraper '{source_name}'", e)
+                    continue
         
-        # Выполняем все запросы параллельно
+        if not tasks:
+            log_warning("aggregator", "Не удалось создать ни одной задачи для парсинга")
+            return []
+        
+        # Выполняем все запросы параллельно с защитой от исключений
+        # return_exceptions=True гарантирует, что при падении одного scraper'а остальные продолжат работу
+        log_info("aggregator", f"Запускаю {len(tasks)} задач параллельно...")
         results = await asyncio.gather(*tasks, return_exceptions=True)
         
-        # Обрабатываем результаты (парсеры сами логируют количество)
+        # Обрабатываем результаты с детальным логированием
         source_stats = {}
+        successful_sources = 0
+        failed_sources = 0
+        
         for source_name, result in zip(source_names, results):
             if isinstance(result, Exception):
-                log_error(source_name, f"Ошибка парсинга", result)
+                # Ошибка уже залогирована в _fetch_from_source, но логируем здесь тоже для статистики
+                log_error("aggregator", f"Scraper '{source_name}' завершился с ошибкой: {type(result).__name__}", result)
                 source_stats[source_name] = {"error": str(result), "count": 0}
+                failed_sources += 1
             elif isinstance(result, list):
                 all_listings.extend(result)
-                source_stats[source_name] = {"count": len(result), "error": None}
+                count = len(result)
+                source_stats[source_name] = {"count": count, "error": None}
+                successful_sources += 1
+                log_info("aggregator", f"✅ Scraper '{source_name}': получено {count} объявлений")
+            else:
+                log_warning("aggregator", f"Scraper '{source_name}': неожиданный тип результата: {type(result)}")
+                source_stats[source_name] = {"error": f"Неожиданный тип результата: {type(result)}", "count": 0}
+                failed_sources += 1
+        
+        # Логируем итоговую статистику
+        log_info("aggregator", f"Парсинг завершен: успешно {successful_sources}/{len(source_names)}, ошибок {failed_sources}")
         
         # Удаляем дубликаты по ID
         unique_listings = self._remove_duplicates(all_listings)
+        duplicates_removed = len(all_listings) - len(unique_listings)
+        if duplicates_removed > 0:
+            log_info("aggregator", f"Удалено {duplicates_removed} дубликатов")
         
         # Сортируем по дате (новые первые) - у нас нет даты, сортируем по цене
         unique_listings.sort(key=lambda x: x.price if x.price > 0 else 999999999)
+        
+        log_info("aggregator", f"Итого уникальных объявлений: {len(unique_listings)}")
         
         return unique_listings
     
     async def _fetch_from_source(
         self,
         scraper,
+        source_name: str,
         city: str,
         min_rooms: int,
         max_rooms: int,
         min_price: int,
         max_price: int,
     ) -> List[Listing]:
-        """Получает объявления из одного источника"""
+        """
+        Получает объявления из одного источника
+        
+        Обернут в try/except для защиты от падений.
+        При ошибке возвращает пустой список, остальные scraper'ы продолжают работу.
+        
+        Args:
+            scraper: Экземпляр scraper'а
+            source_name: Имя источника (для логирования)
+            city: Город для поиска
+            min_rooms: Минимальное количество комнат
+            max_rooms: Максимальное количество комнат
+            min_price: Минимальная цена
+            max_price: Максимальная цена
+        
+        Returns:
+            Список объявлений или пустой список при ошибке
+        """
+        scraper_name = getattr(scraper, 'SOURCE_NAME', source_name)
+        
         try:
-            async with scraper:
-                listings = await scraper.fetch_listings(
-                    city=city,
-                    min_rooms=min_rooms,
-                    max_rooms=max_rooms,
-                    min_price=min_price,
-                    max_price=max_price,
-                )
-                return listings
+            log_info("aggregator", f"🔄 Запускаю scraper '{scraper_name}' для города '{city}'...")
+            
+            # Инициализация scraper'а (context manager)
+            try:
+                async with scraper:
+                    # Получение объявлений
+                    listings = await scraper.fetch_listings(
+                        city=city,
+                        min_rooms=min_rooms,
+                        max_rooms=max_rooms,
+                        min_price=min_price,
+                        max_price=max_price,
+                    )
+                    
+                    # Проверяем результат
+                    if not isinstance(listings, list):
+                        log_warning("aggregator", f"Scraper '{scraper_name}' вернул не список: {type(listings)}")
+                        return []
+                    
+                    log_info("aggregator", f"✅ Scraper '{scraper_name}': получено {len(listings)} объявлений")
+                    return listings
+                    
+            except asyncio.TimeoutError as e:
+                log_error("aggregator", f"Scraper '{scraper_name}': таймаут при получении данных", e)
+                return []
+            except aiohttp.ClientError as e:
+                log_error("aggregator", f"Scraper '{scraper_name}': ошибка HTTP-запроса", e)
+                return []
+            except Exception as e:
+                log_error("aggregator", f"Scraper '{scraper_name}': ошибка при работе с context manager", e)
+                return []
+                
         except Exception as e:
-            log_error(scraper.SOURCE_NAME, f"Ошибка получения данных", e)
+            # Защита от любых других ошибок (инициализация, импорт и т.д.)
+            log_error("aggregator", f"Scraper '{scraper_name}': критическая ошибка", e)
             return []
     
     def _remove_duplicates(self, listings: List[Listing]) -> List[Listing]:

@@ -130,17 +130,30 @@ class DomovitaScraper(BaseScraper):
             
             title = f"{rooms}-комн. квартира, {area} м²" if rooms and area else "Квартира"
             
-            return Listing(
-                id=listing_id,
-                source="Domovita.by",
+            # Валидация через DTO перед созданием полного Listing
+            dto = self.validate_listing_data(
                 title=title,
                 price=price,
+                url=url,
+                location=address,
+                source="Domovita.by"
+            )
+            
+            if not dto:
+                log_warning("domovita", f"Объявление не прошло валидацию DTO: title='{title[:50]}...', price={price}, url={url[:50]}...")
+                return None
+            
+            return Listing(
+                id=listing_id,
+                source=dto.source,
+                title=dto.title,
+                price=dto.price,
                 price_formatted=f"${price:,}".replace(",", " ") if price else "Цена не указана",
                 rooms=rooms,
                 area=area,
-                address=address,
+                address=dto.location,
                 photos=photos,
-                url=url,
+                url=dto.url,
             )
             
         except Exception as e:

@@ -46,6 +46,9 @@ TURSO_DB_URL = os.getenv("TURSO_DB_URL", "")
 TURSO_AUTH_TOKEN = os.getenv("TURSO_AUTH_TOKEN", "")
 USE_TURSO_CACHE = os.getenv("USE_TURSO_CACHE", "true").lower() == "true"
 
+# Источники объявлений по умолчанию
+DEFAULT_SOURCES = ["kufar", "etagi"]
+
 # User Agent для запросов
 USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
 

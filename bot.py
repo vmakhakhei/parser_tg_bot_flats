@@ -77,7 +77,7 @@ async def sync_user_filters_to_turso(
     Конвертирует формат из старой БД (min_rooms/max_rooms) в новый формат (rooms как список)
     """
     try:
-        from database_turso import set_user_filters_turso
+        from database import set_user_filters_turso
         
         # Конвертируем min_rooms/max_rooms в список комнат
         rooms = list(range(min_rooms, max_rooms + 1)) if min_rooms > 0 and max_rooms > 0 else None
@@ -104,7 +104,7 @@ async def get_user_filters_unified(user_id: int) -> Optional[Dict[str, Any]]:
     """
     # Сначала пробуем Turso
     try:
-        from database_turso import get_user_filters_turso
+        from database import get_user_filters_turso
         turso_filters = await get_user_filters_turso(user_id)
         if turso_filters:
             # Конвертируем формат для совместимости
@@ -502,25 +502,25 @@ async def check_new_listings(bot: Bot):
         user_city = user_filters.get("city")
         
         # ========== КЭШИРОВАНИЕ: Сначала проверяем кэш в Turso ==========
-        from database_turso import (
-            create_or_update_user,
+        from database import (
+            create_or_update_user_turso,
             get_user_filters_turso,
             set_user_filters_turso,
             get_active_users_turso,
-            sync_ads_from_kufar,
-            build_dynamic_query,
-            check_api_query_cache,
-            save_api_query_cache,
-            get_cached_listings_by_filters, 
-            cache_listings_batch,
-            cached_listing_to_listing
+            sync_ads_from_kufar_turso,
+            build_dynamic_query_turso,
+            check_api_query_cache_turso,
+            save_api_query_cache_turso,
+            get_cached_listings_by_filters_turso, 
+            cache_listings_batch_turso,
+            cached_listing_to_listing_turso
         )
         from config import USE_TURSO_CACHE
         
         cached_listings = []
         if USE_TURSO_CACHE:
             try:
-                cached_data = await get_cached_listings_by_filters(
+                cached_data = await get_cached_listings_by_filters_turso(
                     city=user_city,
                     min_rooms=user_filters.get("min_rooms", 1),
                     max_rooms=user_filters.get("max_rooms", 5),
@@ -532,8 +532,9 @@ async def check_new_listings(bot: Bot):
                 # Конвертируем из словарей в объекты Listing
                 for cached_dict in cached_data:
                     try:
-                        listing = cached_listing_to_listing(cached_dict)
-                        cached_listings.append(listing)
+                        listing = cached_listing_to_listing_turso(cached_dict)
+                        if listing:
+                            cached_listings.append(listing)
                     except Exception as e:
                         logger.warning(f"Ошибка конвертации объявления из кэша: {e}")
                         continue
@@ -560,7 +561,7 @@ async def check_new_listings(bot: Bot):
             # Сохраняем все найденные объявления в кэш
             if USE_TURSO_CACHE and parsed_listings:
                 try:
-                    saved_count = await cache_listings_batch(parsed_listings)
+                    saved_count = await cache_listings_batch_turso(parsed_listings)
                     logger.info(f"💾 Сохранено {saved_count} объявлений в кэш")
                 except Exception as e:
                     logger.warning(f"Ошибка сохранения в кэш: {e}")
@@ -1165,8 +1166,8 @@ async def cmd_start(message: Message, state: FSMContext):
     
     # Создаем/обновляем пользователя в Turso
     try:
-        from database_turso import create_or_update_user
-        await create_or_update_user(
+        from database import create_or_update_user_turso
+        await create_or_update_user_turso(
             user_id=user_id,
             username=message.from_user.username,
             first_name=message.from_user.first_name,
@@ -1181,7 +1182,7 @@ async def cmd_start(message: Message, state: FSMContext):
     # Если фильтров нет в старой БД, проверяем Turso
     if not user_filters:
         try:
-            from database_turso import get_user_filters_turso
+            from database import get_user_filters_turso
             user_filters = await get_user_filters_turso(user_id)
             # Конвертируем формат фильтров из Turso в формат старой БД для совместимости
             if user_filters:

@@ -44,3 +44,9 @@ GROQ_API_KEY=your_groq_api_key_here
 # Установка: https://ollama.ai/
 # OLLAMA_URL=http://localhost:11434/api/generate
 
+# ========== TURSO DATABASE (для кэширования объявлений) ==========
+# Turso используется для кэширования объявлений и экономии трафика
+# Регистрация: https://turso.tech/
+# TURSO_DB_URL=libsql://your-db-name.turso.io
+# TURSO_AUTH_TOKEN=your-token-here
+# USE_TURSO_CACHE=true

@@ -257,18 +257,33 @@ class EtagiScraper(BaseScraper):
             # Формируем заголовок
             title = f"{rooms}-комн., {area} м²" if rooms and area else "Квартира"
             
-            return Listing(
-                id=listing_id,
-                source="Etagi.com",
+            # Валидация через DTO перед созданием полного Listing
+            dto = self.validate_listing_data(
                 title=title,
                 price=price_byn,
+                url=url,
+                location=address,
+                source="Etagi.com"
+            )
+            
+            if not dto:
+                # Данные не прошли валидацию
+                log_warning("etagi", f"Объявление не прошло валидацию DTO: title='{title[:50]}...', price={price_byn}, url={url[:50]}...")
+                return None
+            
+            # Создаем полный Listing объект из валидного DTO
+            return Listing(
+                id=listing_id,
+                source=dto.source,
+                title=dto.title,
+                price=dto.price,
                 price_formatted=f"{price_byn:,} BYN (≈${price_usd:,})".replace(",", " "),
                 rooms=rooms,
                 area=area,
                 floor=floor,
-                address=address,
+                address=dto.location,
                 photos=photos,
-                url=url,
+                url=dto.url,
                 currency="BYN",
                 price_usd=price_usd,
                 price_byn=price_byn,

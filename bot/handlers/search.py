@@ -1,0 +1,111 @@
+"""
+Обработчики команд поиска и проверки объявлений
+"""
+
+from aiogram import Router
+from aiogram.types import Message
+from aiogram.filters import Command
+from aiogram.enums import ParseMode
+
+from bot.services.search_service import check_new_listings
+from database import get_user_filters, set_user_filters
+
+router = Router()
+
+
+@router.message(Command("check"))
+async def cmd_check(message: Message):
+    """Ручная проверка объявлений"""
+    await message.answer(
+        "🔍 Проверяю новые объявления со всех источников...\nЭто может занять 30-60 секунд."
+    )
+    await check_new_listings(message.bot)
+    await message.answer("✅ Проверка завершена!")
+
+
+@router.message(Command("start_monitoring"))
+async def cmd_start_monitoring(message: Message):
+    """Включение мониторинга для пользователя"""
+    user_id = message.from_user.id
+    user_filters = await get_user_filters(user_id)
+
+    if not user_filters:
+        await message.answer(
+            "⚠️ Фильтры не настроены. Используйте /start для настройки.", parse_mode=ParseMode.HTML
+        )
+        return
+
+    await set_user_filters(
+        user_id=user_id,
+        city=user_filters.get("city", "барановичи"),
+        min_rooms=user_filters.get("min_rooms", 1),
+        max_rooms=user_filters.get("max_rooms", 4),
+        min_price=user_filters.get("min_price", 0),
+        max_price=user_filters.get("max_price", 100000),
+        is_active=True,
+        ai_mode=user_filters.get("ai_mode", False),
+        seller_type=user_filters.get("seller_type"),
+    )
+    await message.answer("✅ Мониторинг включен!")
+
+
+@router.message(Command("stop_monitoring"))
+async def cmd_stop_monitoring(message: Message):
+    """Выключение мониторинга для пользователя"""
+    user_id = message.from_user.id
+    user_filters = await get_user_filters(user_id)
+
+    if not user_filters:
+        await message.answer(
+            "⚠️ Фильтры не настроены. Используйте /start для настройки.", parse_mode=ParseMode.HTML
+        )
+        return
+
+    await set_user_filters(
+        user_id=user_id,
+        city=user_filters.get("city", "барановичи"),
+        min_rooms=user_filters.get("min_rooms", 1),
+        max_rooms=user_filters.get("max_rooms", 4),
+        min_price=user_filters.get("min_price", 0),
+        max_price=user_filters.get("max_price", 100000),
+        is_active=False,
+        ai_mode=user_filters.get("ai_mode", False),
+        seller_type=user_filters.get("seller_type"),
+    )
+    await message.answer("❌ Мониторинг отключен.")
+
+
+@router.message(Command("filters"))
+async def cmd_filters(message: Message):
+    """Показывает текущие фильтры пользователя с кнопками настройки"""
+    from aiogram.utils.keyboard import InlineKeyboardBuilder
+
+    user_id = message.from_user.id
+    user_filters = await get_user_filters(user_id)
+
+    if not user_filters:
+        await message.answer(
+            "⚠️ Фильтры не настроены. Используйте /start для настройки.", parse_mode=ParseMode.HTML
+        )
+        return
+
+    status = "✅ Активен" if user_filters.get("is_active", True) else "❌ Отключен"
+
+    # Создаем inline кнопки
+    builder = InlineKeyboardBuilder()
+    builder.button(text="⚙️ Настроить фильтры", callback_data="setup_filters")
+
+    # Принудительно размещаем по 1 кнопке в ряду
+    builder.adjust(1)
+
+    await message.answer(
+        f"⚙️ <b>Ваши фильтры</b>\n\n"
+        f"📍 <b>Город:</b> {user_filters.get('city', 'барановичи').title()}\n"
+        f"🚪 <b>Комнат:</b> от {user_filters.get('min_rooms', 1)} до {user_filters.get('max_rooms', 4)}\n"
+        f"💰 <b>Цена:</b> ${user_filters.get('min_price', 0):,} - ${user_filters.get('max_price', 100000):,}\n"
+        f"🤖 <b>Режим:</b> {'ИИ-режим' if user_filters.get('ai_mode') else 'Обычный режим'}\n\n"
+        f"📡 <b>Статус:</b> {status}\n\n"
+        f"<i>Нажмите кнопку для изменения фильтров</i>",
+        parse_mode=ParseMode.HTML,
+        reply_markup=builder.as_markup(),
+    )

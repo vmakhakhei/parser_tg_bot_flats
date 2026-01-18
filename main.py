@@ -1,88 +1,165 @@
 """
 Главный файл запуска бота мониторинга квартир
+
+Entrypoint для приложения:
+1. Загружает конфигурацию
+2. Инициализирует базу данных
+3. Запускает Telegram-бот
 """
 import asyncio
 import logging
+import sys
 from datetime import datetime
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.interval import IntervalTrigger
 
-from bot import create_bot, check_new_listings
+from bot.app import create_bot
+from bot.services.search_service import check_new_listings
 from config import CHECK_INTERVAL, BOT_TOKEN, USE_TURSO_CACHE
 from database import init_database, clear_old_listings
 
-# Настройка логирования
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    handlers=[
-        logging.FileHandler('bot.log', encoding='utf-8'),
-        logging.StreamHandler()
-    ]
-)
-logger = logging.getLogger(__name__)
 
-
-async def scheduled_check(bot):
-    """Запланированная проверка объявлений"""
-    logger.info(f"Запуск плановой проверки: {datetime.now()}")
+def setup_logging():
+    """
+    Настройка логирования
+    
+    Примечание: Основное логирование настраивается в error_logger.py
+    Здесь настраиваем только дополнительный логгер для main.py
+    """
+    # Импортируем error_logger, чтобы он инициализировал систему логирования
+    import error_logger
+    
+    # Создаем отдельный логгер для main.py
+    logger = logging.getLogger(__name__)
+    logger.setLevel(logging.INFO)
+    
+    # Также сохраняем логи в bot.log для обратной совместимости
+    # (основные логи идут в logs/app.log через error_logger)
     try:
-        await check_new_listings(bot)
-    except Exception as e:
-        logger.error(f"Ошибка при плановой проверке: {e}")
-
-
-async def cleanup_old_records():
-    """Очистка старых записей"""
-    logger.info("Очистка старых записей...")
-    await clear_old_listings(days=30)
-
-
-async def main():
-    """Главная функция запуска"""
+        file_handler = logging.FileHandler('bot.log', encoding='utf-8')
+        file_handler.setLevel(logging.INFO)
+        formatter = logging.Formatter(
+            '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+        )
+        file_handler.setFormatter(formatter)
+        logger.addHandler(file_handler)
+    except Exception:
+        # Если не удалось создать файл, продолжаем без него
+        pass
     
-    # Проверка конфигурации
+    return logger
+
+
+def load_config():
+    """Загружает и проверяет конфигурацию"""
+    from error_logger import log_info, log_error
+    
+    # Конфигурация загружается автоматически при импорте config
+    # Проверяем наличие обязательных параметров
     if not BOT_TOKEN:
-        logger.error("❌ BOT_TOKEN не установлен!")
-        logger.error("Создайте файл .env и укажите BOT_TOKEN")
-        logger.error("Получить токен можно у @BotFather в Telegram")
-        return
+        log_error("main", "❌ BOT_TOKEN не установлен!")
+        log_error("main", "Создайте файл .env и укажите BOT_TOKEN")
+        log_error("main", "Получить токен можно у @BotFather в Telegram")
+        return False
     
-    logger.info("=" * 50)
-    logger.info("🏠 Запуск бота мониторинга квартир")
-    logger.info("=" * 50)
+    log_info("main", "✅ Конфигурация загружена")
+    return True
+
+
+async def initialize_database():
+    """Инициализирует базу данных"""
+    from error_logger import log_info, log_warning, log_error
     
-    # Инициализация базы данных
-    await init_database()
-    logger.info("✅ База данных инициализирована")
+    # Инициализация основной базы данных
+    try:
+        await init_database()
+        log_info("main", "✅ База данных инициализирована")
+    except Exception as e:
+        log_error("main", "Ошибка инициализации базы данных", e)
+        raise
     
     # Инициализация Turso (если включено)
     if USE_TURSO_CACHE:
         try:
-            from database_turso import ensure_tables_exist
-            await ensure_tables_exist()
+            from database import ensure_turso_tables_exist
+            await ensure_turso_tables_exist()
+            log_info("main", "✅ Turso кэш инициализирован")
         except Exception as e:
-            logger.warning(f"⚠️ Не удалось инициализировать Turso: {e}")
-            logger.warning("💡 Проверьте переменные окружения TURSO_DB_URL и TURSO_AUTH_TOKEN")
+            log_warning("main", f"⚠️ Не удалось инициализировать Turso: {e}")
+            log_warning("main", "💡 Проверьте переменные окружения TURSO_DB_URL и TURSO_AUTH_TOKEN")
     
-    # Проверка ИИ-оценщика
+    return True
+
+
+def check_ai_valuator():
+    """Проверяет доступность ИИ-оценщика"""
+    from error_logger import log_info, log_warning
+    
     try:
         from ai_valuator import get_valuator
         valuator = get_valuator()
         if valuator:
             provider_name = valuator.provider.upper()
             if provider_name == "GEMINI":
-                logger.info(f"🤖 ИИ-оценщик настроен: {provider_name} (с анализом фото)")
+                log_info("main", f"🤖 ИИ-оценщик настроен: {provider_name} (с анализом фото)")
             else:
-                logger.info(f"🤖 ИИ-оценщик настроен: {provider_name} (без анализа фото)")
+                log_info("main", f"🤖 ИИ-оценщик настроен: {provider_name} (без анализа фото)")
         else:
-            logger.info("⚠️ ИИ-оценщик не настроен (GEMINI_API_KEY не указан)")
-            logger.info("💡 Рекомендуется использовать Gemini для анализа фотографий квартир")
+            log_info("main", "⚠️ ИИ-оценщик не настроен (GEMINI_API_KEY не указан)")
+            log_info("main", "💡 Рекомендуется использовать Gemini для анализа фотографий квартир")
     except Exception as e:
-        logger.warning(f"⚠️ ИИ-оценщик недоступен: {e}")
+        log_warning("main", f"⚠️ ИИ-оценщик недоступен: {e}")
+
+
+logger = setup_logging()
+
+
+async def scheduled_check(bot):
+    """Запланированная проверка объявлений"""
+    from error_logger import log_info, log_error
     
-    # Создание бота
+    log_info("scheduler", f"Запуск плановой проверки: {datetime.now()}")
+    try:
+        await check_new_listings(bot)
+    except Exception as e:
+        log_error("scheduler", "Ошибка при плановой проверке", e)
+
+
+async def cleanup_old_records():
+    """Очистка старых записей"""
+    from error_logger import log_info, log_error
+    
+    log_info("scheduler", "Очистка старых записей...")
+    try:
+        await clear_old_listings(days=30)
+    except Exception as e:
+        log_error("scheduler", "Ошибка при очистке старых записей", e)
+
+
+async def main():
+    """Главная функция запуска - entrypoint приложения"""
+    
+    logger.info("=" * 50)
+    logger.info("🏠 Запуск бота мониторинга квартир")
+    logger.info("=" * 50)
+    
+    # Шаг 1: Загрузка конфигурации
+    logger.info("📋 Шаг 1: Загрузка конфигурации...")
+    if not load_config():
+        logger.error("❌ Не удалось загрузить конфигурацию")
+        sys.exit(1)
+    
+    # Шаг 2: Инициализация базы данных
+    logger.info("💾 Шаг 2: Инициализация базы данных...")
+    await initialize_database()
+    
+    # Шаг 3: Проверка ИИ-оценщика (опционально)
+    logger.info("🤖 Шаг 3: Проверка ИИ-оценщика...")
+    check_ai_valuator()
+    
+    # Шаг 4: Создание и запуск Telegram-бота
+    logger.info("🤖 Шаг 4: Создание Telegram-бота...")
     bot, dp = await create_bot()
     logger.info("✅ Бот создан")
     
@@ -112,11 +189,13 @@ async def main():
     if USE_TURSO_CACHE:
         async def update_turso_cache():
             """Обновление кэша Turso"""
+            from error_logger import log_error
+            
             try:
-                from database_turso import update_cached_listings_daily
-                await update_cached_listings_daily()
+                from database import update_cached_listings_daily_turso
+                await update_cached_listings_daily_turso()
             except Exception as e:
-                logger.error(f"Ошибка обновления кэша Turso: {e}")
+                log_error("scheduler", "Ошибка обновления кэша Turso", e)
         
         scheduler.add_job(
             update_turso_cache,
@@ -175,10 +254,12 @@ async def main():
 
 
 if __name__ == "__main__":
+    """Entrypoint приложения"""
     try:
         asyncio.run(main())
     except KeyboardInterrupt:
-        logger.info("Получен сигнал остановки")
+        logger.info("👋 Получен сигнал остановки")
     except Exception as e:
-        logger.error(f"Критическая ошибка: {e}")
+        logger.error(f"❌ Критическая ошибка: {e}", exc_info=True)
+        sys.exit(1)
 

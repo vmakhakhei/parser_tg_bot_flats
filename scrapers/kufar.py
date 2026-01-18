@@ -158,40 +158,133 @@ class KufarScraper(BaseScraper):
         
         return all_listings
     
-    async def _fetch_json(self, url: str) -> Optional[dict]:
-        """Получает JSON от API"""
-        import aiohttp
+    async def fetch_listings_with_raw_json(
+        self,
+        city: str = "барановичи",
+        min_rooms: int = 1,
+        max_rooms: int = 4,
+        min_price: int = 0,
+        max_price: int = 100000,
+        max_pages: int = 10,
+    ) -> tuple[List[Listing], List[dict]]:
+        """
+        Получает список объявлений через API с пагинацией и возвращает также raw JSON ответы
         
+        Returns:
+            tuple: (listings, raw_api_responses)
+            - listings: List[Listing] - список объектов Listing
+            - raw_api_responses: List[dict] - список raw JSON ответов от API (каждый содержит поле "ads")
+        """
+        log_info("kufar", f"Фильтры: комнаты {min_rooms}-{max_rooms}, цена ${min_price}-${max_price}")
+        
+        # Получаем gtsy параметр для города
+        gtsy_param = self._get_city_gtsy(city)
+        
+        # Базовые параметры запроса
+        base_url = (
+            f"{self.API_URL}"
+            f"?cat=1010"
+            f"&cur=USD"
+            f"&gtsy={gtsy_param}"
+            f"&lang=ru"
+            f"&typ=sell"
+            f"&sort=lst.d"
+            f"&size=30"
+        )
+        
+        # Добавляем фильтры по комнатам
+        if min_rooms > 0 and max_rooms > 0:
+            rooms_list = list(range(min_rooms, max_rooms + 1))
+            if rooms_list:
+                rooms_param = ",".join(map(str, rooms_list))
+                base_url += f"&rms=v.or:{rooms_param}"
+        
+        # Добавляем фильтр по цене
+        if min_price > 0 or max_price < 1000000:
+            price_min = max(0, min_price)
+            price_max = min(1000000, max_price)
+            if price_max > price_min:
+                base_url += f"&prc=r:{price_min},{price_max}"
+        
+        all_listings = []
+        raw_api_responses = []  # Сохраняем raw JSON ответы
+        current_page = 1
+        next_token = None
+        
+        while current_page <= max_pages:
+            # Формируем URL с токеном пагинации
+            if next_token:
+                url = f"{base_url}&cursor={next_token}"
+            else:
+                url = base_url
+            
+            log_info("kufar", f"Запрос API для города '{city}', страница {current_page}: {url}")
+            
+            # Получаем JSON
+            json_data = await self._fetch_json(url)
+            
+            if not json_data:
+                log_warning("kufar", f"API вернул пустой ответ для города '{city}' на странице {current_page}")
+                break
+            
+            # Сохраняем raw JSON ответ
+            raw_api_responses.append(json_data.copy())
+            
+            # Логируем полный ответ API для диагностики
+            ads_count = len(json_data.get("ads", []))
+            total_count = json_data.get("total", 0)
+            log_info("kufar", f"API ответ: найдено объявлений на странице: {ads_count}, всего на сайте: {total_count}")
+            
+            # Парсим объявления с текущей страницы
+            page_listings = self._parse_api_response(json_data, min_rooms, max_rooms, min_price, max_price, city)
+            all_listings.extend(page_listings)
+            
+            # Получаем токен для следующей страницы
+            pagination = json_data.get("pagination") or {}
+            pages = pagination.get("pages") or []
+            
+            # Ищем токен следующей страницы
+            next_token = None
+            for page in pages:
+                if page and isinstance(page, dict) and page.get("label") == "next":
+                    next_token = page.get("token")
+                    break
+            
+            # Если нет следующей страницы, выходим
+            if not next_token:
+                log_info("kufar", f"Достигнута последняя страница ({current_page})")
+                break
+            
+            current_page += 1
+        
+        total_found = json_data.get("total", 0) if json_data else 0
+        log_info("kufar", f"Загружено {len(all_listings)} объявлений с {current_page} страниц (всего на сайте: {total_found})")
+        
+        return all_listings, raw_api_responses
+    
+    async def _fetch_json(self, url: str) -> Optional[dict]:
+        """
+        Получает JSON от API через унифицированный HTTP-клиент
+        
+        Использует базовый метод с дополнительными заголовками для Kufar API
+        """
+        # Дополнительные заголовки для Kufar API
         headers = {
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-            "Accept": "application/json, text/plain, */*",
-            "Accept-Language": "ru-RU,ru;q=0.9,en;q=0.8",
             "Referer": "https://re.kufar.by/",
             "Origin": "https://re.kufar.by",
         }
         
-        try:
-            async with aiohttp.ClientSession() as session:
-                async with session.get(url, headers=headers, timeout=30) as response:
-                    if response.status == 200:
-                        data = await response.json()
-                        # Логируем статус ответа для диагностики
-                        if not data or not data.get("ads"):
-                            log_warning("kufar", f"API вернул пустой ответ или без поля 'ads'. Статус: {response.status}")
-                            log_warning("kufar", f"Полный URL: {url}")
-                            if data:
-                                log_warning("kufar", f"Структура ответа: {list(data.keys())}")
-                        return data
-                    else:
-                        response_text = await response.text()
-                        log_warning("kufar", f"API ответил кодом {response.status}")
-                        log_warning("kufar", f"Ответ сервера: {response_text[:500]}")
-                        log_warning("kufar", f"URL запроса: {url}")
-                        return None
-        except Exception as e:
-            log_error("kufar", f"Ошибка API запроса", e)
-            log_error("kufar", f"URL запроса: {url}")
-            return None
+        # Используем базовый метод с retry и унифицированным клиентом
+        data = await super()._fetch_json(url, headers=headers)
+        
+        # Логируем статус ответа для диагностики
+        if data is not None and (not data or not data.get("ads")):
+            log_warning("kufar", f"API вернул пустой ответ или без поля 'ads'")
+            log_warning("kufar", f"Полный URL: {url}")
+            if data:
+                log_warning("kufar", f"Структура ответа: {list(data.keys())}")
+        
+        return data
     
     def _parse_api_response(
         self, 
@@ -673,18 +766,33 @@ class KufarScraper(BaseScraper):
             # Определяем тип продавца (company_ad = True означает агентство)
             is_company = ad.get("company_ad", False)
             
-            return Listing(
-                id=listing_id,
-                source="Kufar.by",
+            # Валидация через DTO перед созданием полного Listing
+            dto = self.validate_listing_data(
                 title=title,
                 price=price,
+                url=ad_link,
+                location=address,
+                source="Kufar.by"
+            )
+            
+            if not dto:
+                # Данные не прошли валидацию
+                log_warning("kufar", f"Объявление не прошло валидацию DTO: title='{title[:50]}...', price={price}, url={ad_link[:50]}...")
+                return None
+            
+            # Создаем полный Listing объект из валидного DTO
+            return Listing(
+                id=listing_id,
+                source=dto.source,
+                title=dto.title,
+                price=dto.price,
                 price_formatted=price_formatted,
                 rooms=rooms if rooms else 0,
                 area=area if area else 0.0,
                 floor=floor,
-                address=address,
+                address=dto.location,
                 photos=photos,
-                url=ad_link,
+                url=dto.url,
                 currency=currency,
                 price_usd=price_usd,
                 price_byn=price_byn,
