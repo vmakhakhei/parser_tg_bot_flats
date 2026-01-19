@@ -457,23 +457,12 @@ async def _process_user_listings_normal_mode(
     filtered_count = 0
     already_sent_count = 0
     duplicate_count = 0
+    failed_send_count = 0
 
     for listing in all_listings:
         # Проверяем фильтры
-        # #region agent log
-        try:
-            with open('/Users/vmakhakei/TG BOT/.cursor/debug.log', 'a') as f:
-                f.write(json.dumps({"sessionId":"debug-session","runId":"run1","hypothesisId":"D","location":"search_service.py:450","message":"Checking listing filters","data":{"user_id":user_id,"listing_price":listing.price,"listing_rooms":listing.rooms,"min_price":user_filters.get("min_price"),"max_price":user_filters.get("max_price"),"min_rooms":user_filters.get("min_rooms"),"max_rooms":user_filters.get("max_rooms")},"timestamp":int(time.time()*1000)})+'\n')
-        except: pass
-        # #endregion
         if not matches_user_filters(listing, user_filters, user_id=user_id, log_details=False):
             filtered_count += 1
-            # #region agent log
-            try:
-                with open('/Users/vmakhakei/TG BOT/.cursor/debug.log', 'a') as f:
-                    f.write(json.dumps({"sessionId":"debug-session","runId":"run1","hypothesisId":"D","location":"search_service.py:453","message":"Listing filtered out","data":{"user_id":user_id,"listing_id":listing.id},"timestamp":int(time.time()*1000)})+'\n')
-            except: pass
-            # #endregion
             continue
 
         # Проверяем, не отправляли ли уже
@@ -516,14 +505,18 @@ async def _process_user_listings_normal_mode(
                 continue
             
             # Отправляем объявление пользователю БЕЗ ИИ-оценки (обычный режим)
-            if await send_listing_to_user(bot, user_id, listing, use_ai_valuation=False):
+            send_result = await send_listing_to_user(bot, user_id, listing, use_ai_valuation=False)
+            
+            if send_result:
                 user_new_count += 1
                 log_info("search", f"[user_{user_id}] ✅ Отправлено объявление {listing.id} ({user_new_count}/{len(all_listings)})")
                 # Задержка между сообщениями чтобы не получить бан
                 await asyncio.sleep(2)
             else:
+                failed_send_count += 1
                 log_warning("search", f"[user_{user_id}] ⚠️ Не удалось отправить объявление {listing.id}")
         except Exception as e:
+            failed_send_count += 1
             log_error("search", f"[user_{user_id}] ❌ Ошибка отправки объявления {listing.id}", e)
             continue
 
@@ -535,6 +528,7 @@ async def _process_user_listings_normal_mode(
         f"отфильтровано={filtered_count}, "
         f"уже отправлено={already_sent_count}, "
         f"дубликаты={duplicate_count}, "
+        f"ошибки отправки={failed_send_count}, "
         f"отправлено={user_new_count}",
     )
 
