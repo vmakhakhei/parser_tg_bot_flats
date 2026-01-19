@@ -265,6 +265,7 @@ async def send_listing_to_user(
 
             # Если есть кнопка ИИ-оценки, отправляем её отдельным сообщением после медиагруппы
             # (Telegram не поддерживает кнопки в медиагруппе напрямую)
+            # Кнопка ИИ-оценки не критична, продолжаем даже если не отправилась
             if reply_markup:
                 ai_button_msg = await safe_send_message(
                     bot=bot,
@@ -273,9 +274,16 @@ async def send_listing_to_user(
                     parse_mode=ParseMode.HTML,
                     reply_markup=reply_markup,
                 )
-                # Кнопка ИИ-оценки не критична, продолжаем даже если не отправилась
                 if ai_button_msg is None:
                     log_warning("notification", f"Не удалось отправить кнопку ИИ-оценки для {listing.id}")
+            
+            # Медиагруппа отправлена успешно - отмечаем как отправленное
+            await mark_listing_sent_to_user(user_id, listing.id)
+            await mark_listing_sent(listing.to_dict())  # Глобальная дедупликация
+            log_info(
+                "notification", f"Отправлено пользователю {user_id}: {listing.id} ({listing.source})"
+            )
+            return True
         else:
             # Без фотографий - просто текст с кнопкой
             sent_message = await safe_send_message(
@@ -295,13 +303,13 @@ async def send_listing_to_user(
                 )
                 return False
 
-        # Отмечаем как отправленное пользователю и глобально только если отправка успешна
-        await mark_listing_sent_to_user(user_id, listing.id)
-        await mark_listing_sent(listing.to_dict())  # Глобальная дедупликация
-        log_info(
-            "notification", f"Отправлено пользователю {user_id}: {listing.id} ({listing.source})"
-        )
-        return True
+            # Сообщение отправлено успешно - отмечаем как отправленное
+            await mark_listing_sent_to_user(user_id, listing.id)
+            await mark_listing_sent(listing.to_dict())  # Глобальная дедупликация
+            log_info(
+                "notification", f"Отправлено пользователю {user_id}: {listing.id} ({listing.source})"
+            )
+            return True
 
     except Exception as e:
         log_error(

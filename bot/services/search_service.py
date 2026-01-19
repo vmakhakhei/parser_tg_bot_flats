@@ -458,19 +458,69 @@ async def _process_user_listings_normal_mode(
     already_sent_count = 0
     duplicate_count = 0
     failed_send_count = 0
+    
+    import json
+    import time
 
-    for listing in all_listings:
+    # #region agent log
+    try:
+        with open('/Users/vmakhakei/TG BOT/.cursor/debug.log', 'a') as f:
+            f.write(json.dumps({"sessionId":"debug-session","runId":"run1","hypothesisId":"H1","location":"search_service.py:461","message":"Starting processing listings","data":{"user_id":user_id,"total_listings":len(all_listings),"listing_ids":[l.id for l in all_listings[:10]]},"timestamp":int(time.time()*1000)})+'\n')
+    except: pass
+    # #endregion
+
+    for idx, listing in enumerate(all_listings):
+        # #region agent log
+        try:
+            with open('/Users/vmakhakei/TG BOT/.cursor/debug.log', 'a') as f:
+                f.write(json.dumps({"sessionId":"debug-session","runId":"run1","hypothesisId":"H1","location":"search_service.py:469","message":"Processing listing","data":{"user_id":user_id,"listing_id":listing.id,"index":idx,"total":len(all_listings),"price":listing.price,"rooms":listing.rooms},"timestamp":int(time.time()*1000)})+'\n')
+        except: pass
+        # #endregion
+        
         # Проверяем фильтры
+        # #region agent log
+        try:
+            with open('/Users/vmakhakei/TG BOT/.cursor/debug.log', 'a') as f:
+                f.write(json.dumps({"sessionId":"debug-session","runId":"run1","hypothesisId":"H2","location":"search_service.py:475","message":"Checking listing filters","data":{"user_id":user_id,"listing_price":listing.price,"listing_rooms":listing.rooms,"min_price":user_filters.get("min_price"),"max_price":user_filters.get("max_price"),"min_rooms":user_filters.get("min_rooms"),"max_rooms":user_filters.get("max_rooms")},"timestamp":int(time.time()*1000)})+'\n')
+        except: pass
+        # #endregion
+        
         if not matches_user_filters(listing, user_filters, user_id=user_id, log_details=False):
             filtered_count += 1
+            # #region agent log
+            try:
+                with open('/Users/vmakhakei/TG BOT/.cursor/debug.log', 'a') as f:
+                    f.write(json.dumps({"sessionId":"debug-session","runId":"run1","hypothesisId":"H2","location":"search_service.py:482","message":"Listing filtered out by filters","data":{"user_id":user_id,"listing_id":listing.id,"filtered_count":filtered_count},"timestamp":int(time.time()*1000)})+'\n')
+            except: pass
+            # #endregion
             continue
 
         # Проверяем, не отправляли ли уже
+        # #region agent log
+        try:
+            with open('/Users/vmakhakei/TG BOT/.cursor/debug.log', 'a') as f:
+                f.write(json.dumps({"sessionId":"debug-session","runId":"run1","hypothesisId":"H3","location":"search_service.py:490","message":"Checking if already sent","data":{"user_id":user_id,"listing_id":listing.id},"timestamp":int(time.time()*1000)})+'\n')
+        except: pass
+        # #endregion
+        
         if await is_listing_sent_to_user(user_id, listing.id):
             already_sent_count += 1
+            # #region agent log
+            try:
+                with open('/Users/vmakhakei/TG BOT/.cursor/debug.log', 'a') as f:
+                    f.write(json.dumps({"sessionId":"debug-session","runId":"run1","hypothesisId":"H3","location":"search_service.py:494","message":"Listing already sent","data":{"user_id":user_id,"listing_id":listing.id,"already_sent_count":already_sent_count},"timestamp":int(time.time()*1000)})+'\n')
+            except: pass
+            # #endregion
             continue
 
         # Проверяем дубликаты
+        # #region agent log
+        try:
+            with open('/Users/vmakhakei/TG BOT/.cursor/debug.log', 'a') as f:
+                f.write(json.dumps({"sessionId":"debug-session","runId":"run1","hypothesisId":"H4","location":"search_service.py:500","message":"Checking duplicates","data":{"user_id":user_id,"listing_id":listing.id,"rooms":listing.rooms,"area":listing.area,"address":listing.address,"price":listing.price},"timestamp":int(time.time()*1000)})+'\n')
+        except: pass
+        # #endregion
+        
         dup_check = await is_duplicate_content(
             rooms=listing.rooms,
             area=listing.area,
@@ -480,32 +530,35 @@ async def _process_user_listings_normal_mode(
 
         if dup_check["is_duplicate"]:
             duplicate_count += 1
+            # #region agent log
+            try:
+                with open('/Users/vmakhakei/TG BOT/.cursor/debug.log', 'a') as f:
+                    f.write(json.dumps({"sessionId":"debug-session","runId":"run1","hypothesisId":"H4","location":"search_service.py:512","message":"Listing is duplicate","data":{"user_id":user_id,"listing_id":listing.id,"duplicate_count":duplicate_count},"timestamp":int(time.time()*1000)})+'\n')
+            except: pass
+            # #endregion
             continue
 
         # Отправляем объявление
-        # ВАЖНО: не проверяем фильтры повторно в _process_listing_for_user,
-        # так как они уже проверены выше
+        # ВАЖНО: фильтры, проверка "уже отправлено" и дубликаты уже проверены выше
         try:
             from bot.services.notification_service import send_listing_to_user
             
-            # Проверяем, не отправляли ли уже этому пользователю (уже проверено выше, но для надежности)
-            if await is_listing_sent_to_user(user_id, listing.id):
-                already_sent_count += 1
-                continue
-            
-            # Проверяем глобальную дедупликацию по контенту (уже проверено выше, но для надежности)
-            dup_check = await is_duplicate_content(
-                rooms=listing.rooms,
-                area=listing.area,
-                address=listing.address,
-                price=listing.price,
-            )
-            if dup_check["is_duplicate"]:
-                duplicate_count += 1
-                continue
-            
             # Отправляем объявление пользователю БЕЗ ИИ-оценки (обычный режим)
+            # #region agent log
+            try:
+                with open('/Users/vmakhakei/TG BOT/.cursor/debug.log', 'a') as f:
+                    f.write(json.dumps({"sessionId":"debug-session","runId":"run1","hypothesisId":"H5","location":"search_service.py:540","message":"Attempting to send listing","data":{"user_id":user_id,"listing_id":listing.id,"current_sent":user_new_count},"timestamp":int(time.time()*1000)})+'\n')
+            except: pass
+            # #endregion
+            
             send_result = await send_listing_to_user(bot, user_id, listing, use_ai_valuation=False)
+            
+            # #region agent log
+            try:
+                with open('/Users/vmakhakei/TG BOT/.cursor/debug.log', 'a') as f:
+                    f.write(json.dumps({"sessionId":"debug-session","runId":"run1","hypothesisId":"H5","location":"search_service.py:545","message":"Send listing result","data":{"user_id":user_id,"listing_id":listing.id,"send_result":send_result},"timestamp":int(time.time()*1000)})+'\n')
+            except: pass
+            # #endregion
             
             if send_result:
                 user_new_count += 1
@@ -515,12 +568,31 @@ async def _process_user_listings_normal_mode(
             else:
                 failed_send_count += 1
                 log_warning("search", f"[user_{user_id}] ⚠️ Не удалось отправить объявление {listing.id}")
+                # #region agent log
+                try:
+                    with open('/Users/vmakhakei/TG BOT/.cursor/debug.log', 'a') as f:
+                        f.write(json.dumps({"sessionId":"debug-session","runId":"run1","hypothesisId":"H5","location":"search_service.py:556","message":"Failed to send listing","data":{"user_id":user_id,"listing_id":listing.id,"failed_send_count":failed_send_count},"timestamp":int(time.time()*1000)})+'\n')
+                except: pass
+                # #endregion
         except Exception as e:
             failed_send_count += 1
             log_error("search", f"[user_{user_id}] ❌ Ошибка отправки объявления {listing.id}", e)
+            # #region agent log
+            try:
+                with open('/Users/vmakhakei/TG BOT/.cursor/debug.log', 'a') as f:
+                    f.write(json.dumps({"sessionId":"debug-session","runId":"run1","hypothesisId":"H6","location":"search_service.py:563","message":"Exception sending listing","data":{"user_id":user_id,"listing_id":listing.id,"error":str(e),"failed_send_count":failed_send_count},"timestamp":int(time.time()*1000)})+'\n')
+            except: pass
+            # #endregion
             continue
 
     # ДИАГНОСТИКА: логируем статистику фильтрации
+    # #region agent log
+    try:
+        with open('/Users/vmakhakei/TG BOT/.cursor/debug.log', 'a') as f:
+            f.write(json.dumps({"sessionId":"debug-session","runId":"run1","hypothesisId":"H7","location":"search_service.py:575","message":"Final statistics","data":{"user_id":user_id,"total":len(all_listings),"filtered":filtered_count,"already_sent":already_sent_count,"duplicates":duplicate_count,"sent":user_new_count,"failed_send":failed_send_count},"timestamp":int(time.time()*1000)})+'\n')
+    except: pass
+    # #endregion
+    
     log_info(
         "search",
         f"[user_{user_id}] 📊 Статистика обработки: "

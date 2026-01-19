@@ -1636,7 +1636,7 @@ async def cb_check_now_from_ai(callback: CallbackQuery):
             pass
         
         sent_count = 0
-        for listing in new_listings[:20]:  # Максимум 20 за раз
+        for listing in new_listings:
             if await send_listing_to_user(callback.bot, user_id, listing, use_ai_valuation=False):
                 sent_count += 1
                 await asyncio.sleep(2)
@@ -2451,7 +2451,7 @@ async def cb_send_all_listings(callback: CallbackQuery):
         )
         
         sent_count = 0
-        for listing in new_listings[:20]:
+        for listing in new_listings:
             # Обычный режим - БЕЗ ИИ-оценки
             if await send_listing_to_user(callback.bot, user_id, listing, use_ai_valuation=False):
                 sent_count += 1
@@ -3148,7 +3148,7 @@ async def search_listings_after_setup(
                     )
                 
                 sent_count = 0
-                for listing in new_listings[:20]:
+                for listing in new_listings:
                     # Обычный режим - БЕЗ ИИ-оценки
                     if await send_listing_to_user(bot, user_id, listing, use_ai_valuation=False):
                         sent_count += 1
