@@ -3,6 +3,7 @@
 """
 
 import asyncio
+import json
 import logging
 from time import time
 from typing import Optional, Dict, Any, List
@@ -424,6 +425,27 @@ async def send_grouped_listings_to_user(bot: Bot, user_id: int, listings: List[L
         return False
     
     try:
+        # DEBUG: Логируем информацию о группе для диагностики
+        group_debug_info = []
+        for l in listings:
+            vendor = None
+            try:
+                raw_json = getattr(l, 'raw_json', None)
+                if raw_json:
+                    if isinstance(raw_json, dict):
+                        vendor = raw_json.get('agency') or raw_json.get('seller')
+                    elif isinstance(raw_json, str):
+                        try:
+                            raw_data = json.loads(raw_json)
+                            vendor = raw_data.get('agency') or raw_data.get('seller')
+                        except:
+                            pass
+            except:
+                pass
+            group_debug_info.append((l.id, l.source, vendor))
+        
+        logger.debug(f"[group_debug] group_key=grouped_by_house, members={group_debug_info}")
+        
         # Сортируем объявления по цене (от меньшей к большей)
         sorted_listings = sorted(listings, key=lambda x: x.price_usd or 0)
         
@@ -448,6 +470,30 @@ async def send_grouped_listings_to_user(bot: Bot, user_id: int, listings: List[L
         else:
             rooms_text = "комнаты не указаны"
         
+        # Извлекаем топ-3 продавцов с количеством объявлений
+        vendor_counts = {}
+        for l in sorted_listings:
+            vendor = None
+            try:
+                raw_json = getattr(l, 'raw_json', None)
+                if raw_json:
+                    if isinstance(raw_json, dict):
+                        vendor = raw_json.get('agency') or raw_json.get('seller')
+                    elif isinstance(raw_json, str):
+                        try:
+                            raw_data = json.loads(raw_json)
+                            vendor = raw_data.get('agency') or raw_data.get('seller')
+                        except:
+                            pass
+            except:
+                pass
+            
+            vendor_key = vendor or "Частник"
+            vendor_counts[vendor_key] = vendor_counts.get(vendor_key, 0) + 1
+        
+        # Сортируем продавцов по количеству объявлений (топ-3)
+        top_vendors = sorted(vendor_counts.items(), key=lambda x: x[1], reverse=True)[:3]
+        
         # Формируем текст сообщения
         text_lines = [
             f"🏢 <b>{len(sorted_listings)} квартир в одном доме</b>",
@@ -456,6 +502,12 @@ async def send_grouped_listings_to_user(bot: Bot, user_id: int, listings: List[L
             f"💰 ${min_price:,} – ${max_price:,}".replace(",", " "),
             ""
         ]
+        
+        # Добавляем топ продавцов если есть
+        if top_vendors:
+            vendors_text = ", ".join([f"{name} ({cnt})" for name, cnt in top_vendors])
+            text_lines.append(f"📣 Топ продавцы: {vendors_text}")
+            text_lines.append("")
         
         # Добавляем первые 5 объявлений
         for i, listing in enumerate(sorted_listings[:5], start=1):
@@ -466,6 +518,9 @@ async def send_grouped_listings_to_user(bot: Bot, user_id: int, listings: List[L
         # Если объявлений больше 5, добавляем информацию об остальных
         if len(sorted_listings) > 5:
             text_lines.append(f"\n…и ещё {len(sorted_listings) - 5}")
+        
+        # Добавляем призыв к действию
+        text_lines.append(f"\n[Показать все варианты]")
         
         text = "\n".join(text_lines)
         

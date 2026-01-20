@@ -182,13 +182,31 @@ def _log_passed_listing(
     if not user_id:
         return
 
+    # Извлекаем vendor (agency или seller) из raw_json
+    vendor = None
+    try:
+        if hasattr(listing, 'raw_json') and listing.raw_json:
+            if isinstance(listing.raw_json, dict):
+                vendor = listing.raw_json.get('agency') or listing.raw_json.get('seller')
+            elif isinstance(listing.raw_json, str):
+                import json
+                try:
+                    raw_data = json.loads(listing.raw_json)
+                    vendor = raw_data.get('agency') or raw_data.get('seller')
+                except:
+                    pass
+    except Exception:
+        vendor = None
+
     counter = _filter_log_counters.get(user_id, {"filtered": 0, "passed": 0})
     if counter["passed"] < _MAX_PASSED_LOGS:
+        vendor_text = f", vendor: {vendor}" if vendor else ""
+        price_text = f"${listing.price_usd:,}" if listing.price_usd else listing.price_formatted
         log_info(
             "filter",
             f"{user_prefix} ✅ Прошло фильтры: {listing.id} "
             f"({listing.source}) - {listing.rooms}к, "
-            f"{listing.price_formatted}, адрес: {listing.address}",
+            f"{price_text}, адрес: {listing.address}{vendor_text}, url: {listing.url}",
         )
         counter["passed"] += 1
 

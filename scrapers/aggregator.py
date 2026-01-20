@@ -156,7 +156,21 @@ class ListingsAggregator:
         unique_listings = self._remove_duplicates(all_listings)
         duplicates_removed = len(all_listings) - len(unique_listings)
         if duplicates_removed > 0:
-            log_info("aggregator", f"Удалено {duplicates_removed} дубликатов")
+            log_info("aggregator", f"Удалено {duplicates_removed} дубликатов по ID")
+        
+        # Дедупликация по signature (адрес + vendor + цена + фото)
+        if unique_listings:
+            try:
+                from scrapers.aggregator_utils import dedupe_by_signature
+                before_signature = len(unique_listings)
+                unique_listings = dedupe_by_signature(unique_listings)
+                signature_removed = before_signature - len(unique_listings)
+                if signature_removed > 0:
+                    log_info("aggregator", f"[AGGREGATOR] удалено {signature_removed} дубликатов по signature (из {before_signature})")
+            except ImportError as e:
+                log_warning("aggregator", f"Не удалось импортировать dedupe_by_signature: {e}")
+            except Exception as e:
+                log_error("aggregator", f"Ошибка при дедупликации по signature: {e}")
         
         # КРИТИЧНО: Сохраняем все объявления в таблицу apartments одной транзакцией
         # Это гарантирует, что данные реально попадают в БД, а не только существуют в памяти
