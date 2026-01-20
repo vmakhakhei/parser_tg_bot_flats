@@ -407,6 +407,120 @@ async def send_listing_to_user(
         return False
 
 
+async def send_grouped_listings_to_user(bot: Bot, user_id: int, listings: List[Listing]) -> bool:
+    """
+    Отправляет группированное сообщение о нескольких объявлениях из одного дома.
+    
+    Args:
+        bot: Экземпляр бота
+        user_id: ID пользователя
+        listings: Список объявлений для группировки (минимум 2)
+    
+    Returns:
+        True если сообщение было отправлено успешно, False в случае ошибки
+    """
+    if not listings or len(listings) < 2:
+        log_warning("notification", f"send_grouped_listings_to_user вызвана с {len(listings) if listings else 0} объявлениями, требуется минимум 2")
+        return False
+    
+    try:
+        # Сортируем объявления по цене (от меньшей к большей)
+        sorted_listings = sorted(listings, key=lambda x: x.price_usd or 0)
+        
+        # Извлекаем цены для диапазона
+        prices = [l.price_usd for l in sorted_listings if l.price_usd]
+        if not prices:
+            log_warning("notification", f"Нет цен в группированных объявлениях для пользователя {user_id}")
+            return False
+        
+        min_price = min(prices)
+        max_price = max(prices)
+        
+        # Берем адрес и количество комнат из первого объявления
+        address = sorted_listings[0].address
+        rooms = sorted_listings[0].rooms
+        
+        # Формируем текст сообщения
+        text_lines = [
+            f"🏢 <b>{len(sorted_listings)} квартир в одном доме</b>",
+            f"📍 {address}",
+            f"🛏 {rooms} комнат(ы)",
+            f"💰 ${min_price:,} – ${max_price:,}".replace(",", " "),
+            ""
+        ]
+        
+        # Добавляем первые 5 объявлений
+        for i, listing in enumerate(sorted_listings[:5], start=1):
+            area_text = f"{listing.area} м²" if listing.area > 0 else "—"
+            price_text = f"${listing.price_usd:,}".replace(",", " ") if listing.price_usd else "—"
+            text_lines.append(f"{i}. {price_text} — {area_text} м²")
+        
+        # Если объявлений больше 5, добавляем информацию об остальных
+        if len(sorted_listings) > 5:
+            text_lines.append(f"\n…и ещё {len(sorted_listings) - 5}")
+        
+        text = "\n".join(text_lines)
+        
+        # Отправляем сообщение
+        try:
+            sent_message = await bot.send_message(
+                chat_id=user_id,
+                text=text,
+                parse_mode=ParseMode.HTML,
+                disable_web_page_preview=False,
+            )
+        except TelegramRetryAfter as e:
+            retry_after = int(e.retry_after)
+            USER_SEND_LOCKS[user_id] = time() + retry_after
+            log_warning(
+                "notification",
+                f"Flood control для пользователя {user_id}, пауза {retry_after} сек. Группированные объявления НЕ будут помечены как отправленные."
+            )
+            return False
+        except Exception as e:
+            log_warning("notification", f"Ошибка при прямой отправке группированного сообщения, используем safe_send_message: {e}")
+            sent_message = await safe_send_message(
+                bot=bot,
+                chat_id=user_id,
+                text=text,
+                parse_mode=ParseMode.HTML,
+                disable_web_page_preview=False,
+            )
+        
+        # Проверяем успешность отправки
+        if sent_message is None:
+            log_error(
+                "notification",
+                f"Не удалось отправить группированное сообщение пользователю {user_id}"
+            )
+            return False
+        
+        # КРИТИЧНО: Помечаем КАЖДОЕ объявление как отправленное
+        # Иначе будут повторные уведомления
+        for listing in sorted_listings:
+            await mark_listing_sent_to_user(user_id, listing.id)
+            await mark_listing_sent(listing.to_dict())  # Глобальная дедупликация
+            await mark_ad_sent_to_user(user_id, listing.id)  # Идемпотентная запись
+        
+        log_info(
+            "notification",
+            f"Отправлено группированное сообщение пользователю {user_id}: {len(sorted_listings)} объявлений ({sorted_listings[0].source})"
+        )
+        
+        # Минимальная задержка между сообщениями для снижения flood-risk
+        await asyncio.sleep(1.2)
+        
+        return True
+        
+    except Exception as e:
+        log_error(
+            "notification",
+            f"Ошибка отправки группированных объявлений пользователю {user_id}",
+            e
+        )
+        return False
+
+
 async def show_actions_menu(
     bot: Bot, user_id: int, listings_count: int, mode: str = "Обычный режим"
 ):

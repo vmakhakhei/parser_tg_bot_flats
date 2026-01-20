@@ -14,6 +14,7 @@ import json
 import aiohttp
 from typing import List, Dict, Any, Optional
 from datetime import datetime
+from collections import defaultdict
 
 # Добавляем родительскую директорию в path для импорта
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -159,34 +160,30 @@ class ListingsAggregator:
         
         # КРИТИЧНО: Сохраняем все объявления в таблицу apartments одной транзакцией
         # Это гарантирует, что данные реально попадают в БД, а не только существуют в памяти
-        new_apartments = []
         if unique_listings:
             try:
-                from database_turso import sync_apartments_batch, get_new_apartments_since
-                
-                # Сохраняем timestamp перед batch сохранением
-                run_started_at = datetime.utcnow().isoformat()
+                from database_turso import sync_apartments_batch
                 
                 # Сохраняем все объявления одной транзакцией
-                saved = await sync_apartments_batch(unique_listings)
+                inserted_ids = await sync_apartments_batch(unique_listings)
                 
-                if saved == 0:
-                    log_info("aggregator", "[AGGREGATOR] нет новых объявлений для сохранения")
-                else:
-                    log_info("aggregator", f"[AGGREGATOR] сохранено {saved} новых объявлений")
-                    
-                    # Получаем только новые объявления, созданные после начала этого запуска
-                    new_apartments = await get_new_apartments_since(run_started_at)
-                    log_info("aggregator", f"[AGGREGATOR] получено {len(new_apartments)} новых объявлений из БД для фильтрации/уведомлений")
+                if inserted_ids:
+                    # Фильтруем только реально вставленные объявления
+                    new_listings = [
+                        listing for listing in unique_listings
+                        if str(listing.id) in inserted_ids
+                    ]
                     
                     # Запускаем уведомления в фоне, не блокируя парсинг остальных источников
-                    if new_apartments:
-                        asyncio.create_task(
-                            notify_users_about_new_apartments(new_apartments)
-                        )
-                        log_info("aggregator", f"[AGGREGATOR] запущена фоновая задача уведомлений для {len(new_apartments)} объявлений")
+                    asyncio.create_task(
+                        notify_users_about_new_apartments(new_listings)
+                    )
+                    
+                    log_info("aggregator", f"[AGGREGATOR] отправлено в notify: {len(new_listings)}")
+                else:
+                    log_info("aggregator", "[AGGREGATOR] новых объявлений нет")
             except ImportError as e:
-                log_error("aggregator", f"Не удалось импортировать sync_apartments_batch или get_new_apartments_since: {e}")
+                log_error("aggregator", f"Не удалось импортировать sync_apartments_batch: {e}")
             except Exception as e:
                 log_error("aggregator", f"Критическая ошибка при сохранении в apartments: {e}")
         
@@ -392,25 +389,51 @@ async def apartment_dict_to_listing(apartment_dict: Dict[str, Any]) -> Optional[
         return None
 
 
-async def notify_users_about_new_apartments(new_apartments: List[Dict[str, Any]]) -> None:
+def group_similar_listings(listings: List[Listing]) -> Dict[tuple, List[Listing]]:
+    """
+    Группирует объявления по нормализованному адресу и количеству комнат.
+    
+    Args:
+        listings: Список объявлений для группировки
+        
+    Returns:
+        Словарь, где ключ - (нормализованный_адрес, количество_комнат), значение - список объявлений
+    """
+    from utils.address_utils import normalize_address
+    
+    groups = defaultdict(list)
+    
+    for listing in listings:
+        key = (
+            normalize_address(listing.address),
+            listing.rooms
+        )
+        groups[key].append(listing)
+    
+    return groups
+
+
+async def notify_users_about_new_apartments(new_listings: List[Listing]) -> None:
     """
     Отправляет уведомления пользователям о новых объявлениях
     
     Эта функция вызывается асинхронно в фоне и не блокирует парсинг остальных источников.
-    Работает только с переданными новыми объявлениями, применяя фильтры пользователей.
+    Работает только с переданными новыми объявлениями (уже реально вставленными в БД).
+    Применяет фильтры пользователей и проверяет sent_ads для финальной защиты от дублей.
     
     Args:
-        new_apartments: Список словарей с данными новых объявлений из БД
+        new_listings: Список Listing объектов - реально новых объявлений (уже в БД)
     """
-    if not new_apartments:
+    if not new_listings:
         log_info("aggregator", "[NOTIFY] нет новых объявлений для уведомлений")
         return
     
     try:
         # Импортируем необходимые функции
         from database import get_active_users, get_user_filters
-        from bot.services.search_service import _process_user_listings_normal_mode, validate_user_filters
+        from bot.services.search_service import _process_user_listings_normal_mode, validate_user_filters, matches_user_filters
         from bot.services.ai_service import check_new_listings_ai_mode
+        from database import is_ad_sent_to_user
         from aiogram import Bot
         from config import TELEGRAM_BOT_TOKEN
         
@@ -418,20 +441,7 @@ async def notify_users_about_new_apartments(new_apartments: List[Dict[str, Any]]
             log_warning("aggregator", "[NOTIFY] TELEGRAM_BOT_TOKEN не настроен, уведомления отключены")
             return
         
-        log_info("aggregator", f"[NOTIFY] начинаю обработку {len(new_apartments)} новых объявлений")
-        
-        # Конвертируем словари в Listing объекты
-        listings = []
-        for apt_dict in new_apartments:
-            listing = await apartment_dict_to_listing(apt_dict)
-            if listing:
-                listings.append(listing)
-        
-        if not listings:
-            log_warning("aggregator", "[NOTIFY] не удалось конвертировать объявления в Listing объекты")
-            return
-        
-        log_info("aggregator", f"[NOTIFY] конвертировано {len(listings)} объявлений")
+        log_info("aggregator", f"[NOTIFY] начинаю обработку {len(new_listings)} новых объявлений")
         
         # Получаем активных пользователей
         active_users = await get_active_users()
@@ -459,11 +469,9 @@ async def notify_users_about_new_apartments(new_apartments: List[Dict[str, Any]]
                         continue
                     
                     # Применяем фильтры пользователя к новым объявлениям
-                    from bot.services.search_service import matches_user_filters
-                    from database import is_ad_sent_to_user
                     filtered_listings = []
-                    for listing in listings:
-                        # Проверяем, не отправляли ли уже это объявление пользователю
+                    for listing in new_listings:
+                        # Проверяем, не отправляли ли уже это объявление пользователю (sent_ads - финальная защита)
                         if await is_ad_sent_to_user(user_id, listing.id):
                             continue
                         
@@ -474,13 +482,30 @@ async def notify_users_about_new_apartments(new_apartments: List[Dict[str, Any]]
                     if not filtered_listings:
                         continue
                     
+                    # Группируем объявления по адресу и количеству комнат
+                    groups = group_similar_listings(filtered_listings)
+                    
                     # Отправляем объявления пользователю в зависимости от режима
                     if user_filters.get("ai_mode"):
+                        # В ИИ-режиме группировка не применяется, отправляем как раньше
                         await check_new_listings_ai_mode(bot, user_id, user_filters, filtered_listings)
                     else:
-                        user_sent = await _process_user_listings_normal_mode(
-                            bot, user_id, filtered_listings, user_filters
-                        )
+                        # В обычном режиме применяем группировку
+                        from bot.services.notification_service import send_listing_to_user, send_grouped_listings_to_user
+                        
+                        user_sent = 0
+                        for (address_key, rooms), group in groups.items():
+                            if len(group) == 1:
+                                # Одно объявление - отправляем как обычно
+                                result = await send_listing_to_user(bot, user_id, group[0], use_ai_valuation=False)
+                                if result:
+                                    user_sent += 1
+                            else:
+                                # Несколько объявлений - отправляем группированное сообщение
+                                result = await send_grouped_listings_to_user(bot, user_id, group)
+                                if result:
+                                    user_sent += len(group)
+                        
                         total_sent += user_sent
                         
                 except Exception as e:
@@ -506,7 +531,7 @@ async def test_aggregator():
     
     aggregator = ListingsAggregator()
     
-    listings, new_apartments = await aggregator.fetch_all_listings(
+    listings = await aggregator.fetch_all_listings(
         city="барановичи",
         min_rooms=1,
         max_rooms=3,
@@ -516,7 +541,6 @@ async def test_aggregator():
     
     print(f"\n{'='*50}")
     print(f"📊 Всего найдено уникальных объявлений: {len(listings)}")
-    print(f"🆕 Новых объявлений из БД: {len(new_apartments)}")
     print(f"{'='*50}\n")
     
     # Показываем первые 5 объявлений

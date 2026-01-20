@@ -1119,21 +1119,21 @@ def _listing_to_ad_data(listing: Listing) -> dict:
     }
 
 
-async def sync_apartments_batch(listings: List[Listing]) -> int:
+async def sync_apartments_batch(listings: List[Listing]) -> List[str]:
     """
-    Сохраняет список объявлений в одной транзакции.
-    Возвращает количество реально сохранённых объявлений.
+    Сохраняет список объявлений.
+    Возвращает список ad_id, которые были реально вставлены.
     """
     if not listings:
         logger.info("[DB][BATCH] пустой список, сохранять нечего")
-        return 0
+        return []
 
     def _execute():
-        saved = 0
+        inserted_ids = []
         with turso_transaction() as conn:
             for listing in listings:
                 try:
-                    # --- Подготовка данных (ОБЯЗАТЕЛЬНО) ---
+                    # --- Подготовка данных ---
                     ad_id = str(listing.id)
                     source = listing.source
                     title = listing.title or ""
@@ -1142,17 +1142,11 @@ async def sync_apartments_batch(listings: List[Listing]) -> int:
                     url = listing.url
 
                     # --- Batch INSERT ---
-                    cursor = conn.execute(
+                    cur = conn.execute(
                         """
                         INSERT OR IGNORE INTO apartments (
-                            ad_id,
-                            source,
-                            title,
-                            address,
-                            price_usd,
-                            url,
-                            created_at,
-                            updated_at
+                            ad_id, source, title, address, price_usd, url,
+                            created_at, updated_at
                         ) VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
                         """,
                         (
@@ -1165,9 +1159,8 @@ async def sync_apartments_batch(listings: List[Listing]) -> int:
                         ),
                     )
 
-                    # --- Подсчёт ТОЛЬКО для последнего запроса ---
-                    if cursor.rowcount and cursor.rowcount > 0:
-                        saved += 1
+                    if cur.rowcount == 1:
+                        inserted_ids.append(ad_id)
 
                 except Exception as e:
                     ad_id_str = str(listing.id) if listing else "unknown"
@@ -1176,17 +1169,15 @@ async def sync_apartments_batch(listings: List[Listing]) -> int:
                     )
                     # продолжаем batch, не падаем
         
-        logger.info(
-            f"[DB][BATCH] сохранено {saved} из {len(listings)} объявлений"
-        )
-        return saved
+        logger.info(f"[DB][BATCH] вставлено {len(inserted_ids)} из {len(listings)}")
+        return inserted_ids
     
     try:
-        saved_count = await asyncio.to_thread(_execute)
-        return saved_count
+        inserted_ids = await asyncio.to_thread(_execute)
+        return inserted_ids
     except Exception as e:
         logger.error(f"[DB][BATCH] Ошибка батчевого сохранения объявлений: {e}")
-        return 0
+        return []
 
 
 async def sync_apartment_from_listing(listing: Listing, raw_json: str = "{}") -> bool:
@@ -1723,56 +1714,3 @@ async def mark_ad_sent_to_user_turso(user_id: int, ad_external_id: str) -> bool:
         return False
 
 
-async def get_new_apartments_since(timestamp: str) -> List[Dict[str, Any]]:
-    """
-    Получает новые объявления, созданные после указанного timestamp
-    
-    Args:
-        timestamp: ISO формат timestamp (например, "2024-01-20T18:00:00")
-    
-    Returns:
-        Список словарей с данными объявлений
-    """
-    conn = get_turso_connection()
-    if not conn:
-        return []
-    
-    try:
-        def _execute():
-            cursor = conn.execute(
-                """
-                SELECT * FROM apartments
-                WHERE created_at > ?
-                ORDER BY created_at ASC
-                """,
-                (timestamp,)
-            )
-            rows = cursor.fetchall()
-            
-            # Конвертируем Row в словари
-            columns = [desc[0] for desc in cursor.description]
-            results = []
-            for row in rows:
-                result = dict(zip(columns, row))
-                # Конвертируем photos из JSON строки в список
-                if result.get("photos"):
-                    try:
-                        result["photos"] = json.loads(result["photos"]) if isinstance(result["photos"], str) else result["photos"]
-                    except:
-                        result["photos"] = []
-                else:
-                    result["photos"] = []
-                # Конвертируем INTEGER в bool
-                result["is_active"] = bool(result.get("is_active", 1))
-                result["is_company"] = bool(result.get("is_company", 0)) if result.get("is_company") is not None else None
-                results.append(result)
-            
-            return results
-        
-        return await asyncio.to_thread(_execute)
-    except Exception as e:
-        logger.error(f"Ошибка получения новых объявлений с {timestamp}: {e}")
-        return []
-    finally:
-        if conn:
-            conn.close()
