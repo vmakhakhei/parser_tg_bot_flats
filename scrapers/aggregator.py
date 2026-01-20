@@ -650,7 +650,7 @@ async def notify_users_about_new_apartments(new_listings: List[Listing]) -> None
         from bot.services.ai_service import check_new_listings_ai_mode
         from database import is_ad_sent_to_user
         from aiogram import Bot
-        from config import TELEGRAM_BOT_TOKEN
+        from config import BOT_TOKEN as TELEGRAM_BOT_TOKEN
         
         if not TELEGRAM_BOT_TOKEN:
             log_warning("aggregator", "[NOTIFY] TELEGRAM_BOT_TOKEN не настроен, уведомления отключены")

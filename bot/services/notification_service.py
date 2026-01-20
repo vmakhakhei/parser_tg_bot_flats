@@ -23,7 +23,7 @@ from database import (
     mark_ad_sent_to_user,
 )
 from config import MAX_PHOTOS
-from config.constants import (
+from constants.constants import (
     MAX_GROUPS_IN_SUMMARY,
     MAX_LISTINGS_PER_GROUP_PREVIEW,
     DELIVERY_MODE_BRIEF,

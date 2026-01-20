@@ -55,9 +55,9 @@ GROUP_BY_VENDOR_FOR_ADDRESS = os.getenv("GROUP_BY_VENDOR_FOR_ADDRESS", "true").l
 # User Agent для запросов
 USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
 
-# Импортируем константы из config/constants.py
+# Импортируем константы из constants/constants.py
 try:
-    from config.constants import (
+    from constants.constants import (
         MAX_GROUPS_IN_SUMMARY,
         MAX_LISTINGS_PER_GROUP_PREVIEW,
         DELIVERY_MODE_BRIEF,

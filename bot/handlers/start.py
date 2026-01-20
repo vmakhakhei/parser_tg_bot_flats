@@ -15,7 +15,7 @@ from database import get_user_filters, set_user_filters
 from bot.services.search_service import check_new_listings
 from bot.services.ai_service import check_new_listings_ai_mode
 from datetime import datetime
-from config.constants import DELIVERY_MODE_BRIEF, DELIVERY_MODE_FULL, DELIVERY_MODE_DEFAULT
+from constants.constants import DELIVERY_MODE_BRIEF, DELIVERY_MODE_FULL, DELIVERY_MODE_DEFAULT
 from bot.services.notification_service import USER_DELIVERY_MODES
 
 router = Router()
