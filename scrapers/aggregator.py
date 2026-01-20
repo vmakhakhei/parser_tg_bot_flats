@@ -357,7 +357,7 @@ async def apartment_dict_to_listing(apartment_dict: Dict[str, Any]) -> Optional[
             else:
                 title = "Квартира"
         
-        return Listing(
+        listing = Listing(
             id=apartment_dict.get("ad_id", ""),
             source=apartment_dict.get("source", "unknown"),
             title=title,
@@ -384,33 +384,182 @@ async def apartment_dict_to_listing(apartment_dict: Dict[str, Any]) -> Optional[
             kitchen_area=apartment_dict.get("kitchen_area", 0.0),
             living_area=apartment_dict.get("living_area", 0.0),
         )
+        
+        # Добавляем raw_json как атрибут для извлечения координат
+        if "raw_json" in apartment_dict:
+            listing.raw_json = apartment_dict["raw_json"]
+        
+        # Добавляем city как атрибут если есть
+        if "city" in apartment_dict:
+            listing.city = apartment_dict["city"]
+        
+        return listing
     except Exception as e:
         log_error("aggregator", f"Ошибка конвертации apartment_dict в Listing: {e}")
         return None
 
 
-def group_similar_listings(listings: List[Listing]) -> Dict[tuple, List[Listing]]:
+# Порог объединения по координатам (в метрах)
+GEO_THRESHOLD_METERS = 80
+
+
+def _extract_coords_from_listing(listing: Listing) -> tuple[Optional[float], Optional[float]]:
     """
-    Группирует объявления по нормализованному адресу и количеству комнат.
+    Извлекает координаты из объявления.
+    
+    Пытается получить координаты из:
+    1. Атрибутов listing.lat и listing.lon (если есть)
+    2. raw_json (если есть и содержит coordinates)
+    
+    Args:
+        listing: Объявление
+        
+    Returns:
+        Кортеж (lat, lon) или (None, None) если координаты не найдены
+    """
+    # Проверяем атрибуты объекта
+    lat = getattr(listing, "lat", None)
+    lon = getattr(listing, "lon", None)
+    
+    if lat is not None and lon is not None:
+        return (lat, lon)
+    
+    # Пытаемся извлечь из raw_json (если есть)
+    raw_json = getattr(listing, "raw_json", None)
+    if raw_json:
+        try:
+            import json
+            if isinstance(raw_json, str):
+                data = json.loads(raw_json)
+            else:
+                data = raw_json
+            
+            # Kufar API хранит координаты как [lon, lat]
+            coords = data.get("coordinates")
+            if coords and isinstance(coords, list) and len(coords) >= 2:
+                lon, lat = coords[0], coords[1]
+                return (lat, lon)
+        except Exception:
+            pass
+    
+    return (None, None)
+
+
+def _extract_city_from_listing(listing: Listing) -> str:
+    """
+    Извлекает город из объявления.
+    
+    Пытается получить город из:
+    1. Атрибута listing.city (если есть)
+    2. Адреса через _extract_city_from_address
+    
+    Args:
+        listing: Объявление
+        
+    Returns:
+        Название города в нижнем регистре
+    """
+    city = getattr(listing, "city", None)
+    if city:
+        return str(city).strip().lower()
+    
+    # Извлекаем из адреса
+    from database_turso import _extract_city_from_address
+    return _extract_city_from_address(listing.address or "").lower()
+
+
+def make_group_key(listing: Listing) -> tuple:
+    """
+    Создает ключ группировки для объявления.
+    
+    Приоритет:
+    1. Если есть номер дома -> (house_key, city, street, house, rooms)
+    2. Если есть координаты -> (coords_key, city, street, rounded_lat, rounded_lon, rooms)
+    3. Иначе -> (street_key, city, street, None, None, rooms)
+    
+    Args:
+        listing: Объявление
+        
+    Returns:
+        Кортеж-ключ для группировки
+    """
+    from utils.address_utils import split_address
+    
+    addr = split_address(listing.address or "")
+    city = _extract_city_from_listing(listing)
+    street = addr["street"]
+    house = addr["house"]
+    
+    if house:
+        return ("house_key", city, street, house, listing.rooms)
+    
+    # Проверяем координаты
+    lat, lon = _extract_coords_from_listing(listing)
+    if lat is not None and lon is not None:
+        # Используем округленные координаты как начальный bucket
+        return ("coords_key", city, street, round(lat, 4), round(lon, 4), listing.rooms)
+    
+    return ("street_key", city, street, None, None, listing.rooms)
+
+
+def group_similar_listings(listings: List[Listing]) -> List[List[Listing]]:
+    """
+    Группирует объявления по адресу и количеству комнат с поддержкой гео-кластеризации.
+    
+    Использует многоуровневую стратегию:
+    1. Первичная группировка по ключу (дом/координаты/улица)
+    2. Гео-кластеризация для объявлений с координатами (distance-based)
     
     Args:
         listings: Список объявлений для группировки
         
     Returns:
-        Словарь, где ключ - (нормализованный_адрес, количество_комнат), значение - список объявлений
+        Список групп объявлений (каждая группа - список объявлений)
     """
-    from utils.address_utils import normalize_address
+    from utils.geo import haversine_m
     
-    groups = defaultdict(list)
+    # 1) Первичная группировка по ключу
+    buckets = defaultdict(list)
+    for l in listings:
+        key = make_group_key(l)
+        buckets[key].append(l)
     
-    for listing in listings:
-        key = (
-            normalize_address(listing.address),
-            listing.rooms
-        )
-        groups[key].append(listing)
+    # 2) Внутри каждого coords_key делаем точное гео-кластерирование (distance-based)
+    final_groups = []
+    for key, bucket in buckets.items():
+        tag = key[0]
+        if tag != "coords_key" or len(bucket) <= 1:
+            final_groups.append(bucket)
+            continue
+        
+        # Агломеративное объединение по расстоянию (O(n^2) в bucket'е, bucket обычно мал)
+        used = [False] * len(bucket)
+        for i, a in enumerate(bucket):
+            if used[i]:
+                continue
+            group = [a]
+            used[i] = True
+            
+            lat_a, lon_a = _extract_coords_from_listing(a)
+            if lat_a is None or lon_a is None:
+                continue
+            
+            for j in range(i+1, len(bucket)):
+                if used[j]:
+                    continue
+                b = bucket[j]
+                lat_b, lon_b = _extract_coords_from_listing(b)
+                if lat_b is None or lon_b is None:
+                    continue
+                
+                d = haversine_m(lat_a, lon_a, lat_b, lon_b)
+                if d <= GEO_THRESHOLD_METERS:
+                    group.append(b)
+                    used[j] = True
+            
+            final_groups.append(group)
     
-    return groups
+    return final_groups
 
 
 async def notify_users_about_new_apartments(new_listings: List[Listing]) -> None:
@@ -494,7 +643,7 @@ async def notify_users_about_new_apartments(new_listings: List[Listing]) -> None
                         from bot.services.notification_service import send_listing_to_user, send_grouped_listings_to_user
                         
                         user_sent = 0
-                        for (address_key, rooms), group in groups.items():
+                        for group in groups:
                             if len(group) == 1:
                                 # Одно объявление - отправляем как обычно
                                 result = await send_listing_to_user(bot, user_id, group[0], use_ai_valuation=False)
