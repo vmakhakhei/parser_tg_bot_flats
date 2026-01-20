@@ -35,6 +35,9 @@ logger = logging.getLogger(__name__)
 # Per-user rate limit (soft lock): user_id -> unlock_timestamp
 USER_SEND_LOCKS: Dict[int, float] = {}
 
+# In-memory хранилище для delivery_mode пользователей
+USER_DELIVERY_MODES: Dict[int, str] = {}
+
 # ИИ-оценщик (опционально)
 try:
     from ai_valuator import valuate_listing
@@ -605,6 +608,33 @@ async def send_grouped_listings_to_user(bot: Bot, user_id: int, listings: List[L
             )
             return False
         
+        # ДЕТАЛЬНОЕ ЛОГИРОВАНИЕ: логируем каждое объявление в группе с vendor
+        group_key = f"{address}|{len(sorted_listings)}"
+        members_info = []
+        for listing in sorted_listings:
+            vendor = "UNKNOWN"
+            try:
+                raw_json = getattr(listing, 'raw_json', None)
+                if raw_json:
+                    if isinstance(raw_json, dict):
+                        vendor = raw_json.get("agency") or raw_json.get("seller") or "UNKNOWN"
+                    elif isinstance(raw_json, str):
+                        try:
+                            raw_data = json.loads(raw_json)
+                            vendor = raw_data.get("agency") or raw_data.get("seller") or "UNKNOWN"
+                        except:
+                            vendor = "UNKNOWN"
+            except Exception:
+                vendor = "UNKNOWN"
+            
+            members_info.append((listing.id, vendor, listing.price_usd or 0, listing.title[:50] if listing.title else ""))
+        
+        logger.info(
+            "[group_debug] group_key=%s members=%s",
+            group_key,
+            members_info
+        )
+        
         # КРИТИЧНО: Помечаем КАЖДОЕ объявление как отправленное
         # Иначе будут повторные уведомления
         for listing in sorted_listings:
@@ -806,3 +836,217 @@ async def show_listings_list(bot: Bot, user_id: int, listings: List[Listing], st
         await status_msg.edit_text(
             short_text, parse_mode=ParseMode.HTML, reply_markup=builder.as_markup()
         )
+
+
+async def notify_users_about_new_apartments_summary(new_listings: List[Listing]) -> None:
+    """
+    Отправляет summary-уведомления пользователям о новых объявлениях.
+    
+    Для пользователей с delivery_mode="brief" отправляет одно summary-сообщение.
+    Для пользователей с delivery_mode="full" отправляет полные уведомления.
+    
+    Args:
+        new_listings: Список Listing объектов - реально новых объявлений (уже в БД)
+    """
+    if not new_listings:
+        log_info("notification", "[SUMMARY] нет новых объявлений для уведомлений")
+        return
+    
+    try:
+        from database import get_user_filters
+        from bot.services.search_service import matches_user_filters, validate_user_filters
+        from bot.services.ai_service import check_new_listings_ai_mode
+        from aiogram import Bot
+        from config import TELEGRAM_BOT_TOKEN
+        
+        if not TELEGRAM_BOT_TOKEN:
+            log_warning("notification", "[SUMMARY] TELEGRAM_BOT_TOKEN не настроен, уведомления отключены")
+            return
+        
+        log_info("notification", f"[SUMMARY] начинаю обработку {len(new_listings)} новых объявлений")
+        
+        # Получаем активных пользователей
+        users = await get_active_users()
+        if not users:
+            log_info("notification", "[SUMMARY] нет активных пользователей")
+            return
+        
+        log_info("notification", f"[SUMMARY] найдено {len(users)} активных пользователей")
+        
+        # Создаем бот
+        bot = Bot(token=TELEGRAM_BOT_TOKEN)
+        try:
+            listings = new_listings
+            
+            # Для каждого пользователя проверяем объявления по его фильтрам
+            for user_id in users:
+                try:
+                    user_filters = await get_user_filters(user_id)
+                    if not user_filters:
+                        continue
+                    
+                    # Проверяем валидность фильтров
+                    is_valid, error_msg = validate_user_filters(user_filters)
+                    if not is_valid:
+                        continue
+                    
+                    # Применяем фильтры пользователя к новым объявлениям
+                    filtered_listings = []
+                    for listing in listings:
+                        # Проверяем соответствие фильтрам пользователя
+                        if matches_user_filters(listing, user_filters, user_id=user_id, log_details=False):
+                            filtered_listings.append(listing)
+                    
+                    if not filtered_listings:
+                        continue
+                    
+                    # Получаем delivery_mode пользователя (по умолчанию "brief")
+                    delivery_mode = USER_DELIVERY_MODES.get(user_id, DELIVERY_MODE_DEFAULT)
+                    
+                    if delivery_mode == "full":
+                        # Полный режим - отправляем как раньше
+                        if user_filters.get("ai_mode"):
+                            await check_new_listings_ai_mode(bot, user_id, user_filters, filtered_listings)
+                        else:
+                            groups = group_similar_listings(filtered_listings)
+                            for group in groups:
+                                if len(group) == 1:
+                                    await send_listing_to_user(bot, user_id, group[0], use_ai_valuation=False)
+                                else:
+                                    await send_grouped_listings_to_user(bot, user_id, group)
+                        continue
+                    
+                    # Brief режим - отправляем summary
+                    await send_summary_message(bot, user_id, filtered_listings)
+                    
+                except Exception as e:
+                    log_error("notification", f"[SUMMARY] ошибка обработки пользователя {user_id}: {e}")
+                    continue
+            
+            log_info("notification", "[SUMMARY] обработка завершена")
+            
+        finally:
+            await bot.session.close()
+        
+        # КРИТИЧНО: Гарантируем ОДНО summary-сообщение
+        # Никаких других сообщений в этом запуске
+        return
+        
+    except ImportError as e:
+        log_error("notification", f"[SUMMARY] не удалось импортировать необходимые модули: {e}")
+    except Exception as e:
+        log_error("notification", f"[SUMMARY] ошибка при отправке summary-уведомлений: {e}")
+        import traceback
+        traceback.print_exc()
+
+
+async def send_summary_message(bot: Bot, user_id: int, apartments: List[Listing]) -> None:
+    """
+    Отправляет summary-сообщение пользователю с группировкой по адресам.
+    
+    Args:
+        bot: Экземпляр бота
+        user_id: ID пользователя
+        apartments: Список Listing объектов
+    """
+    try:
+        # Группируем объявления по адресу
+        groups = group_similar_listings(apartments)
+        
+        if not groups:
+            return
+        
+        # Сортируем группы по количеству объявлений (больше - первыми)
+        groups = sorted(
+            groups,
+            key=lambda g: len(g),
+            reverse=True
+        )[:MAX_GROUPS_IN_SUMMARY]
+        
+        # Формируем текст сообщения
+        text = "🏙 Найдено подходящих квартир:\n\n"
+        keyboard = InlineKeyboardMarkup(inline_keyboard=[])
+        
+        for idx, group in enumerate(groups, 1):
+            address = group[0].address
+            prices = [l.price_usd for l in group if l.price_usd]
+            
+            if not prices:
+                continue
+            
+            min_price = min(prices)
+            max_price = max(prices)
+            
+            # Форматируем цены с пробелами вместо запятых
+            min_price_formatted = f"${min_price:,}".replace(",", " ")
+            max_price_formatted = f"${max_price:,}".replace(",", " ")
+            
+            text += (
+                f"🏢 {address}\n"
+                f"   • {len(group)} вариантов\n"
+                f"   • 💰 {min_price_formatted} – {max_price_formatted}\n\n"
+            )
+            
+            # Создаем callback_data с hash адреса
+            house_hash = str(hash(address))
+            callback_data = f"show_house|{house_hash}"
+            
+            # Ограничиваем длину текста кнопки
+            button_text = f"Показать {address}"
+            if len(button_text) > 60:
+                button_text = f"Показать {address[:50]}..."
+            
+            keyboard.inline_keyboard.append([
+                InlineKeyboardButton(
+                    text=button_text,
+                    callback_data=callback_data
+                )
+            ])
+        
+        # Отправляем сообщение
+        await safe_send_message(
+            bot=bot,
+            chat_id=user_id,
+            text=text,
+            parse_mode=ParseMode.HTML,
+            reply_markup=keyboard
+        )
+        
+        log_info("notification", f"[SUMMARY] отправлено summary пользователю {user_id}: {len(groups)} групп")
+        
+    except Exception as e:
+        log_error("notification", f"[SUMMARY] ошибка отправки summary пользователю {user_id}: {e}")
+
+
+async def get_listings_for_house_hash(house_hash: str) -> List[Listing]:
+    """
+    Получает объявления по hash адреса.
+    
+    Args:
+        house_hash: Hash адреса (строка)
+    
+    Returns:
+        Список Listing объектов с соответствующим адресом
+    """
+    try:
+        from database_turso import build_dynamic_query
+        
+        # Получаем все недавние объявления из БД
+        all_apartments = await build_dynamic_query(
+            is_active=True,
+            limit=1000  # Достаточно большое число для получения всех недавних
+        )
+        
+        # Фильтруем по hash адреса
+        listings = []
+        for a in all_apartments:
+            listing = apartment_dict_to_listing(a)
+            if listing and listing.address:
+                if str(hash(listing.address)) == house_hash:
+                    listings.append(listing)
+        
+        return listings
+        
+    except Exception as e:
+        log_error("notification", f"[SUMMARY] ошибка получения объявлений по hash {house_hash}: {e}")
+        return []

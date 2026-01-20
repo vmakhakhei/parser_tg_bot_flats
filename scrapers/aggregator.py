@@ -189,8 +189,9 @@ class ListingsAggregator:
                     ]
                     
                     # Запускаем уведомления в фоне, не блокируя парсинг остальных источников
+                    from bot.services.notification_service import notify_users_about_new_apartments_summary
                     asyncio.create_task(
-                        notify_users_about_new_apartments(new_listings)
+                        notify_users_about_new_apartments_summary(new_listings)
                     )
                     
                     log_info("aggregator", f"[AGGREGATOR] отправлено в notify: {len(new_listings)}")
@@ -469,7 +470,7 @@ def _extract_city_from_listing(listing: Listing) -> str:
     
     Args:
         listing: Объявление
-        
+    
     Returns:
         Название города в нижнем регистре
     """
@@ -482,14 +483,55 @@ def _extract_city_from_listing(listing: Listing) -> str:
     return _extract_city_from_address(listing.address or "").lower()
 
 
+def extract_vendor_from_listing(listing: Listing) -> Optional[str]:
+    """
+    Извлекает vendor (agency или seller) из объявления.
+    
+    Пытается получить vendor из:
+    1. Атрибута listing.vendor (если есть)
+    2. raw_json (agency или seller)
+    
+    Args:
+        listing: Объявление
+    
+    Returns:
+        Название vendor или None если не найдено
+    """
+    # Проверяем атрибут listing.vendor
+    vendor = getattr(listing, "vendor", None)
+    if vendor:
+        return str(vendor).strip()
+    
+    # Извлекаем из raw_json
+    raw_json = getattr(listing, "raw_json", None)
+    if raw_json:
+        try:
+            if isinstance(raw_json, dict):
+                vendor = raw_json.get("agency") or raw_json.get("seller")
+            elif isinstance(raw_json, str):
+                data = json.loads(raw_json)
+                vendor = data.get("agency") or data.get("seller")
+            else:
+                vendor = None
+            
+            if vendor:
+                return str(vendor).strip()
+        except Exception:
+            pass
+    
+    return None
+
+
 def make_group_key(listing: Listing) -> tuple:
     """
     Создает ключ группировки для объявления.
     
     Приоритет:
-    1. Если есть номер дома -> (house_key, city, street, house)
-    2. Если есть координаты -> (coords_key, city, street, rounded_lat, rounded_lon)
+    1. Если есть номер дома -> (house_key, city, street, house) или (house_vendor_key, city, street, house, vendor)
+    2. Если есть координаты -> (coords_key, city, street, rounded_lat, rounded_lon) или (coords_vendor_key, city, street, lat, lon, vendor)
     3. Иначе -> (street_key, city, street)
+    
+    Если GROUP_BY_VENDOR_FOR_ADDRESS=True и есть vendor, добавляется vendor в ключ.
     
     Args:
         listing: Объявление
@@ -498,20 +540,28 @@ def make_group_key(listing: Listing) -> tuple:
         Кортеж-ключ для группировки
     """
     from utils.address_utils import split_address
+    from config import GROUP_BY_VENDOR_FOR_ADDRESS
     
     addr = split_address(listing.address or "")
     city = _extract_city_from_listing(listing)
     street = addr["street"]
     house = addr["house"]
+    vendor = extract_vendor_from_listing(listing) if GROUP_BY_VENDOR_FOR_ADDRESS else None
     
     if house:
+        if GROUP_BY_VENDOR_FOR_ADDRESS and vendor:
+            return ("house_vendor_key", city, street, house, vendor)
         return ("house_key", city, street, house)
     
     # Проверяем координаты
     lat, lon = _extract_coords_from_listing(listing)
     if lat is not None and lon is not None:
         # Используем округленные координаты как начальный bucket
-        return ("coords_key", city, street, round(lat, 4), round(lon, 4))
+        rounded_lat = round(lat, 4)
+        rounded_lon = round(lon, 4)
+        if GROUP_BY_VENDOR_FOR_ADDRESS and vendor:
+            return ("coords_vendor_key", city, street, rounded_lat, rounded_lon, vendor)
+        return ("coords_key", city, street, rounded_lat, rounded_lon)
     
     return ("street_key", city, street)
 
@@ -730,5 +780,62 @@ async def test_aggregator():
 
 
 if __name__ == "__main__":
-    asyncio.run(test_aggregator())
+    import argparse
+    
+    parser = argparse.ArgumentParser(description="Тестирование агрегатора объявлений")
+    parser.add_argument("--city", type=str, default="барановичи", help="Город для поиска")
+    parser.add_argument("--min-rooms", type=int, default=1, help="Минимальное количество комнат")
+    parser.add_argument("--max-rooms", type=int, default=4, help="Максимальное количество комнат")
+    parser.add_argument("--min-price", type=int, default=0, help="Минимальная цена")
+    parser.add_argument("--max-price", type=int, default=100000, help="Максимальная цена")
+    parser.add_argument("--max-pages", type=int, default=None, help="Максимальное количество страниц (для скрейперов, поддерживающих этот параметр)")
+    
+    args = parser.parse_args()
+    
+    async def run_aggregator():
+        """Запуск агрегатора с параметрами командной строки"""
+        print("🔍 Тестирование агрегатора объявлений...\n")
+        print(f"Параметры:")
+        print(f"  Город: {args.city}")
+        print(f"  Комнаты: {args.min_rooms}-{args.max_rooms}")
+        print(f"  Цена: ${args.min_price:,}-${args.max_price:,}".replace(",", " "))
+        if args.max_pages:
+            print(f"  Макс. страниц: {args.max_pages}")
+        print()
+        
+        aggregator = ListingsAggregator()
+        
+        listings = await aggregator.fetch_all_listings(
+            city=args.city,
+            min_rooms=args.min_rooms,
+            max_rooms=args.max_rooms,
+            min_price=args.min_price,
+            max_price=args.max_price,
+        )
+        
+        print(f"\n{'='*50}")
+        print(f"📊 Всего найдено уникальных объявлений: {len(listings)}")
+        print(f"{'='*50}\n")
+        
+        # Показываем первые 5 объявлений
+        for i, listing in enumerate(listings[:5], 1):
+            print(f"--- Объявление {i} ---")
+            print(f"🏷️  Источник: {listing.source}")
+            print(f"🏠 {listing.title}")
+            print(f"💰 Цена: {listing.price_formatted}")
+            print(f"🚪 Комнат: {listing.rooms}")
+            print(f"📐 Площадь: {listing.area} м²")
+            print(f"📍 Адрес: {listing.address}")
+            print(f"🔗 URL: {listing.url}")
+            print(f"📸 Фото: {len(listing.photos)} шт.")
+            print()
+        
+        # Статистика по источникам
+        print("📈 Статистика по источникам:")
+        from collections import Counter
+        sources = Counter(l.source for l in listings)
+        for source, count in sources.most_common():
+            print(f"  • {source}: {count}")
+    
+    asyncio.run(run_aggregator())
 

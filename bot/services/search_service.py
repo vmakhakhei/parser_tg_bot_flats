@@ -200,13 +200,13 @@ def _log_passed_listing(
 
     counter = _filter_log_counters.get(user_id, {"filtered": 0, "passed": 0})
     if counter["passed"] < _MAX_PASSED_LOGS:
-        vendor_text = f", vendor: {vendor}" if vendor else ""
+        vendor_text = f", vendor={vendor}" if vendor else ", vendor=UNKNOWN"
         price_text = f"${listing.price_usd:,}" if listing.price_usd else listing.price_formatted
         log_info(
             "filter",
             f"{user_prefix} ✅ Прошло фильтры: {listing.id} "
-            f"({listing.source}) - {listing.rooms}к, "
-            f"{price_text}, адрес: {listing.address}{vendor_text}, url: {listing.url}",
+            f"({listing.source}) - {listing.title}, "
+            f"{price_text}, адрес: {listing.address}{vendor_text}",
         )
         counter["passed"] += 1
 

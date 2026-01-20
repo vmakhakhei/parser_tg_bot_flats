@@ -49,6 +49,13 @@ USE_TURSO_CACHE = os.getenv("USE_TURSO_CACHE", "true").lower() == "true"
 # Источники объявлений по умолчанию
 DEFAULT_SOURCES = ["kufar", "etagi"]
 
+# Группировка по продавцу/агентству для уменьшения дублей
+GROUP_BY_VENDOR_FOR_ADDRESS = os.getenv("GROUP_BY_VENDOR_FOR_ADDRESS", "true").lower() == "true"
+
 # User Agent для запросов
 USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+
+# Настройки summary-уведомлений
+MAX_GROUPS_IN_SUMMARY = 5
+DELIVERY_MODE_DEFAULT = "brief"  # brief | full
 

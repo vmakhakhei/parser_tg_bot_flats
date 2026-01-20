@@ -271,6 +271,41 @@ async def cb_show_stats(callback: CallbackQuery):
     await callback.answer("Статистика пока не реализована")
 
 
+@router.callback_query(F.data.startswith("show_house|"))
+async def cb_show_house(callback: CallbackQuery):
+    """Обработчик кнопки 'Показать варианты' для конкретного дома"""
+    from bot.services.notification_service import get_listings_for_house_hash, send_grouped_listings_to_user
+    from database import mark_ad_sent_to_user
+    
+    user_id = callback.from_user.id
+    
+    try:
+        # Извлекаем hash адреса из callback_data
+        house_hash = callback.data.split("|")[1]
+        
+        # Получаем объявления для этого адреса
+        listings = await get_listings_for_house_hash(house_hash)
+        
+        if not listings:
+            await callback.answer("Нет доступных вариантов", show_alert=True)
+            return
+        
+        # Отправляем группированные объявления пользователю
+        await send_grouped_listings_to_user(callback.bot, user_id, listings)
+        
+        # Помечаем объявления как отправленные
+        for listing in listings:
+            await mark_ad_sent_to_user(user_id, listing.id)
+        
+        await callback.answer()
+        
+    except Exception as e:
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.error(f"Ошибка обработки show_house для пользователя {user_id}: {e}")
+        await callback.answer("Произошла ошибка при загрузке вариантов", show_alert=True)
+
+
 # Импортируем остальные обработчики из старого bot.py
 # Временно оставляем их там, чтобы не ломать функциональность
 # Постепенно перенесем их сюда
