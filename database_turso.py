@@ -770,6 +770,27 @@ async def ensure_tables_exist():
                     """)
                     logger.info("✅ Таблица cached_listings (legacy) создана")
                 
+                # 6. Таблица sent_ads (для отслеживания отправленных объявлений пользователям)
+                cursor = conn.execute("""
+                    SELECT name FROM sqlite_master 
+                    WHERE type='table' AND name='sent_ads'
+                """)
+                if not cursor.fetchone():
+                    logger.info("📋 Создание таблицы sent_ads...")
+                    conn.execute("""
+                        CREATE TABLE IF NOT EXISTS sent_ads (
+                            id INTEGER PRIMARY KEY AUTOINCREMENT,
+                            user_id TEXT NOT NULL,
+                            ad_external_id TEXT NOT NULL,
+                            sent_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                        )
+                    """)
+                    conn.execute("""
+                        CREATE UNIQUE INDEX IF NOT EXISTS idx_sent_user_ad 
+                        ON sent_ads(user_id, ad_external_id)
+                    """)
+                    logger.info("✅ Таблица sent_ads создана")
+                
                 # Commit происходит автоматически при выходе из контекста
         
         await asyncio.to_thread(_check_and_create)
@@ -1641,3 +1662,117 @@ async def save_api_query_cache(
     except Exception as e:
         log_error("turso_cache", f"Ошибка сохранения кэша запросов {query_hash}", e)
         return False
+
+
+async def is_ad_sent_to_user_turso(user_id: int, ad_external_id: str) -> bool:
+    """
+    Проверяет, было ли объявление уже отправлено пользователю (идемпотентная проверка для Turso)
+    
+    Args:
+        user_id: ID пользователя
+        ad_external_id: Внешний ID объявления (listing.id)
+    
+    Returns:
+        True если объявление уже было отправлено, False иначе
+    """
+    conn = get_turso_connection()
+    if not conn:
+        return False
+    
+    try:
+        def _execute():
+            cursor = conn.execute(
+                "SELECT 1 FROM sent_ads WHERE user_id = ? AND ad_external_id = ?",
+                (str(user_id), ad_external_id)
+            )
+            return cursor.fetchone() is not None
+        
+        return await asyncio.to_thread(_execute)
+    except Exception as e:
+        logger.error(f"Ошибка проверки отправки объявления {ad_external_id} пользователю {user_id}: {e}")
+        return False
+    finally:
+        if conn:
+            conn.close()
+
+
+async def mark_ad_sent_to_user_turso(user_id: int, ad_external_id: str) -> bool:
+    """
+    Отмечает объявление как отправленное пользователю (идемпотентная запись для Turso)
+    
+    Args:
+        user_id: ID пользователя
+        ad_external_id: Внешний ID объявления (listing.id)
+    
+    Returns:
+        True если успешно, False при ошибке
+    """
+    try:
+        def _execute():
+            with turso_transaction() as conn:
+                conn.execute("""
+                    INSERT OR IGNORE INTO sent_ads (user_id, ad_external_id, sent_at)
+                    VALUES (?, ?, CURRENT_TIMESTAMP)
+                """, (str(user_id), ad_external_id))
+                # Commit происходит автоматически при выходе из контекста
+        
+        await asyncio.to_thread(_execute)
+        return True
+    except Exception as e:
+        logger.error(f"Ошибка отметки объявления {ad_external_id} как отправленного пользователю {user_id}: {e}")
+        return False
+
+
+async def get_new_apartments_since(timestamp: str) -> List[Dict[str, Any]]:
+    """
+    Получает новые объявления, созданные после указанного timestamp
+    
+    Args:
+        timestamp: ISO формат timestamp (например, "2024-01-20T18:00:00")
+    
+    Returns:
+        Список словарей с данными объявлений
+    """
+    conn = get_turso_connection()
+    if not conn:
+        return []
+    
+    try:
+        def _execute():
+            cursor = conn.execute(
+                """
+                SELECT * FROM apartments
+                WHERE created_at > ?
+                ORDER BY created_at ASC
+                """,
+                (timestamp,)
+            )
+            rows = cursor.fetchall()
+            
+            # Конвертируем Row в словари
+            columns = [desc[0] for desc in cursor.description]
+            results = []
+            for row in rows:
+                result = dict(zip(columns, row))
+                # Конвертируем photos из JSON строки в список
+                if result.get("photos"):
+                    try:
+                        result["photos"] = json.loads(result["photos"]) if isinstance(result["photos"], str) else result["photos"]
+                    except:
+                        result["photos"] = []
+                else:
+                    result["photos"] = []
+                # Конвертируем INTEGER в bool
+                result["is_active"] = bool(result.get("is_active", 1))
+                result["is_company"] = bool(result.get("is_company", 0)) if result.get("is_company") is not None else None
+                results.append(result)
+            
+            return results
+        
+        return await asyncio.to_thread(_execute)
+    except Exception as e:
+        logger.error(f"Ошибка получения новых объявлений с {timestamp}: {e}")
+        return []
+    finally:
+        if conn:
+            conn.close()

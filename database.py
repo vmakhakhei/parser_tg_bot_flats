@@ -456,6 +456,15 @@ async def is_ad_sent_to_user(user_id: int, ad_external_id: str) -> bool:
     Returns:
         True если объявление уже было отправлено, False иначе
     """
+    from config import USE_TURSO_CACHE
+    
+    if USE_TURSO_CACHE:
+        try:
+            from database_turso import is_ad_sent_to_user_turso
+            return await is_ad_sent_to_user_turso(user_id, ad_external_id)
+        except ImportError:
+            pass  # Fallback to local DB
+    
     async with aiosqlite.connect(DATABASE_PATH) as db:
         cursor = await db.execute(
             "SELECT 1 FROM sent_ads WHERE user_id = ? AND ad_external_id = ?",
@@ -472,6 +481,16 @@ async def mark_ad_sent_to_user(user_id: int, ad_external_id: str):
         user_id: ID пользователя
         ad_external_id: Внешний ID объявления (listing.id)
     """
+    from config import USE_TURSO_CACHE
+    
+    if USE_TURSO_CACHE:
+        try:
+            from database_turso import mark_ad_sent_to_user_turso
+            await mark_ad_sent_to_user_turso(user_id, ad_external_id)
+            return
+        except ImportError:
+            pass  # Fallback to local DB
+    
     async with aiosqlite.connect(DATABASE_PATH) as db:
         await db.execute("""
             INSERT OR IGNORE INTO sent_ads (user_id, ad_external_id, sent_at)

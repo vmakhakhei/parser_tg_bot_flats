@@ -10,7 +10,7 @@ from scrapers.base import Listing
 from database import (
     get_user_filters,
     get_active_users,
-    is_listing_sent_to_user,
+    is_ad_sent_to_user,
     is_duplicate_content,
 )
 from error_logger import log_info, log_warning
@@ -411,7 +411,7 @@ async def _process_listing_for_user(
         return False
 
     # Проверяем, не отправляли ли уже этому пользователю
-    if await is_listing_sent_to_user(user_id, listing.id):
+    if await is_ad_sent_to_user(user_id, listing.id):
         return False
 
     # Проверяем глобальную дедупликацию по контенту
@@ -507,7 +507,7 @@ async def _process_user_listings_normal_mode(
         except: pass
         # #endregion
         
-        if await is_listing_sent_to_user(user_id, listing.id):
+        if await is_ad_sent_to_user(user_id, listing.id):
             already_sent_count += 1
             # #region agent log
             try:

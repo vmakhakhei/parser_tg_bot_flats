@@ -26,8 +26,7 @@ except ImportError:
 
 # Конфигурационные константы для оптимизации парсинга
 MAX_PAGES_PER_RUN = 2  # Жёсткий предохранитель - максимум страниц за один запуск
-# TEMPORARILY DISABLED: stop-on-old requires populated DB
-# STOP_ON_OLD_THRESHOLD = 10  # Сколько подряд старых объявлений считаем сигналом остановки
+STOP_ON_OLD_THRESHOLD = 5  # Сколько подряд старых объявлений считаем сигналом остановки
 
 
 class KufarScraper(BaseScraper):
@@ -75,16 +74,6 @@ class KufarScraper(BaseScraper):
         
         log_info("kufar", f"Фильтры: комнаты {min_rooms}-{max_rooms}, цена ${min_price}-${max_price}")
         
-        # TEMPORARILY DISABLED: stop-on-old requires populated DB
-        # Получаем последний сохранённый external_id из базы данных
-        # last_known_ad_id = None
-        # try:
-        #     from database_turso import get_latest_ad_external_id
-        #     last_known_ad_id = await get_latest_ad_external_id(source="kufar", city=city)
-        #     if last_known_ad_id:
-        #         log_info("kufar", f"Последнее известное объявление: {last_known_ad_id}")
-        # except Exception as e:
-        #     log_warning("kufar", f"Не удалось получить последнее известное объявление: {e}")
         last_known_ad_id = None
         
         # Получаем gtsy параметр для города
@@ -122,10 +111,9 @@ class KufarScraper(BaseScraper):
         all_listings = []
         current_page = 1
         next_token = None
-        # TEMPORARILY DISABLED: stop-on-old requires populated DB
-        # consecutive_old_ads = 0  # Счётчик подряд идущих старых объявлений
-        # stop_parsing = False  # Флаг остановки парсинга
-        # new_ads_count = 0  # Счётчик новых объявлений
+        consecutive_old_ads = 0  # Счётчик подряд идущих старых объявлений
+        stop_parsing = False  # Флаг остановки парсинга
+        new_ads_count = 0  # Счётчик новых объявлений
         
         while current_page <= max_pages:
             # Жёсткий лимит страниц (предохранитель)
@@ -156,24 +144,17 @@ class KufarScraper(BaseScraper):
                 log_warning("kufar", f"API вернул пустой ответ для города '{city}' на странице {current_page}")
                 break
             
-            # TEMPORARILY DISABLED: stop-on-old requires populated DB
             # Парсим объявления с текущей страницы с проверкой на старые
-            # page_listings, page_stop_parsing, page_new_count = await self._parse_api_response_with_stop_check(
-            #     json_data, min_rooms, max_rooms, min_price, max_price, city, last_known_ad_id
-            # )
-            # all_listings.extend(page_listings)
-            # new_ads_count += page_new_count
-            # 
-            # if page_stop_parsing:
-            #     stop_parsing = True
-            #     log_info("kufar", f"Остановка парсинга на странице {current_page}")
-            #     break
-            
-            # Парсим объявления БЕЗ проверки на старые (временно отключено)
-            page_listings, _, _ = await self._parse_api_response_with_stop_check(
-                json_data, min_rooms, max_rooms, min_price, max_price, city, None
+            page_listings, page_stop_parsing, page_new_count, consecutive_old_ads = await self._parse_api_response_with_stop_check(
+                json_data, min_rooms, max_rooms, min_price, max_price, city, last_known_ad_id, consecutive_old_ads
             )
             all_listings.extend(page_listings)
+            new_ads_count += page_new_count
+            
+            if page_stop_parsing:
+                stop_parsing = True
+                log_info("kufar", f"Остановка парсинга на странице {current_page}")
+                break
             
             # Получаем токен для следующей страницы
             pagination = json_data.get("pagination") or {}
@@ -276,8 +257,8 @@ class KufarScraper(BaseScraper):
             log_info("kufar", f"API ответ: найдено объявлений на странице: {ads_count}, всего на сайте: {total_count}")
             
             # Парсим объявления с текущей страницы (без проверки на старые для raw_json версии)
-            page_listings, _, _ = await self._parse_api_response_with_stop_check(
-                json_data, min_rooms, max_rooms, min_price, max_price, city, None
+            page_listings, _, _, _ = await self._parse_api_response_with_stop_check(
+                json_data, min_rooms, max_rooms, min_price, max_price, city, None, 0
             )
             all_listings.extend(page_listings)
             
@@ -336,26 +317,30 @@ class KufarScraper(BaseScraper):
         min_price: int,
         max_price: int,
         city: str = "Минск",
-        last_known_ad_id: Optional[str] = None
-    ) -> tuple[List[Listing], bool, int]:
+        last_known_ad_id: Optional[str] = None,
+        consecutive_old_ads: int = 0
+    ) -> tuple[List[Listing], bool, int, int]:
         """
         Парсит ответ API с проверкой на старые объявления для остановки парсинга
         
+        Args:
+            consecutive_old_ads: текущее количество подряд идущих старых объявлений (накапливается между страницами)
+        
         Returns:
-            tuple: (listings, stop_parsing, new_ads_count)
+            tuple: (listings, stop_parsing, new_ads_count, consecutive_old_ads)
             - listings: список новых объявлений
             - stop_parsing: флаг остановки парсинга
             - new_ads_count: количество новых объявлений
+            - consecutive_old_ads: обновленное количество подряд идущих старых объявлений
         """
         listings = []
         stop_parsing = False
         new_ads_count = 0
-        consecutive_old_ads = 0
         
         # Защита от None
         if not data:
             log_warning("kufar", "Получен пустой ответ от API")
-            return [], False, 0
+            return [], False, 0, consecutive_old_ads
         
         # Данные в ads
         ads = data.get("ads", []) or []
@@ -365,14 +350,12 @@ class KufarScraper(BaseScraper):
         filtered_out_price = 0
         logged_samples = 0  # Для логирования первых отфильтрованных объявлений
         
-        # TEMPORARILY DISABLED: stop-on-old requires populated DB
         # Импортируем функцию проверки существования объявления
-        # try:
-        #     from database_turso import ad_exists
-        # except ImportError:
-        #     log_warning("kufar", "Не удалось импортировать ad_exists, проверка старых объявлений отключена")
-        #     ad_exists = None
-        ad_exists = None
+        try:
+            from database_turso import ad_exists
+        except ImportError:
+            log_warning("kufar", "Не удалось импортировать ad_exists, проверка старых объявлений отключена")
+            ad_exists = None
         
         for ad in ads:
             if not ad:
@@ -384,29 +367,28 @@ class KufarScraper(BaseScraper):
             if ad_id_raw:
                 external_id = f"kufar_{ad_id_raw}"
             
-            # TEMPORARILY DISABLED: stop-on-old requires populated DB
             # Проверка на последнее известное объявление
-            # if last_known_ad_id and external_id == last_known_ad_id:
-            #     log_info("kufar", f"Обнаружено последнее известное объявление ({external_id}) — останавливаю парсинг")
-            #     stop_parsing = True
-            #     break
-            # 
+            if last_known_ad_id and external_id == last_known_ad_id:
+                log_info("kufar", f"Обнаружено последнее известное объявление ({external_id}) — останавливаю парсинг")
+                stop_parsing = True
+                break
+            
             # Проверка существования объявления в БД
-            # is_old = False
-            # if ad_exists and external_id:
-            #     is_old = await ad_exists(source="kufar", ad_id=external_id)
-            # 
-            # if is_old:
-            #     consecutive_old_ads += 1
-            #     # Проверка порога старых объявлений подряд (после увеличения счётчика)
-            #     if consecutive_old_ads >= STOP_ON_OLD_THRESHOLD:
-            #         log_info("kufar", f"{STOP_ON_OLD_THRESHOLD} старых объявлений подряд — останавливаю парсинг")
-            #         stop_parsing = True
-            #         break
-            #     # Пропускаем старое объявление
-            #     continue
-            # else:
-            #     consecutive_old_ads = 0  # Сбрасываем счётчик при новом объявлении
+            is_old = False
+            if ad_exists and external_id:
+                is_old = await ad_exists(source="kufar", ad_id=external_id)
+            
+            if is_old:
+                consecutive_old_ads += 1
+                # Проверка порога старых объявлений подряд (после увеличения счётчика)
+                if consecutive_old_ads >= STOP_ON_OLD_THRESHOLD:
+                    log_info("kufar", f"достигнут порог старых объявлений, останавливаюсь")
+                    stop_parsing = True
+                    break
+                # Пропускаем старое объявление
+                continue
+            else:
+                consecutive_old_ads = 0  # Сбрасываем счётчик при новом объявлении
             
             # Парсим объявление
             listing = self._parse_ad(ad, city)
@@ -414,8 +396,7 @@ class KufarScraper(BaseScraper):
                 parsed_count += 1
                 if self._matches_filters(listing, min_rooms, max_rooms, min_price, max_price):
                     listings.append(listing)
-                    # TEMPORARILY DISABLED: stop-on-old requires populated DB
-                    # new_ads_count += 1
+                    new_ads_count += 1
                 else:
                     # Логируем первые 3 отфильтрованных объявления для диагностики
                     if logged_samples < 3:
@@ -433,9 +414,7 @@ class KufarScraper(BaseScraper):
             log_info("kufar", f"Страница: {len(ads)} в ответе, {parsed_count} распарсено, "
                      f"{len(listings)} прошло (отсеяно: {filtered_out_rooms} по комнатам, {filtered_out_price} по цене)")
         
-        # TEMPORARILY DISABLED: stop-on-old requires populated DB
-        # return listings, stop_parsing, new_ads_count
-        return listings, False, len(listings)
+        return listings, stop_parsing, new_ads_count, consecutive_old_ads
     
     async def _parse_api_response(
         self, 
@@ -447,8 +426,8 @@ class KufarScraper(BaseScraper):
         city: str = "Минск"
     ) -> List[Listing]:
         """Парсит ответ API (метод для совместимости, вызывает _parse_api_response_with_stop_check)"""
-        listings, _, _ = await self._parse_api_response_with_stop_check(
-            data, min_rooms, max_rooms, min_price, max_price, city, None
+        listings, _, _, _ = await self._parse_api_response_with_stop_check(
+            data, min_rooms, max_rooms, min_price, max_price, city, None, 0
         )
         return listings
     

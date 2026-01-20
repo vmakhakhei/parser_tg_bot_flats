@@ -13,6 +13,7 @@ import time
 import json
 import aiohttp
 from typing import List, Dict, Any, Optional
+from datetime import datetime
 
 # Добавляем родительскую директорию в path для импорта
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -70,7 +71,7 @@ class ListingsAggregator:
         max_rooms: int = 4,
         min_price: int = 0,
         max_price: int = 100000,
-    ) -> List[Listing]:
+    ) -> tuple[List[Listing], List[Dict[str, Any]]]:
         """
         Получает объявления со всех включенных источников
         
@@ -158,9 +159,13 @@ class ListingsAggregator:
         
         # КРИТИЧНО: Сохраняем все объявления в таблицу apartments одной транзакцией
         # Это гарантирует, что данные реально попадают в БД, а не только существуют в памяти
+        new_apartments = []
         if unique_listings:
             try:
-                from database_turso import sync_apartments_batch
+                from database_turso import sync_apartments_batch, get_new_apartments_since
+                
+                # Сохраняем timestamp перед batch сохранением
+                run_started_at = datetime.utcnow().isoformat()
                 
                 # Сохраняем все объявления одной транзакцией
                 saved = await sync_apartments_batch(unique_listings)
@@ -169,8 +174,19 @@ class ListingsAggregator:
                     log_info("aggregator", "[AGGREGATOR] нет новых объявлений для сохранения")
                 else:
                     log_info("aggregator", f"[AGGREGATOR] сохранено {saved} новых объявлений")
+                    
+                    # Получаем только новые объявления, созданные после начала этого запуска
+                    new_apartments = await get_new_apartments_since(run_started_at)
+                    log_info("aggregator", f"[AGGREGATOR] получено {len(new_apartments)} новых объявлений из БД для фильтрации/уведомлений")
+                    
+                    # Запускаем уведомления в фоне, не блокируя парсинг остальных источников
+                    if new_apartments:
+                        asyncio.create_task(
+                            notify_users_about_new_apartments(new_apartments)
+                        )
+                        log_info("aggregator", f"[AGGREGATOR] запущена фоновая задача уведомлений для {len(new_apartments)} объявлений")
             except ImportError as e:
-                log_error("aggregator", f"Не удалось импортировать sync_apartments_batch: {e}")
+                log_error("aggregator", f"Не удалось импортировать sync_apartments_batch или get_new_apartments_since: {e}")
             except Exception as e:
                 log_error("aggregator", f"Критическая ошибка при сохранении в apartments: {e}")
         
@@ -184,6 +200,8 @@ class ListingsAggregator:
             log_error("aggregator", f"ОШИБКА: _remove_duplicates вернул не список: {type(unique_listings)}")
             return []
         
+        # Возвращаем unique_listings для обратной совместимости
+        # new_apartments доступны через атрибут или можно добавить отдельный метод
         return unique_listings
     
     async def _fetch_from_source(
@@ -285,13 +303,210 @@ class ListingsAggregator:
         return list(cls.SCRAPERS.keys())
 
 
+async def apartment_dict_to_listing(apartment_dict: Dict[str, Any]) -> Optional[Listing]:
+    """
+    Конвертирует словарь из таблицы apartments в объект Listing
+    
+    Args:
+        apartment_dict: Словарь с данными из таблицы apartments
+    
+    Returns:
+        Объект Listing или None при ошибке
+    """
+    try:
+        # Определяем цену и валюту
+        price_usd = apartment_dict.get("price_usd") or 0
+        price_byn = apartment_dict.get("price_byn") or 0
+        currency = apartment_dict.get("currency", "USD")
+        
+        # Выбираем основную цену
+        if currency == "USD":
+            price = price_usd
+        elif currency == "BYN":
+            price = price_byn
+        else:
+            price = price_usd if price_usd > 0 else price_byn
+        
+        # Форматируем цену
+        if currency == "USD":
+            price_formatted = f"${price:,}".replace(",", " ") if price > 0 else "Цена не указана"
+        else:
+            price_formatted = f"{price:,} BYN".replace(",", " ") if price > 0 else "Цена не указана"
+        
+        # Добавляем цену в другой валюте если есть
+        if price_usd and price_byn:
+            if currency == "USD":
+                price_formatted += f" ({price_byn:,} BYN)".replace(",", " ")
+            else:
+                price_formatted += f" (${price_usd:,})".replace(",", " ")
+        
+        # Получаем photos (может быть список или JSON строка)
+        photos = apartment_dict.get("photos", [])
+        if isinstance(photos, str):
+            try:
+                photos = json.loads(photos) if photos else []
+            except:
+                photos = []
+        if not isinstance(photos, list):
+            photos = []
+        
+        # Формируем title если его нет
+        title = apartment_dict.get("title", "")
+        if not title:
+            rooms = apartment_dict.get("rooms", 0)
+            area = apartment_dict.get("total_area", 0.0)
+            if rooms and area:
+                title = f"{rooms}-комн., {area} м²"
+            else:
+                title = "Квартира"
+        
+        return Listing(
+            id=apartment_dict.get("ad_id", ""),
+            source=apartment_dict.get("source", "unknown"),
+            title=title,
+            price=price,
+            price_formatted=price_formatted,
+            rooms=apartment_dict.get("rooms", 0),
+            area=apartment_dict.get("total_area", 0.0),
+            address=apartment_dict.get("address", ""),
+            url=apartment_dict.get("url", ""),
+            photos=photos,
+            floor=apartment_dict.get("floor", ""),
+            description=apartment_dict.get("description", ""),
+            currency=currency,
+            price_usd=price_usd,
+            price_byn=price_byn,
+            year_built=apartment_dict.get("year_built", ""),
+            created_at=apartment_dict.get("created_at", ""),
+            is_company=apartment_dict.get("is_company"),
+            balcony=apartment_dict.get("balcony", ""),
+            bathroom=apartment_dict.get("bathroom", ""),
+            total_floors=apartment_dict.get("total_floors", ""),
+            house_type=apartment_dict.get("house_type", ""),
+            renovation_state=apartment_dict.get("renovation_state", ""),
+            kitchen_area=apartment_dict.get("kitchen_area", 0.0),
+            living_area=apartment_dict.get("living_area", 0.0),
+        )
+    except Exception as e:
+        log_error("aggregator", f"Ошибка конвертации apartment_dict в Listing: {e}")
+        return None
+
+
+async def notify_users_about_new_apartments(new_apartments: List[Dict[str, Any]]) -> None:
+    """
+    Отправляет уведомления пользователям о новых объявлениях
+    
+    Эта функция вызывается асинхронно в фоне и не блокирует парсинг остальных источников.
+    Работает только с переданными новыми объявлениями, применяя фильтры пользователей.
+    
+    Args:
+        new_apartments: Список словарей с данными новых объявлений из БД
+    """
+    if not new_apartments:
+        log_info("aggregator", "[NOTIFY] нет новых объявлений для уведомлений")
+        return
+    
+    try:
+        # Импортируем необходимые функции
+        from database import get_active_users, get_user_filters
+        from bot.services.search_service import _process_user_listings_normal_mode, validate_user_filters
+        from bot.services.ai_service import check_new_listings_ai_mode
+        from aiogram import Bot
+        from config import TELEGRAM_BOT_TOKEN
+        
+        if not TELEGRAM_BOT_TOKEN:
+            log_warning("aggregator", "[NOTIFY] TELEGRAM_BOT_TOKEN не настроен, уведомления отключены")
+            return
+        
+        log_info("aggregator", f"[NOTIFY] начинаю обработку {len(new_apartments)} новых объявлений")
+        
+        # Конвертируем словари в Listing объекты
+        listings = []
+        for apt_dict in new_apartments:
+            listing = await apartment_dict_to_listing(apt_dict)
+            if listing:
+                listings.append(listing)
+        
+        if not listings:
+            log_warning("aggregator", "[NOTIFY] не удалось конвертировать объявления в Listing объекты")
+            return
+        
+        log_info("aggregator", f"[NOTIFY] конвертировано {len(listings)} объявлений")
+        
+        # Получаем активных пользователей
+        active_users = await get_active_users()
+        if not active_users:
+            log_info("aggregator", "[NOTIFY] нет активных пользователей")
+            return
+        
+        log_info("aggregator", f"[NOTIFY] найдено {len(active_users)} активных пользователей")
+        
+        # Создаем бот
+        bot = Bot(token=TELEGRAM_BOT_TOKEN)
+        try:
+            total_sent = 0
+            
+            # Для каждого пользователя проверяем объявления по его фильтрам
+            for user_id in active_users:
+                try:
+                    user_filters = await get_user_filters(user_id)
+                    if not user_filters:
+                        continue
+                    
+                    # Проверяем валидность фильтров
+                    is_valid, error_msg = validate_user_filters(user_filters)
+                    if not is_valid:
+                        continue
+                    
+                    # Применяем фильтры пользователя к новым объявлениям
+                    from bot.services.search_service import matches_user_filters
+                    from database import is_ad_sent_to_user
+                    filtered_listings = []
+                    for listing in listings:
+                        # Проверяем, не отправляли ли уже это объявление пользователю
+                        if await is_ad_sent_to_user(user_id, listing.id):
+                            continue
+                        
+                        # Проверяем соответствие фильтрам пользователя
+                        if matches_user_filters(listing, user_filters, user_id=user_id, log_details=False):
+                            filtered_listings.append(listing)
+                    
+                    if not filtered_listings:
+                        continue
+                    
+                    # Отправляем объявления пользователю в зависимости от режима
+                    if user_filters.get("ai_mode"):
+                        await check_new_listings_ai_mode(bot, user_id, user_filters, filtered_listings)
+                    else:
+                        user_sent = await _process_user_listings_normal_mode(
+                            bot, user_id, filtered_listings, user_filters
+                        )
+                        total_sent += user_sent
+                        
+                except Exception as e:
+                    log_error("aggregator", f"[NOTIFY] ошибка обработки пользователя {user_id}: {e}")
+                    continue
+            
+            log_info("aggregator", f"[NOTIFY] обработка завершена, отправлено {total_sent} объявлений")
+            
+        finally:
+            await bot.session.close()
+        
+    except ImportError as e:
+        log_error("aggregator", f"[NOTIFY] не удалось импортировать необходимые модули: {e}")
+    except Exception as e:
+        log_error("aggregator", f"[NOTIFY] ошибка при отправке уведомлений: {e}")
+        import traceback
+        traceback.print_exc()
+
+
 async def test_aggregator():
     """Тестирование агрегатора"""
     print("🔍 Тестирование агрегатора объявлений...\n")
     
     aggregator = ListingsAggregator()
     
-    listings = await aggregator.fetch_all_listings(
+    listings, new_apartments = await aggregator.fetch_all_listings(
         city="барановичи",
         min_rooms=1,
         max_rooms=3,
@@ -301,6 +516,7 @@ async def test_aggregator():
     
     print(f"\n{'='*50}")
     print(f"📊 Всего найдено уникальных объявлений: {len(listings)}")
+    print(f"🆕 Новых объявлений из БД: {len(new_apartments)}")
     print(f"{'='*50}\n")
     
     # Показываем первые 5 объявлений
