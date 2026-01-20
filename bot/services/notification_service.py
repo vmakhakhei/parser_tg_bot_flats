@@ -436,15 +436,23 @@ async def send_grouped_listings_to_user(bot: Bot, user_id: int, listings: List[L
         min_price = min(prices)
         max_price = max(prices)
         
-        # Берем адрес и количество комнат из первого объявления
+        # Берем адрес из первого объявления
         address = sorted_listings[0].address
-        rooms = sorted_listings[0].rooms
+        
+        # Вычисляем диапазон комнат
+        rooms = sorted({l.rooms for l in sorted_listings if l.rooms})
+        if len(rooms) > 1:
+            rooms_text = f"{rooms[0]}–{rooms[-1]} комнаты"
+        elif len(rooms) == 1:
+            rooms_text = f"{rooms[0]} комната"
+        else:
+            rooms_text = "комнаты не указаны"
         
         # Формируем текст сообщения
         text_lines = [
             f"🏢 <b>{len(sorted_listings)} квартир в одном доме</b>",
             f"📍 {address}",
-            f"🛏 {rooms} комнат(ы)",
+            f"🛏 {rooms_text}",
             f"💰 ${min_price:,} – ${max_price:,}".replace(",", " "),
             ""
         ]

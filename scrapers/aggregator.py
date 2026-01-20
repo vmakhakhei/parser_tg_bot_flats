@@ -473,9 +473,9 @@ def make_group_key(listing: Listing) -> tuple:
     Создает ключ группировки для объявления.
     
     Приоритет:
-    1. Если есть номер дома -> (house_key, city, street, house, rooms)
-    2. Если есть координаты -> (coords_key, city, street, rounded_lat, rounded_lon, rooms)
-    3. Иначе -> (street_key, city, street, None, None, rooms)
+    1. Если есть номер дома -> (house_key, city, street, house)
+    2. Если есть координаты -> (coords_key, city, street, rounded_lat, rounded_lon)
+    3. Иначе -> (street_key, city, street)
     
     Args:
         listing: Объявление
@@ -491,23 +491,25 @@ def make_group_key(listing: Listing) -> tuple:
     house = addr["house"]
     
     if house:
-        return ("house_key", city, street, house, listing.rooms)
+        return ("house_key", city, street, house)
     
     # Проверяем координаты
     lat, lon = _extract_coords_from_listing(listing)
     if lat is not None and lon is not None:
         # Используем округленные координаты как начальный bucket
-        return ("coords_key", city, street, round(lat, 4), round(lon, 4), listing.rooms)
+        return ("coords_key", city, street, round(lat, 4), round(lon, 4))
     
-    return ("street_key", city, street, None, None, listing.rooms)
+    return ("street_key", city, street)
 
 
 def group_similar_listings(listings: List[Listing]) -> List[List[Listing]]:
     """
-    Группирует объявления по адресу и количеству комнат с поддержкой гео-кластеризации.
+    Группирует объявления по адресу с поддержкой гео-кластеризации.
+    
+    Объявления с разным количеством комнат в одном доме объединяются в одну группу.
     
     Использует многоуровневую стратегию:
-    1. Первичная группировка по ключу (дом/координаты/улица)
+    1. Первичная группировка по ключу (дом/координаты/улица) - БЕЗ учета количества комнат
     2. Гео-кластеризация для объявлений с координатами (distance-based)
     
     Args:
