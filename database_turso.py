@@ -1133,7 +1133,8 @@ async def sync_ads_from_kufar(
     for listing in listings:
         try:
             # Извлекаем ad_id из listing.id (формат: "kufar_1048044245")
-            ad_id = listing.id
+            # Убеждаемся, что ad_id передается как строка
+            ad_id = str(listing.id)
             if not ad_id.startswith("kufar_"):
                 logger.warning(f"Пропускаю объявление с неверным форматом ID: {listing.id}")
                 continue
@@ -1215,11 +1216,13 @@ async def sync_apartment_from_kufar(
                         pass
                 
                 # Проверяем существующее объявление
+                # Убеждаемся, что ad_id передается как строка
+                ad_id_str = str(ad_id)
                 cursor = conn.execute("""
                     SELECT list_time, last_checked, is_active 
                     FROM apartments 
                     WHERE ad_id = ?
-                """, (ad_id,))
+                """, (ad_id_str,))
                 existing = cursor.fetchone()
                 
                 current_time = datetime.now().isoformat()
@@ -1246,6 +1249,10 @@ async def sync_apartment_from_kufar(
                     
                     if should_update_data:
                         # Обновляем данные объявления
+                        # Убеждаемся, что ad_id передается как строка
+                        ad_id_str = str(ad_id)
+                        address = ad_data.get("address", "")
+                        
                         conn.execute("""
                             UPDATE apartments SET
                                 price_usd = ?,
@@ -1283,7 +1290,7 @@ async def sync_apartment_from_kufar(
                             list_time or current_time,
                             current_time,
                             ad_data.get("url", ""),
-                            ad_data.get("address", ""),
+                            address,
                             raw_json,
                             ad_data.get("title", ""),
                             ad_data.get("description", ""),
@@ -1299,17 +1306,26 @@ async def sync_apartment_from_kufar(
                             ad_data.get("kitchen_area", 0.0),
                             ad_data.get("living_area", 0.0),
                             current_time,
-                            ad_id
+                            ad_id_str
                         ))
+                        
+                        # Логируем успешное обновление
+                        logger.info(f"[DB] updated apartment ad_id={ad_id_str} address={address}")
                     else:
                         # Обновляем только last_checked
+                        # Убеждаемся, что ad_id передается как строка
+                        ad_id_str = str(ad_id)
                         conn.execute("""
                             UPDATE apartments 
                             SET last_checked = ?, updated_at = ?
                             WHERE ad_id = ?
-                        """, (current_time, current_time, ad_id))
+                        """, (current_time, current_time, ad_id_str))
                 else:
                     # Вставляем новое объявление (INSERT OR IGNORE для предотвращения дублей благодаря уникальному индексу)
+                    # Убеждаемся, что ad_id передается как строка
+                    ad_id_str = str(ad_id)
+                    address = ad_data.get("address", "")
+                    
                     conn.execute("""
                     INSERT OR IGNORE INTO apartments (
                         ad_id, source, price_usd, price_byn, rooms, floor, total_area,
@@ -1319,7 +1335,7 @@ async def sync_apartment_from_kufar(
                         kitchen_area, living_area, created_at, updated_at
                     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """, (
-                    ad_id,
+                    ad_id_str,
                     source,
                     ad_data.get("price_usd", 0),
                     ad_data.get("price_byn", 0),
@@ -1330,7 +1346,7 @@ async def sync_apartment_from_kufar(
                     current_time,
                     1,  # is_active = 1 для новых объявлений
                     ad_data.get("url", ""),
-                    ad_data.get("address", ""),
+                    address,
                     raw_json,
                     ad_data.get("title", ""),
                     ad_data.get("description", ""),
@@ -1348,6 +1364,9 @@ async def sync_apartment_from_kufar(
                     current_time,
                     current_time
                 ))
+                    
+                    # Логируем успешное сохранение
+                    logger.info(f"[DB] saved apartment ad_id={ad_id_str} address={address}")
             
                 # Помечаем объявления как неактивные, если last_checked старше 48 часов
                 conn.execute("""

@@ -191,6 +191,9 @@ def format_listing_message(listing: Listing, ai_valuation: Optional[Dict[str, An
         lines.append(f"<i>{description_text}</i>")
 
     lines.append("")
+    # Адрес должен браться ТОЛЬКО из listing.address, без fallback'ов
+    # Временно добавляем защиту: если адрес None - это ошибка данных
+    assert listing.address is not None, f"listing.address is None for listing.id={listing.id}"
     lines.append(f"📍 <b>Адрес:</b> {listing.address}")
     lines.append(f"🌐 <b>Источник:</b> {listing.source}")
     lines.append("")
@@ -214,6 +217,12 @@ async def send_listing_to_user(
         True если объявление было отправлено, False если уже было отправлено ранее или произошла ошибка
     """
     try:
+        # ДИАГНОСТИЧЕСКИЙ ЛОГ: логируем перед отправкой
+        log_info(
+            "notification",
+            f"[NOTIFY] user={user_id} ad_id={listing.id} address={listing.address}"
+        )
+        
         # Идемпотентная проверка: если объявление уже было отправлено этому пользователю - не отправляем
         if await is_ad_sent_to_user(user_id, listing.id):
             log_info(
