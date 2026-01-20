@@ -1415,9 +1415,6 @@ async def sync_apartment_from_kufar(
     except Exception as e:
         logger.error(f"Ошибка синхронизации объявления {ad_id}: {e}")
         return False
-    finally:
-        if conn:
-            conn.close()
 
 
 async def build_dynamic_query(
