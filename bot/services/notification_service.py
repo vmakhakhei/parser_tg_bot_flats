@@ -425,26 +425,73 @@ async def send_grouped_listings_to_user(bot: Bot, user_id: int, listings: List[L
         return False
     
     try:
-        # DEBUG: Логируем информацию о группе для диагностики
-        group_debug_info = []
+        # ШАГ 2: ОБЩИЙ ЛОГ АНАЛИЗА ГРУППЫ
+        from collections import defaultdict
+        
+        vendors = set()
         for l in listings:
-            vendor = None
             try:
                 raw_json = getattr(l, 'raw_json', None)
                 if raw_json:
                     if isinstance(raw_json, dict):
-                        vendor = raw_json.get('agency') or raw_json.get('seller')
+                        vendor = raw_json.get("agency") or raw_json.get("seller") or "UNKNOWN"
                     elif isinstance(raw_json, str):
                         try:
                             raw_data = json.loads(raw_json)
-                            vendor = raw_data.get('agency') or raw_data.get('seller')
+                            vendor = raw_data.get("agency") or raw_data.get("seller") or "UNKNOWN"
                         except:
-                            pass
-            except:
-                pass
-            group_debug_info.append((l.id, l.source, vendor))
+                            vendor = "UNKNOWN"
+                    else:
+                        vendor = "UNKNOWN"
+                else:
+                    vendor = "UNKNOWN"
+            except Exception:
+                vendor = "UNKNOWN"
+            vendors.add(vendor)
         
-        logger.debug(f"[group_debug] group_key=grouped_by_house, members={group_debug_info}")
+        logger.info(
+            "[GROUP_ANALYSIS] address=%s total_listings=%d vendors=%s",
+            listings[0].address,
+            len(listings),
+            list(vendors),
+        )
+        
+        # ШАГ 3: ДЕТАЛИЗАЦИЯ ПО КАЖДОМУ АГЕНТСТВУ
+        vendors_map = defaultdict(list)
+        
+        for l in listings:
+            try:
+                raw_json = getattr(l, 'raw_json', None)
+                if raw_json:
+                    if isinstance(raw_json, dict):
+                        vendor = raw_json.get("agency") or raw_json.get("seller") or "UNKNOWN"
+                    elif isinstance(raw_json, str):
+                        try:
+                            raw_data = json.loads(raw_json)
+                            vendor = raw_data.get("agency") or raw_data.get("seller") or "UNKNOWN"
+                        except:
+                            vendor = "UNKNOWN"
+                    else:
+                        vendor = "UNKNOWN"
+                else:
+                    vendor = "UNKNOWN"
+            except Exception:
+                vendor = "UNKNOWN"
+            
+            vendors_map[vendor].append(l)
+        
+        for vendor, items in vendors_map.items():
+            prices = sorted({i.price_usd for i in items if i.price_usd})
+            areas = sorted({i.area for i in items if i.area})
+            
+            logger.info(
+                "[GROUP_VENDOR] address=%s vendor=%s count=%d prices=%s areas=%s",
+                listings[0].address,
+                vendor,
+                len(items),
+                prices,
+                areas,
+            )
         
         # Сортируем объявления по цене (от меньшей к большей)
         sorted_listings = sorted(listings, key=lambda x: x.price_usd or 0)
