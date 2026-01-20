@@ -156,30 +156,21 @@ class ListingsAggregator:
         if duplicates_removed > 0:
             log_info("aggregator", f"Удалено {duplicates_removed} дубликатов")
         
-        # КРИТИЧНО: Сохраняем каждое объявление в таблицу apartments
+        # КРИТИЧНО: Сохраняем все объявления в таблицу apartments одной транзакцией
         # Это гарантирует, что данные реально попадают в БД, а не только существуют в памяти
         if unique_listings:
             try:
-                from database_turso import sync_apartment_from_listing
+                from database_turso import sync_apartments_batch
                 
-                saved_count = 0
-                for listing in unique_listings:
-                    try:
-                        # Сохраняем объявление в apartments
-                        success = await sync_apartment_from_listing(listing, raw_json="{}")
-                        if success:
-                            saved_count += 1
-                            # Контрольный лог в aggregator
-                            log_info("aggregator", f"[AGGREGATOR] persisted ad_id={listing.id} source={listing.source}")
-                        else:
-                            log_warning("aggregator", f"[AGGREGATOR] failed to persist ad_id={listing.id} source={listing.source}")
-                    except Exception as e:
-                        log_error("aggregator", f"Ошибка сохранения объявления {listing.id} в apartments", e)
-                        continue
+                # Сохраняем все объявления одной транзакцией
+                saved = await sync_apartments_batch(unique_listings)
                 
-                log_info("aggregator", f"💾 Сохранено {saved_count} из {len(unique_listings)} объявлений в таблицу apartments")
+                if saved == 0:
+                    log_info("aggregator", "[AGGREGATOR] нет новых объявлений для сохранения")
+                else:
+                    log_info("aggregator", f"[AGGREGATOR] сохранено {saved} новых объявлений")
             except ImportError as e:
-                log_error("aggregator", f"Не удалось импортировать sync_apartment_from_listing: {e}")
+                log_error("aggregator", f"Не удалось импортировать sync_apartments_batch: {e}")
             except Exception as e:
                 log_error("aggregator", f"Критическая ошибка при сохранении в apartments: {e}")
         

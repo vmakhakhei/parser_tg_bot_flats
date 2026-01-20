@@ -1098,6 +1098,76 @@ def _listing_to_ad_data(listing: Listing) -> dict:
     }
 
 
+async def sync_apartments_batch(listings: List[Listing]) -> int:
+    """
+    Сохраняет список объявлений в одной транзакции.
+    Возвращает количество реально сохранённых объявлений.
+    """
+    if not listings:
+        logger.info("[DB][BATCH] пустой список, сохранять нечего")
+        return 0
+
+    def _execute():
+        saved = 0
+        with turso_transaction() as conn:
+            for listing in listings:
+                try:
+                    # --- Подготовка данных (ОБЯЗАТЕЛЬНО) ---
+                    ad_id = str(listing.id)
+                    source = listing.source
+                    title = listing.title or ""
+                    address = listing.address or ""
+                    price_usd = listing.price_usd if listing.price_usd is not None else None
+                    url = listing.url
+
+                    # --- Batch INSERT ---
+                    cursor = conn.execute(
+                        """
+                        INSERT OR IGNORE INTO apartments (
+                            ad_id,
+                            source,
+                            title,
+                            address,
+                            price_usd,
+                            url,
+                            created_at,
+                            updated_at
+                        ) VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+                        """,
+                        (
+                            ad_id,
+                            source,
+                            title,
+                            address,
+                            price_usd,
+                            url,
+                        ),
+                    )
+
+                    # --- Подсчёт ТОЛЬКО для последнего запроса ---
+                    if cursor.rowcount and cursor.rowcount > 0:
+                        saved += 1
+
+                except Exception as e:
+                    ad_id_str = str(listing.id) if listing else "unknown"
+                    logger.error(
+                        f"[DB][BATCH] пропущено ad_id={ad_id_str}: {e}"
+                    )
+                    # продолжаем batch, не падаем
+        
+        logger.info(
+            f"[DB][BATCH] сохранено {saved} из {len(listings)} объявлений"
+        )
+        return saved
+    
+    try:
+        saved_count = await asyncio.to_thread(_execute)
+        return saved_count
+    except Exception as e:
+        logger.error(f"[DB][BATCH] Ошибка батчевого сохранения объявлений: {e}")
+        return 0
+
+
 async def sync_apartment_from_listing(listing: Listing, raw_json: str = "{}") -> bool:
     """
     Универсальная функция для сохранения любого Listing в таблицу apartments
@@ -1341,9 +1411,6 @@ async def sync_apartment_from_kufar(
                             current_time,
                             ad_id_str
                         ))
-                        
-                        # Логируем успешное обновление
-                        logger.info(f"[DB] updated apartment ad_id={ad_id_str} address={address}")
                     else:
                         # Обновляем только last_checked
                         # Убеждаемся, что ad_id передается как строка
@@ -1397,9 +1464,6 @@ async def sync_apartment_from_kufar(
                     current_time,
                     current_time
                 ))
-                    
-                    # Логируем успешное сохранение
-                    logger.info(f"[DB] saved apartment ad_id={ad_id_str} address={address}")
             
                 # Помечаем объявления как неактивные, если last_checked старше 48 часов
                 conn.execute("""
