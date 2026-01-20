@@ -1098,6 +1098,39 @@ def _listing_to_ad_data(listing: Listing) -> dict:
     }
 
 
+async def sync_apartment_from_listing(listing: Listing, raw_json: str = "{}") -> bool:
+    """
+    Универсальная функция для сохранения любого Listing в таблицу apartments
+    
+    Args:
+        listing: Объект Listing для сохранения
+        raw_json: Опциональный raw JSON (по умолчанию пустой объект)
+    
+    Returns:
+        True если успешно сохранено, False при ошибке
+    """
+    try:
+        # Определяем source из listing
+        source = listing.source.lower() if listing.source else "unknown"
+        
+        # Конвертируем Listing в словарь
+        ad_data = _listing_to_ad_data(listing)
+        
+        # Используем listing.id как ad_id
+        ad_id = str(listing.id)
+        
+        # Вызываем существующую функцию сохранения
+        return await sync_apartment_from_kufar(
+            ad_id=ad_id,
+            ad_data=ad_data,
+            raw_json=raw_json,
+            source=source
+        )
+    except Exception as e:
+        logger.error(f"Ошибка сохранения объявления {listing.id} в apartments: {e}")
+        return False
+
+
 async def sync_ads_from_kufar(
     listings: List[Listing],
     raw_api_responses: List[dict]
@@ -1170,7 +1203,7 @@ async def sync_apartment_from_kufar(
     source: str = "kufar"
 ) -> bool:
     """
-    Умная синхронизация объявления из Kufar API
+    Умная синхронизация объявления в таблицу apartments
     
     Логика:
     - Если ad_id нет в БД -> INSERT
@@ -1179,10 +1212,10 @@ async def sync_apartment_from_kufar(
     - Если last_checked не обновлялся > 48 часов -> is_active = 0
     
     Args:
-        ad_id: ID объявления из Kufar (например "kufar_1048044245")
+        ad_id: ID объявления (например "kufar_1048044245" или "realt_12345")
         ad_data: Распарсенные данные объявления (словарь)
-        raw_json: Полный JSON ответ от API
-        source: Источник объявления (по умолчанию "kufar")
+        raw_json: Полный JSON ответ от API (может быть пустым для не-Kufar источников)
+        source: Источник объявления ("kufar", "realt", "domovita", etc.)
     """
     try:
         def _execute():

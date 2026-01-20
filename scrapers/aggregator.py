@@ -156,6 +156,33 @@ class ListingsAggregator:
         if duplicates_removed > 0:
             log_info("aggregator", f"Удалено {duplicates_removed} дубликатов")
         
+        # КРИТИЧНО: Сохраняем каждое объявление в таблицу apartments
+        # Это гарантирует, что данные реально попадают в БД, а не только существуют в памяти
+        if unique_listings:
+            try:
+                from database_turso import sync_apartment_from_listing
+                
+                saved_count = 0
+                for listing in unique_listings:
+                    try:
+                        # Сохраняем объявление в apartments
+                        success = await sync_apartment_from_listing(listing, raw_json="{}")
+                        if success:
+                            saved_count += 1
+                            # Контрольный лог в aggregator
+                            log_info("aggregator", f"[AGGREGATOR] persisted ad_id={listing.id} source={listing.source}")
+                        else:
+                            log_warning("aggregator", f"[AGGREGATOR] failed to persist ad_id={listing.id} source={listing.source}")
+                    except Exception as e:
+                        log_error("aggregator", f"Ошибка сохранения объявления {listing.id} в apartments", e)
+                        continue
+                
+                log_info("aggregator", f"💾 Сохранено {saved_count} из {len(unique_listings)} объявлений в таблицу apartments")
+            except ImportError as e:
+                log_error("aggregator", f"Не удалось импортировать sync_apartment_from_listing: {e}")
+            except Exception as e:
+                log_error("aggregator", f"Критическая ошибка при сохранении в apartments: {e}")
+        
         # Сортируем по дате (новые первые) - у нас нет даты, сортируем по цене
         unique_listings.sort(key=lambda x: x.price if x.price > 0 else 999999999)
         
