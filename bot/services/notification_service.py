@@ -4,12 +4,14 @@
 
 import asyncio
 import logging
+from time import time
 from typing import Optional, Dict, Any, List
 
 from aiogram import Bot
 from aiogram.types import InputMediaPhoto, Message
 from aiogram.enums import ParseMode
 from aiogram.utils.keyboard import InlineKeyboardBuilder
+from aiogram.exceptions import TelegramRetryAfter
 
 from scrapers.base import Listing
 from database import (
@@ -28,6 +30,9 @@ from bot.services.telegram_api import (
 )
 
 logger = logging.getLogger(__name__)
+
+# Per-user rate limit (soft lock): user_id -> unlock_timestamp
+USER_SEND_LOCKS: Dict[int, float] = {}
 
 # ИИ-оценщик (опционально)
 try:
@@ -216,6 +221,16 @@ async def send_listing_to_user(
                 f"Объявление {listing.id} уже было отправлено пользователю {user_id}, пропускаем"
             )
             return False
+        
+        # Проверка per-user rate limit (soft lock)
+        now = time()
+        unlock_at = USER_SEND_LOCKS.get(user_id)
+        if unlock_at and now < unlock_at:
+            log_info(
+                "notification",
+                f"Пользователь {user_id} на паузе до {unlock_at:.1f} (осталось {unlock_at - now:.1f} сек), пропуск отправки объявления {listing.id}"
+            )
+            return False
         # ИИ-оценка выполняется ТОЛЬКО если явно запрошена
         ai_valuation = None
         if use_ai_valuation and AI_VALUATOR_AVAILABLE and valuate_listing:
@@ -264,8 +279,23 @@ async def send_listing_to_user(
                 else:
                     media_group.append(InputMediaPhoto(media=photo_url))
 
-            # Отправляем медиагруппу через безопасную обертку
-            sent_messages = await safe_send_media_group(bot=bot, chat_id=user_id, media=media_group)
+            # Отправляем медиагруппу напрямую для перехвата TelegramRetryAfter
+            # Обрабатываем TelegramRetryAfter для установки паузы
+            try:
+                sent_messages = await bot.send_media_group(chat_id=user_id, media=media_group)
+            except TelegramRetryAfter as e:
+                retry_after = int(e.retry_after)
+                USER_SEND_LOCKS[user_id] = time() + retry_after
+                log_warning(
+                    "notification",
+                    f"Flood control для пользователя {user_id}, пауза {retry_after} сек. Объявление {listing.id} НЕ будет помечено как отправленное."
+                )
+                # ВАЖНО: НЕ mark_ad_sent_to_user - объявление не было отправлено
+                return False
+            except Exception as e:
+                # Для других ошибок используем безопасную обертку
+                log_warning("notification", f"Ошибка при прямой отправке медиагруппы, используем safe_send_media_group: {e}")
+                sent_messages = await safe_send_media_group(bot=bot, chat_id=user_id, media=media_group)
             
             # Проверяем успешность отправки
             if sent_messages is None or len(sent_messages) == 0:
@@ -275,19 +305,31 @@ async def send_listing_to_user(
                 )
                 return False
 
+            # Минимальная задержка между сообщениями для снижения flood-risk
+            await asyncio.sleep(1.2)
+
             # Если есть кнопка ИИ-оценки, отправляем её отдельным сообщением после медиагруппы
             # (Telegram не поддерживает кнопки в медиагруппе напрямую)
             # Кнопка ИИ-оценки не критична, продолжаем даже если не отправилась
             if reply_markup:
-                ai_button_msg = await safe_send_message(
-                    bot=bot,
-                    chat_id=user_id,
-                    text="🤖 <b>Хотите получить ИИ-оценку этой квартиры?</b>",
-                    parse_mode=ParseMode.HTML,
-                    reply_markup=reply_markup,
-                )
-                if ai_button_msg is None:
-                    log_warning("notification", f"Не удалось отправить кнопку ИИ-оценки для {listing.id}")
+                try:
+                    ai_button_msg = await safe_send_message(
+                        bot=bot,
+                        chat_id=user_id,
+                        text="🤖 <b>Хотите получить ИИ-оценку этой квартиры?</b>",
+                        parse_mode=ParseMode.HTML,
+                        reply_markup=reply_markup,
+                    )
+                    if ai_button_msg is None:
+                        log_warning("notification", f"Не удалось отправить кнопку ИИ-оценки для {listing.id}")
+                except TelegramRetryAfter as e:
+                    retry_after = int(e.retry_after)
+                    USER_SEND_LOCKS[user_id] = time() + retry_after
+                    log_warning(
+                        "notification",
+                        f"Flood control для пользователя {user_id} при отправке кнопки ИИ-оценки, пауза {retry_after} сек"
+                    )
+                    # Кнопка не критична, продолжаем - медиагруппа уже отправлена
             
             # Медиагруппа отправлена успешно - отмечаем как отправленное
             await mark_listing_sent_to_user(user_id, listing.id)
@@ -299,14 +341,35 @@ async def send_listing_to_user(
             return True
         else:
             # Без фотографий - просто текст с кнопкой
-            sent_message = await safe_send_message(
-                bot=bot,
-                chat_id=user_id,
-                text=message_text,
-                parse_mode=ParseMode.HTML,
-                disable_web_page_preview=False,
-                reply_markup=reply_markup,
-            )
+            # Отправляем напрямую для перехвата TelegramRetryAfter
+            try:
+                sent_message = await bot.send_message(
+                    chat_id=user_id,
+                    text=message_text,
+                    parse_mode=ParseMode.HTML,
+                    disable_web_page_preview=False,
+                    reply_markup=reply_markup,
+                )
+            except TelegramRetryAfter as e:
+                retry_after = int(e.retry_after)
+                USER_SEND_LOCKS[user_id] = time() + retry_after
+                log_warning(
+                    "notification",
+                    f"Flood control для пользователя {user_id}, пауза {retry_after} сек. Объявление {listing.id} НЕ будет помечено как отправленное."
+                )
+                # ВАЖНО: НЕ mark_ad_sent_to_user - объявление не было отправлено
+                return False
+            except Exception as e:
+                # Для других ошибок используем безопасную обертку
+                log_warning("notification", f"Ошибка при прямой отправке сообщения, используем safe_send_message: {e}")
+                sent_message = await safe_send_message(
+                    bot=bot,
+                    chat_id=user_id,
+                    text=message_text,
+                    parse_mode=ParseMode.HTML,
+                    disable_web_page_preview=False,
+                    reply_markup=reply_markup,
+                )
             
             # Проверяем успешность отправки
             if sent_message is None:
@@ -315,6 +378,9 @@ async def send_listing_to_user(
                     f"Не удалось отправить сообщение для объявления {listing.id} пользователю {user_id}",
                 )
                 return False
+
+            # Минимальная задержка между сообщениями для снижения flood-risk
+            await asyncio.sleep(1.2)
 
             # Сообщение отправлено успешно - отмечаем как отправленное
             await mark_listing_sent_to_user(user_id, listing.id)
