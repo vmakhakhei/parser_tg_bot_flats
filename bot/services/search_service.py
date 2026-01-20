@@ -644,11 +644,12 @@ async def check_new_listings(bot: Any) -> None:
     except: pass
     # #endregion
 
+    # Лог-валидация: обязательно логируем количество найденных активных пользователей
+    log_info("search", f"Найдено активных пользователей: {len(active_users)}")
+    
     if not active_users:
-        log_info("search", "Нет активных пользователей")
+        log_info("search", "Нет активных пользователей - проверьте, что пользователи запускали /start")
         return
-
-    log_info("search", f"Активных пользователей: {len(active_users)}")
 
     total_sent = 0
 
@@ -667,13 +668,15 @@ async def check_new_listings(bot: Any) -> None:
                 f.write(json.dumps({"sessionId":"debug-session","runId":"run1","hypothesisId":"A","location":"search_service.py:526","message":"User filters retrieved","data":{"user_id":user_id,"has_filters":user_filters is not None,"is_active":user_filters.get("is_active") if user_filters else None},"timestamp":int(time.time()*1000)})+'\n')
         except: pass
         # #endregion
-        if not user_filters or not user_filters.get("is_active"):
+        # УБРАЛИ проверку is_active - теперь все пользователи с фильтрами считаются активными
+        if not user_filters:
             # #region agent log
             try:
                 with open('/Users/vmakhakei/TG BOT/.cursor/debug.log', 'a') as f:
-                    f.write(json.dumps({"sessionId":"debug-session","runId":"run1","hypothesisId":"A","location":"search_service.py:528","message":"Skipping user - no filters or inactive","data":{"user_id":user_id,"has_filters":user_filters is not None,"is_active":user_filters.get("is_active") if user_filters else None},"timestamp":int(time.time()*1000)})+'\n')
+                    f.write(json.dumps({"sessionId":"debug-session","runId":"run1","hypothesisId":"A","location":"search_service.py:528","message":"Skipping user - no filters","data":{"user_id":user_id},"timestamp":int(time.time()*1000)})+'\n')
             except: pass
             # #endregion
+            log_warning("search", f"Пропускаю пользователя {user_id}: фильтры не настроены")
             continue
 
         # Проверяем валидность фильтров

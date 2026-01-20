@@ -374,9 +374,11 @@ async def get_active_users() -> List[int]:
             pass
     
     # SQLite fallback
+    # Активный пользователь = имеет запись в user_filters (писал боту хотя бы раз)
+    # УБРАЛИ условие is_active = 1 - теперь все пользователи с фильтрами считаются активными
     async with aiosqlite.connect(DATABASE_PATH) as db:
         cursor = await db.execute(
-            "SELECT user_id FROM user_filters WHERE is_active = 1"
+            "SELECT DISTINCT user_id FROM user_filters"
         )
         rows = await cursor.fetchall()
         result = [row[0] for row in rows]

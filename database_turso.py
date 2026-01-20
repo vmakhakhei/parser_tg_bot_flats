@@ -963,9 +963,91 @@ async def set_user_filters_turso(
         return False
 
 
+async def get_latest_ad_external_id(source: str, city: str = None) -> Optional[str]:
+    """
+    Получает последний сохранённый external_id (ad_id) из базы данных
+    
+    Args:
+        source: Источник объявления (например "kufar")
+        city: Город (опционально, для фильтрации)
+    
+    Returns:
+        ad_id последнего объявления или None если нет объявлений
+    """
+    conn = get_turso_connection()
+    if not conn:
+        return None
+    
+    try:
+        def _execute():
+            if city:
+                # Если указан город, фильтруем по нему (нужно добавить поле city в apartments если его нет)
+                cursor = conn.execute("""
+                    SELECT ad_id
+                    FROM apartments
+                    WHERE source = ?
+                    ORDER BY created_at DESC
+                    LIMIT 1
+                """, (source,))
+            else:
+                cursor = conn.execute("""
+                    SELECT ad_id
+                    FROM apartments
+                    WHERE source = ?
+                    ORDER BY created_at DESC
+                    LIMIT 1
+                """, (source,))
+            row = cursor.fetchone()
+            return row[0] if row else None
+        
+        return await asyncio.to_thread(_execute)
+    except Exception as e:
+        logger.error(f"Ошибка получения последнего ad_id для {source}: {e}")
+        return None
+    finally:
+        if conn:
+            conn.close()
+
+
+async def ad_exists(source: str, ad_id: str) -> bool:
+    """
+    Проверяет, существует ли объявление в базе данных
+    
+    Args:
+        source: Источник объявления (например "kufar")
+        ad_id: ID объявления (например "kufar_1048044245")
+    
+    Returns:
+        True если объявление существует, False иначе
+    """
+    conn = get_turso_connection()
+    if not conn:
+        return False
+    
+    try:
+        def _execute():
+            cursor = conn.execute("""
+                SELECT 1
+                FROM apartments
+                WHERE source = ? AND ad_id = ?
+                LIMIT 1
+            """, (source, ad_id))
+            return cursor.fetchone() is not None
+        
+        return await asyncio.to_thread(_execute)
+    except Exception as e:
+        logger.error(f"Ошибка проверки существования объявления {ad_id} для {source}: {e}")
+        return False
+    finally:
+        if conn:
+            conn.close()
+
+
 async def get_active_users_turso() -> List[int]:
     """
     Возвращает список ID активных пользователей из Turso
+    Активный пользователь = имеет запись в user_filters (писал боту хотя бы раз)
+    УБРАЛИ условие active = 1 - теперь все пользователи с фильтрами считаются активными
     """
     conn = get_turso_connection()
     if not conn:
@@ -974,8 +1056,7 @@ async def get_active_users_turso() -> List[int]:
     try:
         def _execute():
             cursor = conn.execute("""
-                SELECT DISTINCT user_id FROM user_filters 
-                WHERE active = 1
+                SELECT DISTINCT user_id FROM user_filters
             """)
             return [row[0] for row in cursor.fetchall()]
         

@@ -11,9 +11,10 @@ from aiogram.fsm.state import State, StatesGroup
 from aiogram.enums import ParseMode
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
-from database import get_user_filters
+from database import get_user_filters, set_user_filters
 from bot.services.search_service import check_new_listings
 from bot.services.ai_service import check_new_listings_ai_mode
+from datetime import datetime
 
 router = Router()
 
@@ -145,7 +146,20 @@ async def cmd_start(message: Message, state: FSMContext):
             logger.warning(f"Не удалось получить фильтры из Turso: {e}")
 
     if not user_filters:
-        # Первый запуск - начинаем пошаговую настройку
+        # Первый запуск - активируем пользователя и начинаем пошаговую настройку
+        # ВАЖНО: Гарантируем активацию при /start - создаем запись с is_active=True
+        await set_user_filters(
+            user_id=user_id,
+            city="барановичи",  # Значение по умолчанию
+            min_rooms=1,
+            max_rooms=4,
+            min_price=0,
+            max_price=100000,
+            is_active=True,  # Активируем пользователя при первом запуске
+            ai_mode=False,
+            seller_type=None
+        )
+        
         await message.answer(
             "👋 <b>Добро пожаловать!</b>\n\n"
             "Я помогу вам найти квартиру.\n\n"
