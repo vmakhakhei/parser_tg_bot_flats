@@ -5,7 +5,7 @@
 from typing import Optional
 from aiogram import Router, F
 from aiogram.types import Message, CallbackQuery
-from aiogram.filters import CommandStart
+from aiogram.filters import CommandStart, Command
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.enums import ParseMode
@@ -15,6 +15,8 @@ from database import get_user_filters, set_user_filters
 from bot.services.search_service import check_new_listings
 from bot.services.ai_service import check_new_listings_ai_mode
 from datetime import datetime
+from config.constants import DELIVERY_MODE_BRIEF, DELIVERY_MODE_FULL, DELIVERY_MODE_DEFAULT
+from bot.services.notification_service import USER_DELIVERY_MODES
 
 router = Router()
 
@@ -273,15 +275,16 @@ async def cb_show_stats(callback: CallbackQuery):
 
 @router.callback_query(F.data.startswith("show_house|"))
 async def cb_show_house(callback: CallbackQuery):
-    """Обработчик кнопки 'Показать варианты' для конкретного дома"""
-    from bot.services.notification_service import get_listings_for_house_hash, send_grouped_listings_to_user
-    from database import mark_ad_sent_to_user
+    """Обработчик кнопки 'Показать варианты' для конкретного дома с поддержкой пагинации"""
+    from bot.services.notification_service import get_listings_for_house_hash, send_grouped_listings_with_pagination
     
     user_id = callback.from_user.id
     
     try:
-        # Извлекаем hash адреса из callback_data
-        house_hash = callback.data.split("|")[1]
+        # Извлекаем hash адреса и offset из callback_data
+        parts = callback.data.split("|")
+        house_hash = parts[1]
+        offset = int(parts[2]) if len(parts) > 2 else 0
         
         # Получаем объявления для этого адреса
         listings = await get_listings_for_house_hash(house_hash)
@@ -290,20 +293,51 @@ async def cb_show_house(callback: CallbackQuery):
             await callback.answer("Нет доступных вариантов", show_alert=True)
             return
         
-        # Отправляем группированные объявления пользователю
-        await send_grouped_listings_to_user(callback.bot, user_id, listings)
-        
-        # Помечаем объявления как отправленные
-        for listing in listings:
-            await mark_ad_sent_to_user(user_id, listing.id)
+        # Отправляем объявления с пагинацией
+        await send_grouped_listings_with_pagination(
+            callback.bot,
+            user_id,
+            listings,
+            offset
+        )
         
         await callback.answer()
         
+    except ValueError:
+        await callback.answer("Ошибка формата запроса", show_alert=True)
     except Exception as e:
         import logging
         logger = logging.getLogger(__name__)
         logger.error(f"Ошибка обработки show_house для пользователя {user_id}: {e}")
         await callback.answer("Произошла ошибка при загрузке вариантов", show_alert=True)
+
+
+@router.message(Command("mode"))
+async def cmd_mode(message: Message):
+    """Обработчик команды /mode для переключения режимов доставки"""
+    parts = message.text.split()
+    
+    if len(parts) != 2 or parts[1] not in (DELIVERY_MODE_BRIEF, DELIVERY_MODE_FULL):
+        await message.answer(
+            f"Использование: /mode {DELIVERY_MODE_BRIEF} или /mode {DELIVERY_MODE_FULL}\n\n"
+            f"• {DELIVERY_MODE_BRIEF} - краткие summary-сообщения с группировкой\n"
+            f"• {DELIVERY_MODE_FULL} - подробные уведомления по каждому объявлению",
+            parse_mode=ParseMode.HTML
+        )
+        return
+    
+    mode = parts[1]
+    user_id = message.from_user.id
+    
+    # Сохраняем режим в in-memory хранилище
+    USER_DELIVERY_MODES[user_id] = mode
+    
+    mode_text = "кратко" if mode == DELIVERY_MODE_BRIEF else "подробно"
+    await message.answer(
+        f"✅ Режим уведомлений установлен: <b>{mode_text}</b>\n\n"
+        f"{'📋 Вы будете получать одно summary-сообщение с группировкой по адресам' if mode == DELIVERY_MODE_BRIEF else '📨 Вы будете получать подробные уведомления по каждому объявлению'}",
+        parse_mode=ParseMode.HTML
+    )
 
 
 # Импортируем остальные обработчики из старого bot.py

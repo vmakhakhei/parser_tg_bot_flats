@@ -23,6 +23,13 @@ from database import (
     mark_ad_sent_to_user,
 )
 from config import MAX_PHOTOS
+from config.constants import (
+    MAX_GROUPS_IN_SUMMARY,
+    MAX_LISTINGS_PER_GROUP_PREVIEW,
+    DELIVERY_MODE_BRIEF,
+    DELIVERY_MODE_FULL,
+    DELIVERY_MODE_DEFAULT,
+)
 from error_logger import log_info, log_warning, log_error
 from bot.services.telegram_api import (
     safe_send_message,
@@ -838,6 +845,33 @@ async def show_listings_list(bot: Bot, user_id: int, listings: List[Listing], st
         )
 
 
+def score_group(group: List[Listing]) -> float:
+    """
+    Вычисляет score для группы объявлений.
+    
+    Чем выше score, тем лучше группа (больше вариантов, ниже цена, больше площадь).
+    
+    Args:
+        group: Список Listing объектов в группе
+    
+    Returns:
+        Числовой score (чем выше, тем лучше)
+    """
+    prices = [l.price_usd for l in group if l.price_usd]
+    areas = [l.area for l in group if l.area]
+    
+    # Бонус за количество вариантов (каждый вариант = +2 балла)
+    count_score = len(group) * 2
+    
+    # Бонус за низкую цену (минимальная цена, деленная на 10k, с минусом для сортировки по убыванию)
+    price_score = -min(prices) / 10_000 if prices else 0
+    
+    # Бонус за большую площадь (средняя площадь, деленная на 10)
+    area_score = (sum(areas) / len(areas)) / 10 if areas else 0
+    
+    return count_score + price_score + area_score
+
+
 async def notify_users_about_new_apartments_summary(new_listings: List[Listing]) -> None:
     """
     Отправляет summary-уведомления пользователям о новых объявлениях.
@@ -857,10 +891,10 @@ async def notify_users_about_new_apartments_summary(new_listings: List[Listing])
         from bot.services.search_service import matches_user_filters, validate_user_filters
         from bot.services.ai_service import check_new_listings_ai_mode
         from aiogram import Bot
-        from config import TELEGRAM_BOT_TOKEN
+        from config import BOT_TOKEN
         
-        if not TELEGRAM_BOT_TOKEN:
-            log_warning("notification", "[SUMMARY] TELEGRAM_BOT_TOKEN не настроен, уведомления отключены")
+        if not BOT_TOKEN:
+            log_warning("notification", "[SUMMARY] BOT_TOKEN не настроен, уведомления отключены")
             return
         
         log_info("notification", f"[SUMMARY] начинаю обработку {len(new_listings)} новых объявлений")
@@ -874,7 +908,7 @@ async def notify_users_about_new_apartments_summary(new_listings: List[Listing])
         log_info("notification", f"[SUMMARY] найдено {len(users)} активных пользователей")
         
         # Создаем бот
-        bot = Bot(token=TELEGRAM_BOT_TOKEN)
+        bot = Bot(token=BOT_TOKEN)
         try:
             listings = new_listings
             
@@ -903,7 +937,7 @@ async def notify_users_about_new_apartments_summary(new_listings: List[Listing])
                     # Получаем delivery_mode пользователя (по умолчанию "brief")
                     delivery_mode = USER_DELIVERY_MODES.get(user_id, DELIVERY_MODE_DEFAULT)
                     
-                    if delivery_mode == "full":
+                    if delivery_mode == DELIVERY_MODE_FULL:
                         # Полный режим - отправляем как раньше
                         if user_filters.get("ai_mode"):
                             await check_new_listings_ai_mode(bot, user_id, user_filters, filtered_listings)
@@ -956,10 +990,10 @@ async def send_summary_message(bot: Bot, user_id: int, apartments: List[Listing]
         if not groups:
             return
         
-        # Сортируем группы по количеству объявлений (больше - первыми)
+        # Сортируем группы по score (лучшие первыми)
         groups = sorted(
             groups,
-            key=lambda g: len(g),
+            key=score_group,
             reverse=True
         )[:MAX_GROUPS_IN_SUMMARY]
         
@@ -987,14 +1021,14 @@ async def send_summary_message(bot: Bot, user_id: int, apartments: List[Listing]
                 f"   • 💰 {min_price_formatted} – {max_price_formatted}\n\n"
             )
             
-            # Создаем callback_data с hash адреса
+            # Создаем callback_data с hash адреса и offset=0 для первой страницы
             house_hash = str(hash(address))
-            callback_data = f"show_house|{house_hash}"
+            callback_data = f"show_house|{house_hash}|0"
             
             # Ограничиваем длину текста кнопки
-            button_text = f"Показать {address}"
+            button_text = f"Показать варианты · {address}"
             if len(button_text) > 60:
-                button_text = f"Показать {address[:50]}..."
+                button_text = f"Показать варианты · {address[:40]}..."
             
             keyboard.inline_keyboard.append([
                 InlineKeyboardButton(
@@ -1050,3 +1084,74 @@ async def get_listings_for_house_hash(house_hash: str) -> List[Listing]:
     except Exception as e:
         log_error("notification", f"[SUMMARY] ошибка получения объявлений по hash {house_hash}: {e}")
         return []
+
+
+async def send_grouped_listings_with_pagination(
+    bot: Bot,
+    user_id: int,
+    listings: List[Listing],
+    offset: int = 0
+) -> None:
+    """
+    Отправляет группированные объявления с пагинацией.
+    
+    Args:
+        bot: Экземпляр бота
+        user_id: ID пользователя
+        listings: Список Listing объектов для показа
+        offset: Смещение для пагинации (по умолчанию 0)
+    """
+    try:
+        if not listings:
+            return
+        
+        # Получаем chunk объявлений для текущей страницы
+        chunk = listings[offset:offset + MAX_LISTINGS_PER_GROUP_PREVIEW]
+        
+        if not chunk:
+            return
+        
+        address = chunk[0].address
+        
+        # Формируем текст сообщения
+        text = f"🏢 <b>{address}</b>\n\n"
+        
+        for listing in chunk:
+            price_text = f"${listing.price_usd:,}".replace(",", " ") if listing.price_usd else "—"
+            rooms_text = f"{listing.rooms}к" if listing.rooms else "—"
+            area_text = f"{listing.area} м²" if listing.area else "—"
+            
+            text += f"• {price_text} — {rooms_text} — {area_text}\n"
+        
+        # Создаем клавиатуру с кнопкой "Показать ещё" если есть еще объявления
+        keyboard = InlineKeyboardMarkup(inline_keyboard=[])
+        
+        if offset + MAX_LISTINGS_PER_GROUP_PREVIEW < len(listings):
+            house_hash = str(hash(address))
+            next_offset = offset + MAX_LISTINGS_PER_GROUP_PREVIEW
+            callback_data = f"show_house|{house_hash}|{next_offset}"
+            
+            keyboard.inline_keyboard.append([
+                InlineKeyboardButton(
+                    text="Показать ещё",
+                    callback_data=callback_data
+                )
+            ])
+        
+        # Отправляем сообщение
+        await safe_send_message(
+            bot=bot,
+            chat_id=user_id,
+            text=text,
+            parse_mode=ParseMode.HTML,
+            reply_markup=keyboard if keyboard.inline_keyboard else None
+        )
+        
+        # Помечаем объявления как отправленные
+        for listing in chunk:
+            await mark_ad_sent_to_user(user_id, listing.id)
+        
+        log_info("notification", f"[PAGINATION] отправлено {len(chunk)} объявлений пользователю {user_id}, offset={offset}")
+        
+    except Exception as e:
+        log_error("notification", f"[PAGINATION] ошибка отправки объявлений с пагинацией пользователю {user_id}: {e}")

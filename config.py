@@ -55,7 +55,20 @@ GROUP_BY_VENDOR_FOR_ADDRESS = os.getenv("GROUP_BY_VENDOR_FOR_ADDRESS", "true").l
 # User Agent для запросов
 USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
 
-# Настройки summary-уведомлений
-MAX_GROUPS_IN_SUMMARY = 5
-DELIVERY_MODE_DEFAULT = "brief"  # brief | full
+# Импортируем константы из config/constants.py
+try:
+    from config.constants import (
+        MAX_GROUPS_IN_SUMMARY,
+        MAX_LISTINGS_PER_GROUP_PREVIEW,
+        DELIVERY_MODE_BRIEF,
+        DELIVERY_MODE_FULL,
+        DELIVERY_MODE_DEFAULT,
+    )
+except ImportError:
+    # Fallback для обратной совместимости
+    MAX_GROUPS_IN_SUMMARY = 5
+    MAX_LISTINGS_PER_GROUP_PREVIEW = 5
+    DELIVERY_MODE_BRIEF = "brief"
+    DELIVERY_MODE_FULL = "full"
+    DELIVERY_MODE_DEFAULT = "brief"
 
