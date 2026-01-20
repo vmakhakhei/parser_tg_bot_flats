@@ -564,7 +564,7 @@ async def _process_user_listings_normal_mode(
                 user_new_count += 1
                 log_info("search", f"[user_{user_id}] ✅ Отправлено объявление {listing.id} ({user_new_count}/{len(all_listings)})")
                 # Задержка между сообщениями чтобы не получить бан
-                await asyncio.sleep(2)
+                await asyncio.sleep(1)
             else:
                 failed_send_count += 1
                 log_warning("search", f"[user_{user_id}] ⚠️ Не удалось отправить объявление {listing.id}")

@@ -708,6 +708,11 @@ async def ensure_tables_exist():
                         CREATE INDEX IF NOT EXISTS idx_apartments_source_active 
                         ON apartments(source, is_active)
                     """)
+                    # Уникальный индекс для предотвращения дублей объявлений
+                    conn.execute("""
+                        CREATE UNIQUE INDEX IF NOT EXISTS idx_apartments_source_ad_id 
+                        ON apartments(source, ad_id)
+                    """)
                     logger.info("✅ Таблица apartments и индексы созданы")
                 
                 # 4. Таблица api_query_cache (для кэширования запросов)
@@ -1223,9 +1228,9 @@ async def sync_apartment_from_kufar(
                             WHERE ad_id = ?
                         """, (current_time, current_time, ad_id))
                 else:
-                    # Вставляем новое объявление
+                    # Вставляем новое объявление (INSERT OR IGNORE для предотвращения дублей благодаря уникальному индексу)
                     conn.execute("""
-                    INSERT INTO apartments (
+                    INSERT OR IGNORE INTO apartments (
                         ad_id, source, price_usd, price_byn, rooms, floor, total_area,
                         list_time, last_checked, is_active, url, address, raw_json,
                         title, description, photos, currency, year_built, is_company,

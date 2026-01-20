@@ -16,6 +16,8 @@ from database import (
     mark_listing_sent,
     mark_listing_sent_to_user,
     is_listing_ai_valuated,
+    is_ad_sent_to_user,
+    mark_ad_sent_to_user,
 )
 from config import MAX_PHOTOS
 from error_logger import log_info, log_warning, log_error
@@ -202,8 +204,18 @@ async def send_listing_to_user(
         user_id: ID пользователя
         listing: Объявление для отправки
         use_ai_valuation: Если True, будет выполнена ИИ-оценка (по умолчанию False - без оценки)
+    
+    Returns:
+        True если объявление было отправлено, False если уже было отправлено ранее или произошла ошибка
     """
     try:
+        # Идемпотентная проверка: если объявление уже было отправлено этому пользователю - не отправляем
+        if await is_ad_sent_to_user(user_id, listing.id):
+            log_info(
+                "notification",
+                f"Объявление {listing.id} уже было отправлено пользователю {user_id}, пропускаем"
+            )
+            return False
         # ИИ-оценка выполняется ТОЛЬКО если явно запрошена
         ai_valuation = None
         if use_ai_valuation and AI_VALUATOR_AVAILABLE and valuate_listing:
@@ -280,6 +292,7 @@ async def send_listing_to_user(
             # Медиагруппа отправлена успешно - отмечаем как отправленное
             await mark_listing_sent_to_user(user_id, listing.id)
             await mark_listing_sent(listing.to_dict())  # Глобальная дедупликация
+            await mark_ad_sent_to_user(user_id, listing.id)  # Идемпотентная запись
             log_info(
                 "notification", f"Отправлено пользователю {user_id}: {listing.id} ({listing.source})"
             )
@@ -306,6 +319,7 @@ async def send_listing_to_user(
             # Сообщение отправлено успешно - отмечаем как отправленное
             await mark_listing_sent_to_user(user_id, listing.id)
             await mark_listing_sent(listing.to_dict())  # Глобальная дедупликация
+            await mark_ad_sent_to_user(user_id, listing.id)  # Идемпотентная запись
             log_info(
                 "notification", f"Отправлено пользователю {user_id}: {listing.id} ({listing.source})"
             )

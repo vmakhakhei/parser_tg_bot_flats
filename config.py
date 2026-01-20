@@ -9,8 +9,8 @@ load_dotenv()
 # Telegram настройки
 BOT_TOKEN = os.getenv("BOT_TOKEN", "")
 
-# Интервал проверки в минутах (12 часов = 720 минут)
-CHECK_INTERVAL = int(os.getenv("CHECK_INTERVAL", "720"))
+# Интервал проверки в минутах (30 минут по умолчанию)
+CHECK_INTERVAL = int(os.getenv("CHECK_INTERVAL", "30"))
 
 # Настройки фильтров по умолчанию
 DEFAULT_FILTERS = {

@@ -210,28 +210,38 @@ class HTTPClient:
         url: str,
         headers: Optional[Dict[str, str]] = None,
         params: Optional[Dict[str, Any]] = None,
-        source_name: str = "http_client"
+        source_name: str = "http_client",
+        retries: int = None,
+        timeout: int = None
     ) -> Optional[str]:
         """
-        Получает HTML страницы с retry механизмом
+        Получает HTML страницы с retry механизмом и экспоненциальным backoff
         
         Args:
             url: URL для запроса
             headers: Дополнительные заголовки
             params: Параметры запроса
             source_name: Имя источника для логирования
+            retries: Количество попыток (по умолчанию self.retry_count)
+            timeout: Таймаут запроса в секундах (по умолчанию из self.timeout)
         
         Returns:
             HTML текст или None при ошибке
         """
         await self.start_session()
         
+        # Используем переданные параметры или значения по умолчанию
+        max_retries = retries if retries is not None else self.retry_count
+        request_timeout = aiohttp.ClientTimeout(total=timeout) if timeout else self.timeout
+        
         # Объединяем заголовки
         request_headers = {**self.base_headers}
         if headers:
             request_headers.update(headers)
         
-        for attempt in range(1, self.retry_count + 1):
+        last_exception = None
+        
+        for attempt in range(1, max_retries + 1):
             # Проверяем и пересоздаем сессию перед каждой попыткой
             if self.session is None or self.session.closed:
                 await self.start_session()
@@ -241,48 +251,84 @@ class HTTPClient:
                 return None
             
             try:
-                async with self.session.get(url, headers=request_headers, params=params) as response:
-                    if response.status == 200:
-                        # Читаем тело ответа ВНУТРИ async with блока
-                        try:
-                            text = await response.text()
-                            if attempt > 1:
-                                log_info(source_name, f"Успешный запрос к {url} после {attempt} попытки")
-                            return text
-                        except Exception as e:
-                            log_error(source_name, f"Ошибка чтения HTML из {url}", e)
-                            if attempt < self.retry_count:
-                                await asyncio.sleep(self.retry_delay * attempt)
-                                continue
-                            return None
-                    else:
-                        error_msg = f"HTTP {response.status} для {url}"
-                        if attempt < self.retry_count:
-                            log_warning(source_name, f"{error_msg}, попытка {attempt}/{self.retry_count}")
-                            await asyncio.sleep(self.retry_delay * attempt)
+                log_info(source_name, f"Попытка {attempt}/{max_retries} запроса к {url}")
+                
+                async with self.session.get(url, headers=request_headers, params=params, timeout=request_timeout) as response:
+                    response.raise_for_status()  # Вызывает исключение для статусов 4xx/5xx
+                    
+                    # Читаем тело ответа ВНУТРИ async with блока
+                    try:
+                        text = await response.text()
+                        if attempt > 1:
+                            log_info(source_name, f"✅ Успешный запрос к {url} после {attempt} попытки")
                         else:
-                            log_error(source_name, error_msg)
-                            return None
+                            log_info(source_name, f"✅ Успешный запрос к {url}")
+                        return text
+                    except Exception as e:
+                        last_exception = e
+                        log_error(source_name, f"Ошибка чтения HTML из {url} (попытка {attempt}/{max_retries})", e)
+                        if attempt < max_retries:
+                            backoff_delay = 2 ** attempt  # Экспоненциальный backoff: 2, 4, 8 секунд
+                            log_warning(source_name, f"Повтор через {backoff_delay} сек...")
+                            await asyncio.sleep(backoff_delay)
+                            continue
+                        return None
                             
-            except (asyncio.TimeoutError, aiohttp.ClientError, AttributeError) as e:
-                if attempt < self.retry_count:
-                    log_warning(source_name, f"Ошибка для {url}, попытка {attempt}/{self.retry_count}: {type(e).__name__}")
-                    if isinstance(e, (aiohttp.ClientConnectionError, aiohttp.ClientOSError, AttributeError)):
-                        await self.start_session()
-                    await asyncio.sleep(self.retry_delay * attempt)
+            except asyncio.TimeoutError as e:
+                last_exception = e
+                if attempt < max_retries:
+                    backoff_delay = 2 ** attempt  # Экспоненциальный backoff: 2, 4, 8 секунд
+                    log_warning(source_name, f"⏱ Таймаут для {url} (попытка {attempt}/{max_retries}), повтор через {backoff_delay} сек...")
+                    await asyncio.sleep(backoff_delay)
                 else:
-                    log_error(source_name, f"Ошибка для {url} после {self.retry_count} попыток", e)
+                    log_error(source_name, f"⏱ Таймаут для {url} после {max_retries} попыток", e)
                     return None
-            except Exception as e:
-                if attempt < self.retry_count:
-                    log_warning(source_name, f"Неожиданная ошибка для {url}, попытка {attempt}/{self.retry_count}: {type(e).__name__}")
+                    
+            except aiohttp.ClientError as e:
+                last_exception = e
+                error_type = type(e).__name__
+                if attempt < max_retries:
+                    backoff_delay = 1 + attempt  # Для ClientError используем линейный backoff: 2, 3, 4 секунды
+                    log_warning(source_name, f"🔌 Ошибка соединения для {url} ({error_type}), попытка {attempt}/{max_retries}, повтор через {backoff_delay} сек...")
+                    # Пересоздаем сессию при ошибке соединения
                     if isinstance(e, (aiohttp.ClientConnectionError, aiohttp.ClientOSError)):
+                        log_info(source_name, f"Пересоздаю сессию после ошибки соединения")
                         await self.start_session()
-                    await asyncio.sleep(self.retry_delay * attempt)
+                    await asyncio.sleep(backoff_delay)
                 else:
-                    log_error(source_name, f"Неожиданная ошибка для {url} после {self.retry_count} попыток", e)
+                    log_error(source_name, f"🔌 Ошибка соединения для {url} ({error_type}) после {max_retries} попыток", e)
+                    return None
+                    
+            except AttributeError as e:
+                last_exception = e
+                # Ошибка "NoneType object has no attribute 'get'" - сессия была закрыта
+                if attempt < max_retries:
+                    backoff_delay = 2 ** attempt
+                    log_warning(source_name, f"⚠ Сессия закрыта для {url}, пересоздаю сессию, попытка {attempt}/{max_retries}, повтор через {backoff_delay} сек...")
+                    await self.start_session()  # Пересоздаем сессию
+                    await asyncio.sleep(backoff_delay)
+                else:
+                    log_error(source_name, f"⚠ Не удалось создать сессию для {url} после {max_retries} попыток", e)
+                    return None
+                    
+            except Exception as e:
+                last_exception = e
+                error_type = type(e).__name__
+                if attempt < max_retries:
+                    backoff_delay = 1 + attempt
+                    log_warning(source_name, f"❌ Неожиданная ошибка для {url} ({error_type}), попытка {attempt}/{max_retries}, повтор через {backoff_delay} сек...")
+                    # Пересоздаем сессию при ошибке соединения
+                    if isinstance(e, (aiohttp.ClientConnectionError, aiohttp.ClientOSError)):
+                        log_info(source_name, f"Пересоздаю сессию после ошибки соединения")
+                        await self.start_session()
+                    await asyncio.sleep(backoff_delay)
+                else:
+                    log_error(source_name, f"❌ Неожиданная ошибка для {url} ({error_type}) после {max_retries} попыток", e)
                     return None
         
+        # Если дошли сюда - все попытки исчерпаны
+        if last_exception:
+            log_error(source_name, f"❌ Не удалось получить HTML из {url} после {max_retries} попыток", last_exception)
         return None
     
     async def fetch_json(

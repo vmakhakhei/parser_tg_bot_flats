@@ -166,7 +166,7 @@ async def main():
     # Настройка планировщика
     scheduler = AsyncIOScheduler()
     
-    # Проверка объявлений каждые N минут (12 часов = 720 минут)
+    # Проверка объявлений каждые N минут (30 минут по умолчанию)
     scheduler.add_job(
         scheduled_check,
         trigger=IntervalTrigger(minutes=CHECK_INTERVAL),

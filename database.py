@@ -144,6 +144,21 @@ async def init_database():
             CREATE INDEX IF NOT EXISTS idx_ai_valuations ON ai_valuations(user_id, listing_id)
         """)
         
+        # Таблица для идемпотентной отправки объявлений (предотвращение дублей)
+        await db.execute("""
+            CREATE TABLE IF NOT EXISTS sent_ads (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id TEXT NOT NULL,
+                ad_external_id TEXT NOT NULL,
+                sent_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        
+        # Уникальный индекс для предотвращения дублей
+        await db.execute("""
+            CREATE UNIQUE INDEX IF NOT EXISTS idx_sent_user_ad ON sent_ads(user_id, ad_external_id)
+        """)
+        
         await db.commit()
 
 
@@ -426,6 +441,40 @@ async def mark_listing_ai_valuated(user_id: int, listing_id: str):
             INSERT OR IGNORE INTO ai_valuations (user_id, listing_id, evaluated_at)
             VALUES (?, ?, ?)
         """, (user_id, listing_id, datetime.now().isoformat()))
+        await db.commit()
+
+
+async def is_ad_sent_to_user(user_id: int, ad_external_id: str) -> bool:
+    """Проверяет, было ли объявление уже отправлено пользователю (идемпотентная проверка)
+    
+    Args:
+        user_id: ID пользователя
+        ad_external_id: Внешний ID объявления (listing.id)
+    
+    Returns:
+        True если объявление уже было отправлено, False иначе
+    """
+    async with aiosqlite.connect(DATABASE_PATH) as db:
+        cursor = await db.execute(
+            "SELECT 1 FROM sent_ads WHERE user_id = ? AND ad_external_id = ?",
+            (str(user_id), ad_external_id)
+        )
+        result = await cursor.fetchone()
+        return result is not None
+
+
+async def mark_ad_sent_to_user(user_id: int, ad_external_id: str):
+    """Отмечает объявление как отправленное пользователю (идемпотентная запись)
+    
+    Args:
+        user_id: ID пользователя
+        ad_external_id: Внешний ID объявления (listing.id)
+    """
+    async with aiosqlite.connect(DATABASE_PATH) as db:
+        await db.execute("""
+            INSERT OR IGNORE INTO sent_ads (user_id, ad_external_id, sent_at)
+            VALUES (?, ?, ?)
+        """, (str(user_id), ad_external_id, datetime.now().isoformat()))
         await db.commit()
 
 

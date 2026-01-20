@@ -613,7 +613,7 @@ async def check_new_listings(bot: Bot):
                     user_new_count += 1
                     total_sent += 1
                     # Задержка между сообщениями чтобы не получить бан
-                    await asyncio.sleep(2)
+                    await asyncio.sleep(1)
             
             if user_new_count > 0:
                 logger.info(f"Пользователю {user_id} отправлено: {user_new_count} объявлений")
@@ -1508,7 +1508,7 @@ async def cb_filters_done(callback: CallbackQuery):
             # Обычный режим - БЕЗ ИИ-оценки
             if await send_listing_to_user(callback.bot, user_id, listing, use_ai_valuation=False):
                 sent_count += 1
-                await asyncio.sleep(2)
+                await asyncio.sleep(1)
         
         # Показываем меню ИИ-режима после отправки
         await show_actions_menu(callback.bot, user_id, sent_count, "ИИ-режим")
@@ -1639,7 +1639,7 @@ async def cb_check_now_from_ai(callback: CallbackQuery):
         for listing in new_listings:
             if await send_listing_to_user(callback.bot, user_id, listing, use_ai_valuation=False):
                 sent_count += 1
-                await asyncio.sleep(2)
+                await asyncio.sleep(1)
         
         # Показываем меню ИИ-режима после отправки
         await show_actions_menu(callback.bot, user_id, sent_count, "ИИ-режим")
@@ -2455,7 +2455,7 @@ async def cb_send_all_listings(callback: CallbackQuery):
             # Обычный режим - БЕЗ ИИ-оценки
             if await send_listing_to_user(callback.bot, user_id, listing, use_ai_valuation=False):
                 sent_count += 1
-                await asyncio.sleep(2)
+                await asyncio.sleep(1)
         
         # Показываем меню ИИ-режима после отправки (так как это было вызвано из меню после ИИ-мода)
         await show_actions_menu(callback.bot, user_id, sent_count, "ИИ-режим")
@@ -3152,7 +3152,7 @@ async def search_listings_after_setup(
                     # Обычный режим - БЕЗ ИИ-оценки
                     if await send_listing_to_user(bot, user_id, listing, use_ai_valuation=False):
                         sent_count += 1
-                        await asyncio.sleep(2)  # Задержка между сообщениями
+                        await asyncio.sleep(1)  # Задержка между сообщениями
                 
                 # Показываем меню действий после отправки
                 await show_actions_menu(bot, user_id, sent_count, "ИИ-режим")
