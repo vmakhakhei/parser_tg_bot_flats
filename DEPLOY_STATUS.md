@@ -1,7 +1,7 @@
 # ✅ Статус деплоя
 
 ## Дата деплоя
-2026-01-22 00:07:30 (обновлено)
+2026-01-22 00:20:00 (обновлено)
 
 ## Результат
 ✅ **Деплой успешно завершен**
@@ -9,12 +9,36 @@
 ### Детали
 - **Ветка:** `main`
 - **Репозиторий:** `https://github.com/vmakhakhei/parser_tg_bot_flats.git`
-- **Последний коммит:** `f6e4b59` - feat: улучшение UX и текстов Telegram-бота KeyFlat
+- **Последний коммит:** `af823a8` - fix(ui): fix keyboard.append() in summary message
 - **Метод:** Push из ветки `2026-01-18-5h17` в `main`
 
 ## Что было задеплоено
 
 ### Основные изменения
+- ✅ **Исправление падений UI из-за некорректного InlineKeyboardMarkup** (коммиты `3f0aeff`, `3974496`, `ca8a4cc`, `af823a8`)
+  - **Проблема:** ValidationError InlineKeyboardMarkup из-за использования `row_width` и методов `.add()`
+  - **Решение:**
+    - Убраны все использования `row_width` и методов `.add()` в `bot/handlers/filters_quick.py`
+    - Добавлена функция `_build_safe_keyboard()` с fallback при ошибках валидации
+    - Все клавиатуры теперь создаются через явный `inline_keyboard: List[List[InlineKeyboardButton]]`
+    - Добавлено логирование `[FILTER_UI]` для отладки
+    - Добавлена защита при отправке сообщений с fallback во всех местах вызова `show_filters_master()`
+    - Исправлено использование `keyboard.inline_keyboard.append()` в `notification_service.py`
+    - Теперь создается список `keyboard_rows` и передается в конструктор
+  - **Результат:**
+    - Нет падений UI из-за ValidationError
+    - Quick-master всегда открывается с fallback при ошибках
+    - Логи `[FILTER_UI]` видны для отладки
+    - Пользователь не застревает даже при ошибке
+    - Все клавиатуры создаются безопасно через явный `inline_keyboard`
+- ✅ **Location autocomplete + cache + migration + parser integration** (коммит `984322b`)
+  - **Добавлен сервис:** `services/location_service.py` с функциями поиска и валидации локаций через Kufar API
+  - **Кэширование:** Таблица `locations_cache` в Turso (TTL 30 дней)
+  - **Модель фильтров:** Добавлено поле `city_json` для хранения location dict
+  - **Интеграция:** Автокомплит в ввод города, поддержка location dict в парсере Kufar
+  - **Миграция:** Скрипт `tools/migrate_cities.py` для автоматической миграции существующих пользователей
+  - **Тесты:** Unit тесты `tools/tests/test_location_service.py` и integration тест `tools/test_city_flow.sh`
+  - **Документация:** `docs/locations.md` с описанием работы location flow
 - ✅ **Улучшение UX и текстов Telegram-бота KeyFlat** (коммит `f6e4b59`)
   - **Улучшен `/start`:**
     - Новое приветствие с описанием ценности бота

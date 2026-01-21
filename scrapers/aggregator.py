@@ -67,11 +67,12 @@ class ListingsAggregator:
     
     async def fetch_all_listings(
         self,
-        city: str = "барановичи",
+        city: str | dict = "барановичи",
         min_rooms: int = 1,
         max_rooms: int = 4,
         min_price: int = 0,
         max_price: int = 100000,
+        user_id: int | None = None,  # Для логирования
     ) -> tuple[List[Listing], List[Dict[str, Any]]]:
         """
         Получает объявления со всех включенных источников
@@ -256,13 +257,24 @@ class ListingsAggregator:
                 async with scraper:
                     # Получение объявлений
                     # Передаем city как есть (может быть str или dict)
-                    listings = await scraper.fetch_listings(
-                        city=city,
-                        min_rooms=min_rooms,
-                        max_rooms=max_rooms,
-                        min_price=min_price,
-                        max_price=max_price,
-                    )
+                    # Передаем user_id для логирования (только для Kufar)
+                    if scraper_name == "kufar" and user_id:
+                        listings = await scraper.fetch_listings(
+                            city=city,
+                            min_rooms=min_rooms,
+                            max_rooms=max_rooms,
+                            min_price=min_price,
+                            max_price=max_price,
+                            user_id=user_id,
+                        )
+                    else:
+                        listings = await scraper.fetch_listings(
+                            city=city,
+                            min_rooms=min_rooms,
+                            max_rooms=max_rooms,
+                            min_price=min_price,
+                            max_price=max_price,
+                        )
                     
                     # Проверяем результат - КРИТИЧНО: должен быть список, не None
                     if listings is None:

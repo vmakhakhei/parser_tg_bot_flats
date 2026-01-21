@@ -205,3 +205,80 @@ async def cmd_admin_list_stale_sent(message: Message):
     except Exception as e:
         logger.exception(f"[admin] Ошибка при получении списка стейл записей")
         await message.answer(f"❌ Ошибка: {e}")
+
+
+@router.message(Command("admin_kufar_city_lookup"))
+async def cmd_admin_kufar_city_lookup(message: Message):
+    """Админ-команда для lookup города в Kufar API"""
+    from constants.constants import LOG_KUFAR_LOOKUP
+    from scrapers.kufar import lookup_kufar_location
+    from database_turso import set_kufar_city_cache
+    import asyncio
+    
+    # Проверка прав администратора
+    if not is_admin(message.from_user.id):
+        await message.answer("⛔ Команда доступна только администратору.")
+        return
+    
+    parts = message.text.split(maxsplit=1)
+    if len(parts) < 2:
+        await message.answer(
+            "Использование: /admin_kufar_city_lookup <город>\n\n"
+            "Пример: /admin_kufar_city_lookup Полоцк"
+        )
+        return
+    
+    city_name = parts[1].strip()
+    
+    try:
+        logger.info(f"{LOG_KUFAR_LOOKUP} admin command city={city_name}")
+        
+        # Вызываем async lookup
+        from scrapers.kufar import lookup_kufar_location_async
+        result = await lookup_kufar_location_async(city_name)
+        
+        if result:
+            # Формируем ответ
+            if isinstance(result, list):
+                lines = [f"[KUFAR_LOOKUP] {city_name} → найдено {len(result)} вариантов:\n"]
+                for i, item in enumerate(result[:5], 1):  # Максимум 5 вариантов
+                    name = item.get("name", "unknown")
+                    item_id = item.get("id", "N/A")
+                    region = item.get("region", "")
+                    lines.append(f"  {i}. {name} (id={item_id})")
+                    if region:
+                        lines.append(f"     регион: {region}")
+                if len(result) > 5:
+                    lines.append(f"\n... и ещё {len(result) - 5} вариантов")
+            elif isinstance(result, dict):
+                name = result.get("name", "unknown")
+                item_id = result.get("id", "N/A")
+                region = result.get("region", "")
+                lines = [
+                    f"[KUFAR_LOOKUP] {city_name} → найдено:\n",
+                    f"  - {name} (id={item_id})"
+                ]
+                if region:
+                    lines.append(f"    регион: {region}")
+            else:
+                lines = [f"[KUFAR_LOOKUP] {city_name} → результат: {result}"]
+            
+            # Сохраняем в кэш
+            try:
+                await set_kufar_city_cache(city_name.lower().strip(), result)
+                lines.append("\n✅ Результат сохранен в кэш")
+            except Exception as e:
+                logger.warning(f"{LOG_KUFAR_LOOKUP} cache save failed: {e}")
+                lines.append(f"\n⚠️ Не удалось сохранить в кэш: {e}")
+            
+            await message.answer("\n".join(lines))
+        else:
+            await message.answer(
+                f"[KUFAR_LOOKUP] {city_name} → ничего не найдено.\n\n"
+                f"API Kufar не даёт подсказки для этого города."
+            )
+            logger.info(f"{LOG_KUFAR_LOOKUP} {city_name} → not found")
+    
+    except Exception as e:
+        logger.exception(f"{LOG_KUFAR_LOOKUP} admin command failed: {e}")
+        await message.answer(f"❌ Ошибка: {e}")

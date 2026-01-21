@@ -6,7 +6,9 @@ import json
 import sys
 import os
 import time
-from typing import List, Optional
+import asyncio
+import aiohttp
+from typing import List, Optional, Dict, Any
 
 # Добавляем родительскую директорию в path для импорта
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -27,6 +29,96 @@ except ImportError:
 # Конфигурационные константы для оптимизации парсинга
 MAX_PAGES_PER_RUN = 2  # Жёсткий предохранитель - максимум страниц за один запуск
 STOP_ON_OLD_THRESHOLD = 5  # Сколько подряд старых объявлений считаем сигналом остановки
+
+# Kufar suggestion API endpoints (пробуем оба)
+KUFAR_SUGGEST_URLS = [
+    "https://api.kufar.by/search-api/v1/autocomplete/location",
+    "https://www.kufar.by/api/search/locations",
+]
+
+
+async def lookup_kufar_location_async(city_name: str) -> Optional[Dict[str, Any]]:
+    """
+    Асинхронная версия lookup города для Kufar через suggestion API.
+    Кэширует результат в Turso.
+    
+    Args:
+        city_name: Название города
+    
+    Returns:
+        Словарь с данными локации или None
+    """
+    from constants.constants import LOG_KUFAR_LOOKUP, LOG_KUFAR_RESP
+    from database_turso import get_kufar_city_cache, set_kufar_city_cache
+    
+    city_norm = city_name.strip().lower()
+    
+    # Проверяем кэш
+    try:
+        cached = await get_kufar_city_cache(city_norm)
+        if cached:
+            log_info("kufar", f"{LOG_KUFAR_LOOKUP} query={city_name} cache_hit=True")
+            return cached
+    except Exception as e:
+        log_warning("kufar", f"{LOG_KUFAR_LOOKUP} cache check failed: {e}")
+    
+    log_info("kufar", f"{LOG_KUFAR_LOOKUP} query={city_name} cache_miss=True")
+    
+    # Пробуем оба endpoint
+    for url in KUFAR_SUGGEST_URLS:
+        try:
+            params = {"q": city_name} if "autocomplete" in url else {"query": city_name}
+            log_info("kufar", f"{LOG_KUFAR_LOOKUP} query={city_name} url={url} params={params}")
+            
+            timeout = aiohttp.ClientTimeout(total=10)
+            async with aiohttp.ClientSession(timeout=timeout) as session:
+                async with session.get(url, params=params) as r:
+                    text = await r.text()
+                    log_info("kufar", f"{LOG_KUFAR_RESP} lookup status={r.status} text_len={len(text)} url={url}")
+                    
+                    if r.status == 200:
+                        try:
+                            data = await r.json()
+                            # Сохраняем в кэш
+                            try:
+                                await set_kufar_city_cache(city_norm, data)
+                            except Exception as e:
+                                log_warning("kufar", f"{LOG_KUFAR_LOOKUP} cache save failed: {e}")
+                            
+                            log_info("kufar", f"{LOG_KUFAR_LOOKUP} query={city_name} result={data}")
+                            return data
+                        except Exception as e:
+                            log_error("kufar", f"{LOG_KUFAR_LOOKUP} JSON parse failed: {e}")
+                    elif r.status == 403:
+                        log_warning("kufar", f"{LOG_KUFAR_LOOKUP} BLOCKED status=403 url={url}")
+                    else:
+                        log_warning("kufar", f"{LOG_KUFAR_LOOKUP} status={r.status} url={url}")
+        except asyncio.TimeoutError:
+            log_error("kufar", f"{LOG_KUFAR_LOOKUP} timeout url={url}")
+        except Exception as e:
+            log_error("kufar", f"{LOG_KUFAR_LOOKUP} lookup failed for {city_name} url={url}: {e}", e)
+    
+    return None
+
+
+def lookup_kufar_location(city_name: str) -> Optional[Dict[str, Any]]:
+    """
+    Синхронная обертка для lookup города (для использования в CLI и админ-командах).
+    
+    Args:
+        city_name: Название города
+    
+    Returns:
+        Словарь с данными локации или None
+    """
+    import asyncio
+    try:
+        loop = asyncio.get_event_loop()
+    except RuntimeError:
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+    
+    return loop.run_until_complete(lookup_kufar_location_async(city_name))
 
 
 class KufarScraper(BaseScraper):
@@ -105,8 +197,14 @@ class KufarScraper(BaseScraper):
         min_price: int = 0,
         max_price: int = 100000,
         max_pages: int = 10,  # Увеличено до 10 страниц для получения большего количества объявлений
+        user_id: int | None = None,  # Для логирования
     ) -> List[Listing]:
         """Получает список объявлений через API с пагинацией"""
+        from constants.constants import LOG_KUFAR_REQ, LOG_KUFAR_RESP
+        
+        # Определяем city для логирования
+        city_name = city if isinstance(city, str) else city.get("name", "unknown") if isinstance(city, dict) else str(city)
+        user_id_str = f"user={user_id} " if user_id else ""
         
         log_info("kufar", f"Фильтры: комнаты {min_rooms}-{max_rooms}, цена ${min_price}-${max_price}")
         
@@ -144,6 +242,29 @@ class KufarScraper(BaseScraper):
             if price_max > price_min:
                 base_url += f"&prc=r:{price_min},{price_max}"
         
+        # Формируем параметры для логирования
+        params_dict = {
+            "cat": "1010",
+            "cur": "USD",
+            "gtsy": gtsy_param,
+            "lang": "ru",
+            "typ": "sell",
+            "sort": "lst.d",
+            "size": "30",
+        }
+        if min_rooms > 0 and max_rooms > 0:
+            rooms_list = list(range(min_rooms, max_rooms + 1))
+            if rooms_list:
+                params_dict["rms"] = f"v.or:{','.join(map(str, rooms_list))}"
+        if min_price > 0 or max_price < 1000000:
+            price_min = max(0, min_price)
+            price_max = min(1000000, max_price)
+            if price_max > price_min:
+                params_dict["prc"] = f"r:{price_min},{price_max}"
+        
+        # Логируем запрос
+        log_info("kufar", f"{LOG_KUFAR_REQ} {user_id_str}city={city_name} params={params_dict}")
+        
         all_listings = []
         current_page = 1
         next_token = None
@@ -162,19 +283,22 @@ class KufarScraper(BaseScraper):
             else:
                 url = base_url
             
-            log_info("kufar", f"Запрос API для города '{city}', страница {current_page}: {url}")
+            log_info("kufar", f"Запрос API для города '{city_name}', страница {current_page}: {url}")
             
             # Получаем JSON
             json_data = await self._fetch_json(url)
             
-            # Логируем полный ответ API для диагностики
+            # Логируем ответ
             if json_data:
                 ads_count = len(json_data.get("ads", []))
                 total_count = json_data.get("total", 0)
-                log_info("kufar", f"API ответ: найдено объявлений на странице: {ads_count}, всего на сайте: {total_count}")
+                log_info("kufar", f"{LOG_KUFAR_RESP} {user_id_str}city={city_name} status=200 count={ads_count} total={total_count}")
                 if ads_count == 0 and total_count == 0:
+                    log_warning("kufar", f"{LOG_KUFAR_RESP} {user_id_str}city={city_name} status=empty")
                     log_warning("kufar", f"⚠️ API вернул 0 объявлений. Возможно, фильтры слишком строгие или формат параметров неправильный.")
                     log_warning("kufar", f"Проверьте URL: {url}")
+            else:
+                log_warning("kufar", f"{LOG_KUFAR_RESP} {user_id_str}city={city_name} status=error count=0")
             
             if not json_data:
                 log_warning("kufar", f"API вернул пустой ответ для города '{city}' на странице {current_page}")

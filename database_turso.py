@@ -1062,6 +1062,26 @@ async def ensure_tables_exist():
                     """)
                     logger.info("✅ Таблица locations_cache создана")
                 
+                # 2.2. Таблица kufar_city_cache (для кэширования lookup городов Kufar)
+                cursor = conn.execute("""
+                    SELECT name FROM sqlite_master 
+                    WHERE type='table' AND name='kufar_city_cache'
+                """)
+                if not cursor.fetchone():
+                    logger.info("📋 Создание таблицы kufar_city_cache...")
+                    conn.execute("""
+                        CREATE TABLE IF NOT EXISTS kufar_city_cache (
+                            city_normalized TEXT PRIMARY KEY,
+                            payload TEXT,
+                            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                        )
+                    """)
+                    conn.execute("""
+                        CREATE INDEX IF NOT EXISTS idx_kufar_city_cache_updated_at 
+                        ON kufar_city_cache(updated_at)
+                    """)
+                    logger.info("✅ Таблица kufar_city_cache создана")
+                
                 # 3. Таблица apartments (основная таблица объявлений)
                 cursor = conn.execute("""
                     SELECT name FROM sqlite_master 
@@ -1712,6 +1732,81 @@ async def ad_exists(source: str, ad_id: str) -> bool:
         return await asyncio.to_thread(_execute)
     except Exception as e:
         logger.error(f"Ошибка проверки существования объявления {ad_id} для {source}: {e}")
+        return False
+    finally:
+        if conn:
+            conn.close()
+
+
+async def get_kufar_city_cache(city_normalized: str) -> Optional[Dict[str, Any]]:
+    """
+    Получает кэш lookup города для Kufar.
+    
+    Args:
+        city_normalized: Нормализованное название города (lowercase)
+    
+    Returns:
+        Словарь с payload или None
+    """
+    conn = get_turso_connection()
+    if not conn:
+        return None
+    
+    try:
+        def _execute():
+            with turso_transaction() as conn:
+                cursor = conn.execute(
+                    "SELECT payload FROM kufar_city_cache WHERE city_normalized = ?",
+                    (city_normalized.lower().strip(),)
+                )
+                row = cursor.fetchone()
+                if row:
+                    import json
+                    return json.loads(row[0])
+                return None
+        
+        return await asyncio.to_thread(_execute)
+    except Exception as e:
+        logger.error(f"Ошибка получения кэша Kufar для города {city_normalized}: {e}")
+        return None
+    finally:
+        if conn:
+            conn.close()
+
+
+async def set_kufar_city_cache(city_normalized: str, payload: Dict[str, Any]) -> bool:
+    """
+    Сохраняет кэш lookup города для Kufar.
+    
+    Args:
+        city_normalized: Нормализованное название города (lowercase)
+        payload: Данные для кэширования
+    
+    Returns:
+        True если успешно сохранено
+    """
+    conn = get_turso_connection()
+    if not conn:
+        return False
+    
+    try:
+        def _execute():
+            with turso_transaction() as conn:
+                import json
+                conn.execute(
+                    """
+                    INSERT OR REPLACE INTO kufar_city_cache 
+                    (city_normalized, payload, updated_at)
+                    VALUES (?, ?, CURRENT_TIMESTAMP)
+                    """,
+                    (city_normalized.lower().strip(), json.dumps(payload))
+                )
+                return True
+        
+        await asyncio.to_thread(_execute)
+        return True
+    except Exception as e:
+        logger.error(f"Ошибка сохранения кэша Kufar для города {city_normalized}: {e}")
         return False
     finally:
         if conn:

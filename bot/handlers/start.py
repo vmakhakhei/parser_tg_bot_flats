@@ -597,17 +597,25 @@ async def cb_mode_set(callback: CallbackQuery):
 
 @router.message(CityStates.waiting_for_city)
 async def process_city_input(message: Message, state: FSMContext):
-    """Обработка ввода города с валидацией через location service"""
+    """Обработка ввода города с валидацией через location service и верификацией сохранения"""
+    import logging
     from database_turso import ensure_user_filters, get_user_filters_turso, set_user_filters_turso
     from bot.handlers.filters_quick import show_filters_master
     from services.location_service import validate_city_input
     from aiogram.utils.keyboard import InlineKeyboardBuilder
+    from constants.constants import LOG_FILTER_SAVE, LOG_FILTER_VERIFY
     
+    logger = logging.getLogger(__name__)
     user_id = message.from_user.id
     user_input = message.text.strip()
+    city_raw = user_input
+    city_norm = city_raw.lower().strip()
     
     # Гарантируем наличие фильтров
     await ensure_user_filters(telegram_id=user_id)
+    
+    # Лог до сохранения
+    logger.info(f"{LOG_FILTER_SAVE} user={user_id} saving city_raw={city_raw!r} city_norm={city_norm!r}")
     
     # Валидируем ввод через location service
     validation_result = await validate_city_input(user_input)
@@ -628,7 +636,7 @@ async def process_city_input(message: Message, state: FSMContext):
         location = validation_result["location"]
         
         # Получаем текущие фильтры
-        filters = await get_user_filters_turso(user_id)
+        filters = await get_user_filters_turso(user_id) or {}
         if not filters:
             filters = {
                 "city": None,
@@ -640,24 +648,46 @@ async def process_city_input(message: Message, state: FSMContext):
                 "delivery_mode": "brief",
             }
         
-        # Сохраняем location dict
-        filters["city"] = location
+        # Сохраняем location dict (новый формат) или city_raw (старый формат для совместимости)
+        filters["city"] = location  # Сохраняем location dict
         
         # Сохраняем фильтры
         await set_user_filters_turso(user_id, filters)
         
+        # Верификация: читаем обратно и логируем
+        filters_after = await get_user_filters_turso(user_id)
+        logger.info(f"{LOG_FILTER_VERIFY} user={user_id} after_save={filters_after}")
+        
+        # Проверяем сохранение
+        city_saved = None
+        if filters_after:
+            city_saved_data = filters_after.get('city')
+            if isinstance(city_saved_data, dict):
+                city_saved = city_saved_data.get('name', '').lower().strip()
+            elif city_saved_data:
+                city_saved = str(city_saved_data).lower().strip()
+        
         # Сообщаем пользователю
-        region_text = f" ({location.get('region', '')})" if location.get('region') else ""
-        await message.answer(
-            f"✅ Город выбран: {location.get('name', user_input)}{region_text}"
-        )
+        if city_saved == city_norm or (isinstance(filters_after.get('city'), dict) and filters_after.get('city', {}).get('name', '').lower().strip() == city_norm):
+            region_text = f" ({location.get('region', '')})" if location.get('region') else ""
+            await message.answer(
+                f"✅ Город установлен: {location.get('name', city_raw)}{region_text}"
+            )
+        else:
+            logger.error(
+                f"{LOG_FILTER_VERIFY} MISMATCH user={user_id} expected={city_norm!r} got={city_saved!r}"
+            )
+            await message.answer(
+                "❌ Не удалось сохранить город — смотри логи сервера.\n"
+                "Попробуйте ещё раз: /start"
+            )
+            await state.clear()
+            return
         
         # Запускаем quick wizard
         try:
             await show_filters_master(message, user_id)
         except Exception as e:
-            import logging
-            logger = logging.getLogger(__name__)
             logger.error(
                 "[FILTER_UI][START] Failed to show filters master after city select user=%s error=%s",
                 user_id,

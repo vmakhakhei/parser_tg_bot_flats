@@ -325,6 +325,7 @@ async def _parse_and_cache_listings(
         max_rooms=user_filters.get("max_rooms", 5),
         min_price=user_filters.get("min_price", 0),
         max_price=user_filters.get("max_price", 1000000),
+        user_id=user_id,  # Для логирования запросов к Kufar
     )
     # #region agent log
     try:
@@ -373,6 +374,19 @@ async def fetch_listings_for_user(user_id: int, user_filters: Dict[str, Any]) ->
     Returns:
         Список объявлений
     """
+    import logging
+    from constants.constants import LOG_USER_SEARCH
+    
+    logger = logging.getLogger(__name__)
+    
+    # Логирование фильтров при старте обработки пользователя
+    logger.info(f"{LOG_USER_SEARCH} user={user_id} filters={user_filters}")
+    
+    # Проверка наличия city
+    if not user_filters or not user_filters.get('city'):
+        logger.warning(f"[FILTER_BLOCK] search skipped: user={user_id} no city or filters")
+        return []
+    
     user_city = user_filters.get("city")
     
     # Если city - это dict (location), извлекаем имя для логирования и передачи в парсер
