@@ -36,7 +36,7 @@ async def cmd_start_monitoring(message: Message):
         return
 
     await set_user_filters(
-        user_id=user_id,
+        telegram_id=user_id,
         city=user_filters.get("city", "барановичи"),
         min_rooms=user_filters.get("min_rooms", 1),
         max_rooms=user_filters.get("max_rooms", 4),
@@ -62,7 +62,7 @@ async def cmd_stop_monitoring(message: Message):
         return
 
     await set_user_filters(
-        user_id=user_id,
+        telegram_id=user_id,
         city=user_filters.get("city", "барановичи"),
         min_rooms=user_filters.get("min_rooms", 1),
         max_rooms=user_filters.get("max_rooms", 4),

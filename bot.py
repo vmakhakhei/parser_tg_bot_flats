@@ -83,7 +83,7 @@ async def sync_user_filters_to_turso(
         rooms = list(range(min_rooms, max_rooms + 1)) if min_rooms > 0 and max_rooms > 0 else None
         
         return await set_user_filters_turso(
-            user_id=user_id,
+            telegram_id=user_id,
             min_price=min_price,
             max_price=max_price if max_price < 1000000 else None,
             rooms=rooms,
@@ -2050,7 +2050,7 @@ async def cb_setup_mode(callback: CallbackQuery, state: FSMContext):
 
     # Сохраняем фильтры с выбранным режимом
     await set_user_filters(
-        user_id=user_id,
+        telegram_id=user_id,
         city=city,
         min_rooms=min_rooms,
         max_rooms=max_rooms,
@@ -2563,7 +2563,7 @@ async def cb_user_set_rooms(callback: CallbackQuery):
     
     user_filters = await get_user_filters(user_id)
     await set_user_filters(
-        user_id,
+        telegram_id=user_id,
         city=user_filters.get("city", "барановичи") if user_filters else "барановичи",
         min_rooms=min_rooms,
         max_rooms=max_rooms,
@@ -2683,7 +2683,7 @@ async def cb_set_seller_type(callback: CallbackQuery):
     # seller_data == "all" -> seller_type = None
     
     await set_user_filters(
-        user_id,
+        telegram_id=user_id,
         city=user_filters.get("city") if user_filters else "барановичи",
         min_rooms=user_filters.get("min_rooms") or 1 if user_filters else 1,
         max_rooms=user_filters.get("max_rooms") or 4 if user_filters else 4,
@@ -3209,7 +3209,7 @@ async def cb_user_set_city(callback: CallbackQuery, state: FSMContext):
     if not user_filters:
         # Если фильтров нет, создаём новые только с городом
         await set_user_filters(
-            user_id,
+            telegram_id=user_id,
             city=city_data,
             min_rooms=1,  # Временные значения, пользователь должен настроить
             max_rooms=4,
@@ -3220,7 +3220,7 @@ async def cb_user_set_city(callback: CallbackQuery, state: FSMContext):
     else:
         # Обновляем только город, остальные параметры оставляем как есть
         await set_user_filters(
-            user_id,
+            telegram_id=user_id,
             city=city_data,
             min_rooms=user_filters.get("min_rooms") or 1,
             max_rooms=user_filters.get("max_rooms") or 4,
@@ -3275,7 +3275,7 @@ async def process_city_input(message: Message, state: FSMContext):
     if not user_filters:
         # Если фильтров нет, создаём новые только с городом
         await set_user_filters(
-            user_id,
+            telegram_id=user_id,
             city=normalized_city,
             min_rooms=1,  # Временные значения, пользователь должен настроить
             max_rooms=4,
@@ -3286,7 +3286,7 @@ async def process_city_input(message: Message, state: FSMContext):
     else:
         # Обновляем только город, остальные параметры оставляем как есть
         await set_user_filters(
-            user_id,
+            telegram_id=user_id,
             city=normalized_city,
             min_rooms=user_filters.get("min_rooms") or 1,
             max_rooms=user_filters.get("max_rooms") or 4,
@@ -3319,7 +3319,7 @@ async def cb_user_price_reset(callback: CallbackQuery):
     user_filters = await get_user_filters(user_id)
     
     await set_user_filters(
-        user_id,
+        telegram_id=user_id,
         city=user_filters.get("city", "барановичи") if user_filters else "барановичи",
         min_rooms=user_filters.get("min_rooms", 1) if user_filters else 1,
         max_rooms=user_filters.get("max_rooms", 4) if user_filters else 4,
@@ -3352,7 +3352,7 @@ async def process_min_price_input(message: Message, state: FSMContext):
         
         # Обновляем минимальную цену
         await set_user_filters(
-            user_id,
+            telegram_id=user_id,
             city=user_filters.get("city", "барановичи") if user_filters else "барановичи",
             min_rooms=user_filters.get("min_rooms", 1) if user_filters else 1,
             max_rooms=user_filters.get("max_rooms", 4) if user_filters else 4,
@@ -3432,7 +3432,7 @@ async def process_max_price_input(message: Message, state: FSMContext):
         
         # Обновляем максимальную цену
         await set_user_filters(
-            user_id,
+            telegram_id=user_id,
             city=user_filters.get("city", "барановичи") if user_filters else "барановичи",
             min_rooms=user_filters.get("min_rooms", 1) if user_filters else 1,
             max_rooms=user_filters.get("max_rooms", 4) if user_filters else 4,
@@ -3500,7 +3500,7 @@ async def cmd_start_monitoring(message: Message):
         return
     
     await set_user_filters(
-        user_id=user_id,
+        telegram_id=user_id,
         city=user_filters.get("city", "барановичи"),
         min_rooms=user_filters.get("min_rooms", 1),
         max_rooms=user_filters.get("max_rooms", 4),
@@ -3527,7 +3527,7 @@ async def cmd_stop_monitoring(message: Message):
         return
     
     await set_user_filters(
-        user_id=user_id,
+        telegram_id=user_id,
         city=user_filters.get("city", "барановичи"),
         min_rooms=user_filters.get("min_rooms", 1),
         max_rooms=user_filters.get("max_rooms", 4),

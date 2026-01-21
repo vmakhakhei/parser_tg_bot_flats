@@ -351,6 +351,7 @@ async def ensure_user_filters(telegram_id: int) -> bool:
 
 
 async def set_user_filters(
+    *,
     telegram_id: int,
     city: str = "барановичи",
     min_rooms: int = 1,
@@ -361,9 +362,28 @@ async def set_user_filters(
     ai_mode: bool = False,
     seller_type: Optional[str] = None  # None = все, "owner" = только собственники, "company" = только агентства
 ):
-    """Устанавливает фильтры пользователя"""
+    """
+    Устанавливает фильтры пользователя
+    
+    Args:
+        telegram_id: ID пользователя в Telegram (обязательный параметр, только keyword-only)
+        city: Город поиска
+        min_rooms: Минимальное количество комнат
+        max_rooms: Максимальное количество комнат
+        min_price: Минимальная цена
+        max_price: Максимальная цена
+        is_active: Активен ли пользователь
+        ai_mode: Режим ИИ
+        seller_type: Тип продавца (None = все, "owner" = только собственники, "company" = только агентства)
+    
+    Note:
+        Использование * в сигнатуре гарантирует, что все аргументы должны быть переданы как keyword-only,
+        что предотвращает использование user_id как позиционного аргумента.
+    """
+    
     async with aiosqlite.connect(DATABASE_PATH) as db:
         # Получаем текущие фильтры для сохранения seller_type если не передан
+        # Примечание: SQLite таблица может использовать user_id, но мы передаем telegram_id
         cursor = await db.execute("SELECT seller_type FROM user_filters WHERE user_id = ?", (telegram_id,))
         row = await cursor.fetchone()
         current_seller_type = row[0] if row else None
@@ -679,7 +699,8 @@ async def get_user_filters_turso(user_id: int) -> Optional[Dict[str, Any]]:
 
 
 async def set_user_filters_turso(
-    user_id: int,
+    *,
+    telegram_id: int,
     min_price: int = 0,
     max_price: Optional[int] = None,
     rooms: Optional[List[int]] = None,
@@ -689,7 +710,21 @@ async def set_user_filters_turso(
     seller_type: Optional[str] = None
 ) -> bool:
     """
-    Устанавливает фильтры пользователя в Turso
+    Устанавливает фильтры пользователя в Turso (устаревшая обертка)
+    
+    Note:
+        Эта функция является оберткой для обратной совместимости.
+        Используйте set_user_filters_turso из database_turso напрямую.
+    
+    Args:
+        telegram_id: ID пользователя в Telegram (обязательный параметр, только keyword-only)
+        min_price: Минимальная цена
+        max_price: Максимальная цена
+        rooms: Список комнат (устаревший параметр, конвертируется в min_rooms/max_rooms)
+        region: Регион/город поиска
+        active: Активен ли пользователь
+        ai_mode: Режим ИИ (не используется в Turso)
+        seller_type: Тип продавца (не используется в Turso)
     
     Returns:
         True если успешно, False при ошибке
@@ -700,8 +735,25 @@ async def set_user_filters_turso(
     
     try:
         from database_turso import set_user_filters_turso
+        
+        # Конвертируем rooms в min_rooms/max_rooms для новой сигнатуры
+        min_rooms = 1
+        max_rooms = 4
+        if rooms and len(rooms) > 0:
+            min_rooms = min(rooms)
+            max_rooms = max(rooms)
+        
+        # Конвертируем max_price
+        max_price_final = max_price if max_price and max_price < 1000000 else 100000
+        
         return await set_user_filters_turso(
-            user_id, min_price, max_price, rooms, region, active, ai_mode, seller_type
+            telegram_id=telegram_id,
+            city=region,
+            min_rooms=min_rooms,
+            max_rooms=max_rooms,
+            min_price=min_price,
+            max_price=max_price_final,
+            active=active
         )
     except Exception as e:
         import logging
@@ -872,7 +924,8 @@ async def get_user_filters_turso(user_id: int) -> Optional[Dict[str, Any]]:
 
 
 async def set_user_filters_turso(
-    user_id: int,
+    *,
+    telegram_id: int,
     min_price: int = 0,
     max_price: Optional[int] = None,
     rooms: Optional[List[int]] = None,
@@ -882,7 +935,21 @@ async def set_user_filters_turso(
     seller_type: Optional[str] = None
 ) -> bool:
     """
-    Устанавливает фильтры пользователя в Turso
+    Устанавливает фильтры пользователя в Turso (устаревшая обертка)
+    
+    Note:
+        Эта функция является оберткой для обратной совместимости.
+        Используйте set_user_filters_turso из database_turso напрямую.
+    
+    Args:
+        telegram_id: ID пользователя в Telegram (обязательный параметр, только keyword-only)
+        min_price: Минимальная цена
+        max_price: Максимальная цена
+        rooms: Список комнат (устаревший параметр, конвертируется в min_rooms/max_rooms)
+        region: Регион/город поиска
+        active: Активен ли пользователь
+        ai_mode: Режим ИИ (не используется в Turso)
+        seller_type: Тип продавца (не используется в Turso)
     
     Returns:
         True если успешно, False при ошибке
@@ -893,8 +960,25 @@ async def set_user_filters_turso(
     
     try:
         from database_turso import set_user_filters_turso
+        
+        # Конвертируем rooms в min_rooms/max_rooms для новой сигнатуры
+        min_rooms = 1
+        max_rooms = 4
+        if rooms and len(rooms) > 0:
+            min_rooms = min(rooms)
+            max_rooms = max(rooms)
+        
+        # Конвертируем max_price
+        max_price_final = max_price if max_price and max_price < 1000000 else 100000
+        
         return await set_user_filters_turso(
-            user_id, min_price, max_price, rooms, region, active, ai_mode, seller_type
+            telegram_id=telegram_id,
+            city=region,
+            min_rooms=min_rooms,
+            max_rooms=max_rooms,
+            min_price=min_price,
+            max_price=max_price_final,
+            active=active
         )
     except Exception as e:
         import logging

@@ -178,7 +178,7 @@ async def cmd_start(message: Message, state: FSMContext):
         # Первый запуск - активируем пользователя и начинаем пошаговую настройку
         # ВАЖНО: Гарантируем активацию при /start - создаем запись с is_active=True
         await set_user_filters(
-            user_id=user_id,
+            telegram_id=user_id,
             city="барановичи",  # Значение по умолчанию
             min_rooms=1,
             max_rooms=4,
