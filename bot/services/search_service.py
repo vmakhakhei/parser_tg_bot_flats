@@ -739,10 +739,31 @@ async def check_new_listings(
             except: pass
             # #endregion
             logger.error(
-                f"[CRITICAL] Пользователь {user_id} активен, "
-                f"но filters=None — это ошибка инициализации"
+                f"[FILTER_STATE] user={user_id} active, but filters=None — redirecting to setup"
             )
-            continue
+            
+            # Отправляем пользователя в мастер настройки фильтров
+            try:
+                from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+                
+                keyboard = InlineKeyboardMarkup(inline_keyboard=[[
+                    InlineKeyboardButton(
+                        text="⚙️ Настроить фильтры",
+                        callback_data="setup_filters"
+                    )
+                ]])
+                
+                await bot.send_message(
+                    user_id,
+                    "⚠️ У вас не настроены фильтры.\n\nДавайте настроим их заново 👇",
+                    reply_markup=keyboard
+                )
+                
+                logger.info(f"[filters] Redirected user {user_id} to filter setup wizard")
+            except Exception as e:
+                logger.error(f"[filters] Failed to send message to user {user_id}: {e}")
+            
+            continue  # НЕ search, НЕ notify
 
         # Проверяем валидность фильтров
         is_valid, error_msg = validate_user_filters(user_filters)

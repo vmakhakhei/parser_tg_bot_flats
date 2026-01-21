@@ -226,13 +226,29 @@ async def main():
     # Первая проверка при запуске ТОЛЬКО если есть активные пользователи с фильтрами
     # Это предотвращает запуск поиска до того, как пользователь нажмет /start
     async def check_and_run_search():
-        from database import get_active_users
+        from database import get_active_users, get_user_filters
+        
         active_users = await get_active_users()
-        if active_users:
-            logger.info(f"[startup] Найдено {len(active_users)} активных пользователей, запускаю initial search")
-            await run_search_once(bot)
-        else:
+        if not active_users:
             logger.info("[startup] Нет активных пользователей, пропускаю initial search")
+            return
+        
+        # Проверяем, что у всех активных пользователей есть фильтры
+        invalid_users = []
+        for user_id in active_users:
+            filters = await get_user_filters(user_id)
+            if not filters:
+                invalid_users.append(user_id)
+        
+        if invalid_users:
+            logger.error(
+                f"[startup] ❌ Active users without filters: {invalid_users}. "
+                f"Skipping initial search."
+            )
+            return
+        
+        logger.info(f"[startup] Найдено {len(active_users)} активных пользователей с фильтрами, запускаю initial search")
+        await run_search_once(bot)
     
     asyncio.create_task(check_and_run_search())
     

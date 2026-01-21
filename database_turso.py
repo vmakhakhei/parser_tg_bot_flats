@@ -606,7 +606,7 @@ async def ensure_tables_exist():
                     """)
                     logger.info("✅ Таблица users создана")
                 
-                # 2. Таблица user_filters (новая структура)
+                # 2. Таблица user_filters (исправленная структура)
                 cursor = conn.execute("""
                     SELECT name FROM sqlite_master 
                     WHERE type='table' AND name='user_filters'
@@ -615,29 +615,40 @@ async def ensure_tables_exist():
                     logger.info("📋 Создание таблицы user_filters...")
                     conn.execute("""
                         CREATE TABLE IF NOT EXISTS user_filters (
-                            id INTEGER PRIMARY KEY AUTOINCREMENT,
-                            user_id INTEGER NOT NULL,
+                            telegram_id INTEGER PRIMARY KEY,
+                            city TEXT DEFAULT 'барановичи',
+                            min_rooms INTEGER DEFAULT 1,
+                            max_rooms INTEGER DEFAULT 4,
                             min_price INTEGER DEFAULT 0,
-                            max_price INTEGER,
-                            rooms TEXT,  -- JSON массив [1,2,3]
-                            region TEXT DEFAULT 'барановичи',
-                            active INTEGER DEFAULT 1,
-                            ai_mode INTEGER DEFAULT 0,
-                            seller_type TEXT,
+                            max_price INTEGER DEFAULT 100000,
+                            is_active INTEGER DEFAULT 1,
                             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                            FOREIGN KEY (user_id) REFERENCES users(user_id)
+                            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                         )
                     """)
                     conn.execute("""
-                        CREATE INDEX IF NOT EXISTS idx_user_filters_user_id 
-                        ON user_filters(user_id)
-                    """)
-                    conn.execute("""
                         CREATE INDEX IF NOT EXISTS idx_user_filters_active 
-                        ON user_filters(active)
+                        ON user_filters(is_active)
                     """)
                     logger.info("✅ Таблица user_filters создана")
+                else:
+                    # Проверяем, есть ли PRIMARY KEY на telegram_id
+                    # Если таблица существует, но схема старая - нужно мигрировать
+                    # Пока просто логируем предупреждение
+                    try:
+                        cursor = conn.execute("PRAGMA table_info(user_filters)")
+                        columns = cursor.fetchall()
+                        has_telegram_id_pk = any(
+                            col[1] == 'telegram_id' and col[5] == 1 
+                            for col in columns
+                        )
+                        if not has_telegram_id_pk:
+                            logger.warning(
+                                "[schema] Таблица user_filters существует, но схема может быть устаревшей. "
+                                "Рекомендуется миграция для использования telegram_id как PRIMARY KEY."
+                            )
+                    except Exception as e:
+                        logger.warning(f"[schema] Не удалось проверить схему user_filters: {e}")
                 
                 # 3. Таблица apartments (основная таблица объявлений)
                 cursor = conn.execute("""
@@ -890,6 +901,7 @@ async def create_or_update_user(
 async def get_user_filters_turso(user_id: int) -> Optional[Dict[str, Any]]:
     """
     Получает фильтры пользователя из Turso
+    Поддерживает как старую схему (user_id), так и новую (telegram_id как PRIMARY KEY)
     Возвращает словарь с фильтрами или None
     """
     conn = get_turso_connection()
@@ -898,28 +910,49 @@ async def get_user_filters_turso(user_id: int) -> Optional[Dict[str, Any]]:
     
     try:
         def _execute():
+            # Пробуем сначала новую схему (telegram_id как PRIMARY KEY)
             cursor = conn.execute("""
                 SELECT * FROM user_filters 
-                WHERE user_id = ? 
-                ORDER BY updated_at DESC 
+                WHERE telegram_id = ? 
                 LIMIT 1
             """, (user_id,))
             row = cursor.fetchone()
+            
+            if not row:
+                # Fallback на старую схему (user_id)
+                cursor = conn.execute("""
+                    SELECT * FROM user_filters 
+                    WHERE user_id = ? 
+                    ORDER BY updated_at DESC 
+                    LIMIT 1
+                """, (user_id,))
+                row = cursor.fetchone()
+            
             if row:
                 # Конвертируем Row в словарь
                 columns = [desc[0] for desc in cursor.description]
                 result = dict(zip(columns, row))
-                # Конвертируем rooms из JSON строки в список
-                if result.get("rooms"):
-                    try:
-                        result["rooms"] = json.loads(result["rooms"])
-                    except:
-                        result["rooms"] = []
+                
+                # Новая схема: конвертируем min_rooms/max_rooms в rooms
+                if "min_rooms" in result and "max_rooms" in result:
+                    min_rooms = result.get("min_rooms", 1)
+                    max_rooms = result.get("max_rooms", 4)
+                    result["rooms"] = list(range(min_rooms, max_rooms + 1))
+                    result["region"] = result.get("city", "барановичи")
+                    result["active"] = bool(result.get("is_active", 1))
                 else:
-                    result["rooms"] = []
-                # Конвертируем INTEGER в bool
-                result["active"] = bool(result.get("active", 1))
-                result["ai_mode"] = bool(result.get("ai_mode", 0))
+                    # Старая схема: конвертируем rooms из JSON строки в список
+                    if result.get("rooms"):
+                        try:
+                            result["rooms"] = json.loads(result["rooms"])
+                        except:
+                            result["rooms"] = []
+                    else:
+                        result["rooms"] = []
+                    # Конвертируем INTEGER в bool
+                    result["active"] = bool(result.get("active", 1))
+                    result["ai_mode"] = bool(result.get("ai_mode", 0))
+                
                 return result
             return None
         
@@ -1045,36 +1078,40 @@ async def set_user_filters_turso(
 ) -> bool:
     """
     Устанавливает фильтры пользователя в Turso (атомарная операция)
-    rooms передается как список [1,2,3] и сохраняется как JSON
+    Использует telegram_id как PRIMARY KEY для ON CONFLICT
     """
     try:
         def _execute():
-            # Конвертируем rooms в JSON строку
-            rooms_json = json.dumps(rooms) if rooms else None
+            # Конвертируем rooms в min_rooms/max_rooms для новой схемы
+            min_rooms = min(rooms) if rooms and len(rooms) > 0 else 1
+            max_rooms = max(rooms) if rooms and len(rooms) > 0 else 4
+            
+            # Используем telegram_id как PRIMARY KEY
+            telegram_id = user_id
             
             with turso_transaction() as conn:
                 conn.execute("""
-                    INSERT INTO user_filters 
-                    (user_id, min_price, max_price, rooms, region, active, ai_mode, seller_type, updated_at)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
-                    ON CONFLICT(user_id) DO UPDATE SET
+                    INSERT INTO user_filters (
+                        telegram_id, city, min_rooms, max_rooms,
+                        min_price, max_price, is_active, updated_at
+                    )
+                    VALUES (?, ?, ?, ?, ?, ?, 1, CURRENT_TIMESTAMP)
+                    ON CONFLICT(telegram_id)
+                    DO UPDATE SET
+                        city = excluded.city,
+                        min_rooms = excluded.min_rooms,
+                        max_rooms = excluded.max_rooms,
                         min_price = excluded.min_price,
                         max_price = excluded.max_price,
-                        rooms = excluded.rooms,
-                        region = excluded.region,
-                        active = excluded.active,
-                        ai_mode = excluded.ai_mode,
-                        seller_type = excluded.seller_type,
+                        is_active = 1,
                         updated_at = CURRENT_TIMESTAMP
                 """, (
-                    user_id,
+                    telegram_id,
+                    region,  # city
+                    min_rooms,
+                    max_rooms,
                     min_price,
-                    max_price,
-                    rooms_json,
-                    region,
-                    1 if active else 0,
-                    1 if ai_mode else 0,
-                    seller_type
+                    max_price if max_price is not None else 100000
                 ))
                 # Commit происходит автоматически
         
