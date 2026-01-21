@@ -938,11 +938,12 @@ async def upsert_user(
     is_active: bool = True
 ) -> bool:
     """
-    Создает или обновляет пользователя в таблице users и user_filters.
-    Гарантирует, что пользователь будет активным (is_active=True).
+    Создаёт пользователя, если его нет.
+    Если пользователь есть — обновляет is_active и username.
+    Работает без ON CONFLICT (совместимо с SQLite/Turso).
     
     Args:
-        telegram_id: ID пользователя в Telegram
+        telegram_id: ID пользователя в Telegram (используется как user_id)
         username: Имя пользователя (опционально)
         is_active: Активен ли пользователь (по умолчанию True)
     
@@ -952,26 +953,62 @@ async def upsert_user(
     try:
         def _execute():
             with turso_transaction() as conn:
-                # 1. Создаем/обновляем пользователя в таблице users
-                conn.execute("""
-                    INSERT INTO users (user_id, username, last_activity, created_at)
-                    VALUES (?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
-                    ON CONFLICT(user_id) DO UPDATE SET
-                        username = COALESCE(excluded.username, username),
-                        last_activity = CURRENT_TIMESTAMP
-                """, (telegram_id, username))
+                user_id = telegram_id
                 
-                # 2. Создаем/обновляем запись в user_filters с active=1
-                # Если записи нет - создаем с дефолтными значениями
-                # Если есть - обновляем active=1
-                conn.execute("""
-                    INSERT INTO user_filters 
-                    (user_id, min_price, max_price, rooms, region, active, ai_mode, seller_type, updated_at)
-                    VALUES (?, 0, NULL, NULL, 'барановичи', ?, 0, NULL, CURRENT_TIMESTAMP)
-                    ON CONFLICT(user_id) DO UPDATE SET
-                        active = excluded.active,
-                        updated_at = CURRENT_TIMESTAMP
-                """, (telegram_id, 1 if is_active else 0))
+                # 1. Проверяем, существует ли пользователь в таблице users
+                cur = conn.execute(
+                    "SELECT user_id FROM users WHERE user_id = ?",
+                    (user_id,),
+                )
+                row = cur.fetchone()
+                
+                if row:
+                    # 2. Обновляем существующего пользователя в users
+                    conn.execute(
+                        """
+                        UPDATE users
+                        SET username = COALESCE(?, username), last_activity = CURRENT_TIMESTAMP
+                        WHERE user_id = ?
+                        """,
+                        (username, user_id),
+                    )
+                else:
+                    # 3. Создаём нового пользователя в users
+                    conn.execute(
+                        """
+                        INSERT INTO users (user_id, username, last_activity, created_at)
+                        VALUES (?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+                        """,
+                        (user_id, username),
+                    )
+                
+                # 4. Проверяем, существует ли запись в user_filters
+                cur = conn.execute(
+                    "SELECT user_id FROM user_filters WHERE user_id = ?",
+                    (user_id,),
+                )
+                row = cur.fetchone()
+                
+                if row:
+                    # 5. Обновляем существующую запись в user_filters
+                    conn.execute(
+                        """
+                        UPDATE user_filters
+                        SET active = ?, updated_at = CURRENT_TIMESTAMP
+                        WHERE user_id = ?
+                        """,
+                        (1 if is_active else 0, user_id),
+                    )
+                else:
+                    # 6. Создаём новую запись в user_filters с дефолтными значениями
+                    conn.execute(
+                        """
+                        INSERT INTO user_filters 
+                        (user_id, min_price, max_price, rooms, region, active, ai_mode, seller_type, updated_at)
+                        VALUES (?, 0, NULL, NULL, 'барановичи', ?, 0, NULL, CURRENT_TIMESTAMP)
+                        """,
+                        (user_id, 1 if is_active else 0),
+                    )
                 # Commit происходит автоматически
         
         await asyncio.to_thread(_execute)
