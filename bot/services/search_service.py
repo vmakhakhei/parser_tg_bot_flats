@@ -762,12 +762,28 @@ async def check_new_listings(
         user_filters = await get_user_filters_turso(user_id)
         
         # ЧАСТЬ D — БЛОКИРОВКА ПОИСКА БЕЗ ФИЛЬТРОВ (ФИНАЛЬНО)
-        if not user_filters or not user_filters.get("city"):
+        if not user_filters:
+            logger.critical(f"[FILTER_BLOCK] search skipped: user={user_id} no filters")
             await bot.send_message(
                 user_id,
-                "⚠️ Сначала настройте фильтры"
+                "⚠️ У вас не настроены фильтры.\nНажмите «⚙️ Настроить фильтры»"
             )
-            logger.warning(f"[SEARCH_BLOCKED] user={user_id} filters missing or city not set")
+            continue
+        
+        if not user_filters.get("city"):
+            logger.critical(f"[FILTER_BLOCK] search skipped: user={user_id} no city")
+            await bot.send_message(
+                user_id,
+                "⚠️ У вас не настроены фильтры.\nНажмите «⚙️ Настроить фильтры»"
+            )
+            continue
+        
+        if user_filters.get("min_rooms") is None or user_filters.get("max_rooms") is None:
+            logger.critical(f"[FILTER_BLOCK] search skipped: user={user_id} no min/max rooms")
+            await bot.send_message(
+                user_id,
+                "⚠️ У вас не настроены фильтры.\nНажмите «⚙️ Настроить фильтры»"
+            )
             continue
         
         # ЖЁСТКАЯ ДИАГНОСТИКА: логируем источник фильтров
@@ -797,6 +813,7 @@ async def check_new_listings(
         if skip_filter_validation:
             logger.warning("[DEBUG] Skipping filter validation")
         elif not has_valid_user_filters(user_filters):
+            logger.critical(f"[FILTER_BLOCK] search skipped: user={user_id} filters invalid")
             if not force_send and not debug_force_run:
                 logger.critical(
                     f"[FILTER_STATE] user={user_id} filters invalid → redirect to setup"

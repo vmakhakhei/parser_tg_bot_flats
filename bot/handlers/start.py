@@ -251,8 +251,25 @@ async def cb_check_now_ai(callback: CallbackQuery):
 @router.callback_query(F.data == "setup_filters")
 async def cb_setup_filters(callback: CallbackQuery, state: FSMContext):
     """Настройка фильтров для пользователя"""
+    from bot.handlers.filters_quick import show_filters_master
+    
     await callback.answer("Настройка фильтров...")
-    await show_city_selection_menu(callback.message, state)
+    user_id = callback.from_user.id
+    
+    # Проверяем, есть ли город
+    from database_turso import get_user_filters_turso
+    filters = await get_user_filters_turso(user_id)
+    
+    if not filters or not filters.get("city"):
+        # Нет города - запрашиваем
+        await callback.message.answer(
+            "✏️ Введите город (например: Барановичи)",
+            parse_mode=ParseMode.HTML,
+        )
+        await state.set_state(CityStates.waiting_for_city)
+    else:
+        # Город есть - открываем quick master
+        await show_filters_master(callback, user_id)
 
 
 @router.callback_query(F.data == "show_stats")
@@ -332,7 +349,7 @@ async def cmd_mode(message: Message):
 async def process_city_input(message: Message, state: FSMContext):
     """Обработка ввода города и запуск quick wizard"""
     from database_turso import ensure_user_filters, get_user_filters_turso, set_user_filters_turso
-    from bot.handlers.filters_quick import build_kb, format_filters_summary
+    from bot.handlers.filters_quick import show_filters_master
     
     user_id = message.from_user.id
     city = message.text.strip()
@@ -341,9 +358,9 @@ async def process_city_input(message: Message, state: FSMContext):
     await ensure_user_filters(telegram_id=user_id)
     
     # Получаем текущие фильтры
-    f = await get_user_filters_turso(user_id)
-    if not f:
-        f = {
+    filters = await get_user_filters_turso(user_id)
+    if not filters:
+        filters = {
             "city": None,
             "min_rooms": 1,
             "max_rooms": 4,
@@ -354,16 +371,13 @@ async def process_city_input(message: Message, state: FSMContext):
         }
     
     # Обновляем город
-    f["city"] = city
+    filters["city"] = city
     
     # Сохраняем фильтры с городом
-    await set_user_filters_turso(user_id, f)
+    await set_user_filters_turso(user_id, filters)
     
     # Запускаем quick wizard
-    await message.answer(
-        "⚙️ Быстрая настройка фильтров\n\n" + format_filters_summary(f),
-        reply_markup=build_kb(user_id),
-    )
+    await show_filters_master(message, user_id)
     
     await state.clear()
 

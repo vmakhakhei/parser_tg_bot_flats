@@ -1309,7 +1309,7 @@ async def get_user_filters_turso(telegram_id: int) -> Optional[Dict[str, Any]]:
                 row = cursor.fetchone()
                 
                 if not row:
-                    logger.warning(f"[FILTER_LOAD] telegram_id={telegram_id} NOT FOUND")
+                    logger.critical(f"[FILTER_LOAD] telegram_id={telegram_id} NOT_FOUND")
                     return None
                 
                 # Конвертируем Row в словарь
@@ -1319,7 +1319,7 @@ async def get_user_filters_turso(telegram_id: int) -> Optional[Dict[str, Any]]:
                 # Конвертируем INTEGER в bool
                 result["is_active"] = bool(result.get("is_active", 1))
                 
-                logger.info(f"[FILTER_LOAD] telegram_id={telegram_id} FOUND")
+                logger.critical(f"[FILTER_LOAD] telegram_id={telegram_id} FOUND")
                 
                 return {
                     "telegram_id": result.get("telegram_id"),
