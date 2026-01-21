@@ -1395,12 +1395,6 @@ async def get_user_filters_turso(telegram_id: int) -> Optional[Dict[str, Any]]:
         
         result = await asyncio.to_thread(_execute)
         
-        # ФАТАЛЬНЫЙ ЛОГ загрузки
-        logger.critical(
-            "[FILTER_LOAD] telegram_id=%s result=%s",
-            telegram_id, "FOUND" if result else "NONE"
-        )
-        
         return result
     except Exception as e:
         logger.error(f"Ошибка получения фильтров пользователя {telegram_id}: {e}")
@@ -1578,17 +1572,10 @@ async def set_user_filters_turso(telegram_id: int, filters: Dict[str, Any]) -> N
         city_id = filters["city"].get("id")
         city_name = filters["city"].get("name", city_value)
     
-    logger.critical(
-        "[FILTER_SAVE] telegram_id=%s city=%s city_id=%s rooms=%s-%s price=%s-%s seller=%s mode=%s",
-        telegram_id,
-        city_name,
-        city_id,
-        filters.get("min_rooms"),
-        filters.get("max_rooms"),
-        filters.get("min_price"),
-        filters.get("max_price"),
-        filters.get("seller_type"),
-        filters.get("delivery_mode", "brief"),
+    from constants.constants import LOG_FILTER_SAVE
+    
+    logger.info(
+        f"{LOG_FILTER_SAVE} user={telegram_id} city={city_name!r} city_id={city_id} rooms={filters.get('min_rooms')}-{filters.get('max_rooms')} price={filters.get('min_price')}-{filters.get('max_price')} seller={filters.get('seller_type')} mode={filters.get('delivery_mode', 'brief')}"
     )
     
     try:
