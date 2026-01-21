@@ -301,7 +301,7 @@ async def _get_cached_listings(
 
 
 async def _parse_and_cache_listings(
-    user_city: str,
+    user_city: str | dict,
     user_filters: Dict[str, Any],
     cached_listings: List[Listing],
 ) -> List[Listing]:
@@ -312,14 +312,15 @@ async def _parse_and_cache_listings(
     )
 
     # #region agent log
+    city_for_log = user_city if isinstance(user_city, str) else user_city.get("name", "unknown") if isinstance(user_city, dict) else str(user_city)
     try:
         with open('/Users/vmakhakei/TG BOT/.cursor/debug.log', 'a') as f:
-            f.write(json.dumps({"sessionId":"debug-session","runId":"run1","hypothesisId":"C","location":"search_service.py:292","message":"Starting aggregator fetch","data":{"city":user_city,"min_rooms":user_filters.get("min_rooms",1),"max_rooms":user_filters.get("max_rooms",5),"min_price":user_filters.get("min_price",0),"max_price":user_filters.get("max_price",1000000)},"timestamp":int(time.time()*1000)})+'\n')
+            f.write(json.dumps({"sessionId":"debug-session","runId":"run1","hypothesisId":"C","location":"search_service.py:292","message":"Starting aggregator fetch","data":{"city":city_for_log,"min_rooms":user_filters.get("min_rooms",1),"max_rooms":user_filters.get("max_rooms",5),"min_price":user_filters.get("min_price",0),"max_price":user_filters.get("max_price",1000000)},"timestamp":int(time.time()*1000)})+'\n')
     except: pass
     # #endregion
     aggregator = ListingsAggregator(enabled_sources=DEFAULT_SOURCES)
     parsed_listings = await aggregator.fetch_all_listings(
-        city=user_city,
+        city=user_city,  # Может быть str или dict
         min_rooms=user_filters.get("min_rooms", 1),
         max_rooms=user_filters.get("max_rooms", 5),
         min_price=user_filters.get("min_price", 0),
@@ -373,6 +374,13 @@ async def fetch_listings_for_user(user_id: int, user_filters: Dict[str, Any]) ->
         Список объявлений
     """
     user_city = user_filters.get("city")
+    
+    # Если city - это dict (location), извлекаем имя для логирования и передачи в парсер
+    city_for_log = user_city
+    city_for_parser = user_city
+    if isinstance(user_city, dict):
+        city_for_log = user_city.get("name", "unknown")
+        city_for_parser = user_city  # Передаем dict в парсер
 
     # Сбрасываем счетчик логирования для этого пользователя
     _filter_log_counters[user_id] = {"filtered": 0, "passed": 0}
@@ -380,19 +388,19 @@ async def fetch_listings_for_user(user_id: int, user_filters: Dict[str, Any]) ->
     log_info(
         "filter",
         f"[user_{user_id}] 📋 Применяю фильтры: "
-        f"город={user_filters.get('city')}, "
+        f"город={city_for_log}, "
         f"комнаты={user_filters.get('min_rooms')}-{user_filters.get('max_rooms')}, "
         f"цена=${user_filters.get('min_price'):,}-${user_filters.get('max_price'):,}, "
         f"продавец={user_filters.get('seller_type') or 'Все'}, "
         f"режим={'ИИ' if user_filters.get('ai_mode') else 'Обычный'}",
     )
 
-    # Получаем объявления из кэша
-    cached_listings = await _get_cached_listings(user_id, user_city, user_filters)
+    # Получаем объявления из кэша (используем строку для кэша)
+    cached_listings = await _get_cached_listings(user_id, city_for_log if isinstance(user_city, dict) else user_city, user_filters)
 
     # Парсим сайты только если кэша нет или мало объявлений
     if len(cached_listings) < 10:
-        all_listings = await _parse_and_cache_listings(user_city, user_filters, cached_listings)
+        all_listings = await _parse_and_cache_listings(city_for_parser, user_filters, cached_listings)
     else:
         log_info(
             "search",

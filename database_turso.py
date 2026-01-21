@@ -1030,8 +1030,37 @@ async def ensure_tables_exist():
                         if "delivery_mode" not in cols:
                             conn.execute("ALTER TABLE user_filters ADD COLUMN delivery_mode TEXT DEFAULT 'brief'")
                             logger.info("[migration] Добавлена колонка delivery_mode в user_filters")
+                        if "city_json" not in cols:
+                            conn.execute("ALTER TABLE user_filters ADD COLUMN city_json TEXT NULL")
+                            logger.info("[migration] Добавлена колонка city_json в user_filters")
                     except Exception as e:
-                        logger.warning(f"[migration] Ошибка добавления колонок seller_type/delivery_mode: {e}")
+                        logger.warning(f"[migration] Ошибка добавления колонок seller_type/delivery_mode/city_json: {e}")
+                
+                # 2.1. Таблица locations_cache (для кэширования локаций)
+                cursor = conn.execute("""
+                    SELECT name FROM sqlite_master 
+                    WHERE type='table' AND name='locations_cache'
+                """)
+                if not cursor.fetchone():
+                    logger.info("📋 Создание таблицы locations_cache...")
+                    conn.execute("""
+                        CREATE TABLE IF NOT EXISTS locations_cache (
+                            id TEXT PRIMARY KEY,
+                            name TEXT,
+                            region TEXT,
+                            type TEXT,
+                            slug TEXT,
+                            lat REAL,
+                            lng REAL,
+                            raw_json TEXT,
+                            fetched_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                        )
+                    """)
+                    conn.execute("""
+                        CREATE INDEX IF NOT EXISTS idx_locations_cache_fetched_at 
+                        ON locations_cache(fetched_at)
+                    """)
+                    logger.info("✅ Таблица locations_cache создана")
                 
                 # 3. Таблица apartments (основная таблица объявлений)
                 cursor = conn.execute("""
@@ -1299,7 +1328,7 @@ async def get_user_filters_turso(telegram_id: int) -> Optional[Dict[str, Any]]:
         def _execute():
             with turso_transaction() as conn:
                 query = """
-                SELECT telegram_id, city, min_rooms, max_rooms, min_price, max_price,
+                SELECT telegram_id, city, city_json, min_rooms, max_rooms, min_price, max_price,
                        seller_type, delivery_mode, is_active
                 FROM user_filters
                 WHERE telegram_id = ?
@@ -1319,11 +1348,22 @@ async def get_user_filters_turso(telegram_id: int) -> Optional[Dict[str, Any]]:
                 # Конвертируем INTEGER в bool
                 result["is_active"] = bool(result.get("is_active", 1))
                 
-                logger.critical(f"[FILTER_LOAD] telegram_id={telegram_id} FOUND")
+                # Обрабатываем city_json: если есть - используем его, иначе city (обратная совместимость)
+                city_data = result.get("city")
+                city_json_str = result.get("city_json")
+                
+                if city_json_str:
+                    try:
+                        city_data = json.loads(city_json_str)
+                    except Exception:
+                        # Если не удалось распарсить, используем city как строку
+                        pass
+                
+                logger.critical(f"[FILTER_LOAD] telegram_id={telegram_id} FOUND city_json={'yes' if city_json_str else 'no'}")
                 
                 return {
                     "telegram_id": result.get("telegram_id"),
-                    "city": result.get("city"),
+                    "city": city_data,  # Может быть dict или str
                     "min_rooms": result.get("min_rooms"),
                     "max_rooms": result.get("max_rooms"),
                     "min_price": result.get("min_price"),
@@ -1491,12 +1531,38 @@ async def set_user_filters_turso(telegram_id: int, filters: Dict[str, Any]) -> N
     
     Args:
         telegram_id: ID пользователя в Telegram
-        filters: Словарь с фильтрами (city, min_rooms, max_rooms, min_price, max_price, seller_type, delivery_mode)
+        filters: Словарь с фильтрами (city может быть dict или str, city_json для location dict)
     """
+    # Обрабатываем city: может быть dict (location) или str (старый формат)
+    city_value = filters.get("city")
+    city_json_value = None
+    
+    if isinstance(city_value, dict):
+        # Новый формат - location dict
+        city_json_value = json.dumps(city_value)
+        city_value = city_value.get("name", "")  # Сохраняем имя для обратной совместимости
+    elif city_value:
+        # Старый формат - строка
+        city_value = str(city_value)
+    
+    # Также проверяем city_json напрямую (если передан отдельно)
+    if "city_json" in filters and filters["city_json"]:
+        if isinstance(filters["city_json"], dict):
+            city_json_value = json.dumps(filters["city_json"])
+        else:
+            city_json_value = filters["city_json"]
+    
+    city_id = None
+    city_name = city_value
+    if isinstance(filters.get("city"), dict):
+        city_id = filters["city"].get("id")
+        city_name = filters["city"].get("name", city_value)
+    
     logger.critical(
-        "[FILTER_SAVE] telegram_id=%s city=%s rooms=%s-%s price=%s-%s seller=%s mode=%s",
+        "[FILTER_SAVE] telegram_id=%s city=%s city_id=%s rooms=%s-%s price=%s-%s seller=%s mode=%s",
         telegram_id,
-        filters.get("city"),
+        city_name,
+        city_id,
         filters.get("min_rooms"),
         filters.get("max_rooms"),
         filters.get("min_price"),
@@ -1511,13 +1577,14 @@ async def set_user_filters_turso(telegram_id: int, filters: Dict[str, Any]) -> N
                 conn.execute(
                     """
                     INSERT INTO user_filters (
-                        telegram_id, city, min_rooms, max_rooms,
+                        telegram_id, city, city_json, min_rooms, max_rooms,
                         min_price, max_price, seller_type,
                         delivery_mode, is_active
                     )
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1)
                     ON CONFLICT(telegram_id) DO UPDATE SET
                         city=excluded.city,
+                        city_json=excluded.city_json,
                         min_rooms=excluded.min_rooms,
                         max_rooms=excluded.max_rooms,
                         min_price=excluded.min_price,
@@ -1529,7 +1596,8 @@ async def set_user_filters_turso(telegram_id: int, filters: Dict[str, Any]) -> N
                     """,
                     (
                         telegram_id,
-                        filters.get("city"),
+                        city_value,
+                        city_json_value,
                         filters.get("min_rooms", 0),
                         filters.get("max_rooms", 99),
                         filters.get("min_price", 0),

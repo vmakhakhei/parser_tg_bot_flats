@@ -220,7 +220,7 @@ class ListingsAggregator:
         self,
         scraper,
         source_name: str,
-        city: str,
+        city: str | dict,
         min_rooms: int,
         max_rooms: int,
         min_price: int,
@@ -247,12 +247,15 @@ class ListingsAggregator:
         scraper_name = getattr(scraper, 'SOURCE_NAME', source_name)
         
         try:
-            log_info("aggregator", f"🔄 Запускаю scraper '{scraper_name}' для города '{city}'...")
+            # Формируем строку для логирования
+            city_str = city if isinstance(city, str) else city.get("name", "unknown") if isinstance(city, dict) else str(city)
+            log_info("aggregator", f"🔄 Запускаю scraper '{scraper_name}' для города '{city_str}'...")
             
             # Инициализация scraper'а (context manager)
             try:
                 async with scraper:
                     # Получение объявлений
+                    # Передаем city как есть (может быть str или dict)
                     listings = await scraper.fetch_listings(
                         city=city,
                         min_rooms=min_rooms,

@@ -13,7 +13,12 @@ router = Router()
 
 def format_filters_summary(f: dict) -> str:
     """Форматирует сводку фильтров для отображения"""
-    city = f.get('city') or 'Не выбран'
+    city_data = f.get('city')
+    # Если city - это dict (location), извлекаем имя
+    if isinstance(city_data, dict):
+        city = city_data.get('name', 'Не выбран')
+    else:
+        city = city_data or 'Не выбран'
     min_rooms = f.get('min_rooms', 1)
     max_rooms = f.get('max_rooms', 4)
     rooms_text = f"{min_rooms}–{max_rooms}" if min_rooms != max_rooms else str(min_rooms)

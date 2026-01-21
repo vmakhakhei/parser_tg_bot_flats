@@ -36,11 +36,43 @@ class KufarScraper(BaseScraper):
     BASE_URL = "https://re.kufar.by"
     API_URL = "https://api.kufar.by/search-api/v2/search/rendered-paginated"
     
-    def _get_city_gtsy(self, city: str) -> str:
-        """Преобразует название города в формат gtsy для Kufar API"""
-        city_lower = city.lower().strip()
+    def _get_city_gtsy(self, city: str | dict) -> str:
+        """
+        Преобразует город в формат gtsy для Kufar API.
         
-        # Маппинг городов на формат Kufar API (gtsy)
+        Args:
+            city: Может быть строкой (старый формат) или dict (location из location_service)
+        
+        Returns:
+            gtsy параметр для API
+        """
+        from config import KUFAR_USE_SLUG_FOR_SEARCH
+        
+        # Если передан location dict (новый формат)
+        if isinstance(city, dict):
+            slug = city.get("slug", "")
+            if slug and KUFAR_USE_SLUG_FOR_SEARCH:
+                # Используем slug напрямую
+                log_info("kufar", f"[LOC_PARSER] Используется slug из location: {slug}")
+                return slug
+            
+            # Если slug нет, используем координаты или fallback на имя
+            lat = city.get("lat")
+            lng = city.get("lng")
+            if lat and lng:
+                # Можно использовать координаты с радиусом (если API поддерживает)
+                # Пока используем fallback на имя
+                city_name = city.get("name", "")
+            else:
+                city_name = city.get("name", "")
+            
+            # Fallback на старую логику по имени
+            city_lower = city_name.lower().strip() if city_name else ""
+        else:
+            # Старый формат - строка
+            city_lower = str(city).lower().strip()
+        
+        # Маппинг городов на формат Kufar API (gtsy) - fallback
         city_mapping = {
             "барановичи": "country-belarus~province-brestskaja_oblast~locality-baranovichi",
             "брест": "country-belarus~province-brestskaja_oblast~locality-brest",
@@ -55,15 +87,19 @@ class KufarScraper(BaseScraper):
         
         # Если город найден в маппинге, используем его
         if city_lower in city_mapping:
+            if isinstance(city, dict):
+                log_info("kufar", f"[LOC_FALLBACK_SEARCH] Используется fallback маппинг для {city_lower}")
             return city_mapping[city_lower]
         
         # По умолчанию используем Барановичи
-        log_warning("kufar", f"Город '{city}' не найден в маппинге, используем Барановичи")
+        log_warning("kufar", f"Город '{city_lower}' не найден в маппинге, используем Барановичи")
+        if isinstance(city, dict):
+            log_info("kufar", f"[LOC_FALLBACK_SEARCH] city={city_lower} fallback=барановичи")
         return city_mapping["барановичи"]
     
     async def fetch_listings(
         self,
-        city: str = "барановичи",
+        city: str | dict = "барановичи",
         min_rooms: int = 1,
         max_rooms: int = 4,
         min_price: int = 0,

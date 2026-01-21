@@ -401,6 +401,76 @@ async def cb_hide_house(callback: CallbackQuery):
         pass
 
 
+@router.callback_query(F.data.startswith("loc_select:"))
+async def cb_loc_select(callback: CallbackQuery):
+    """Обработчик выбора локации из списка"""
+    from database_turso import get_user_filters_turso, set_user_filters_turso
+    from services.location_service import get_location_by_id
+    from bot.handlers.filters_quick import show_filters_master
+    
+    try:
+        parts = callback.data.split(":")
+        user_id = int(parts[1])
+        location_id = parts[2]
+        
+        # Проверяем, что callback от правильного пользователя
+        if callback.from_user.id != user_id:
+            await callback.answer("⛔ Это не ваш выбор")
+            return
+        
+        # Получаем локацию по ID
+        location = await get_location_by_id(location_id)
+        
+        if not location:
+            # Если не найдено в кэше, пробуем найти через search
+            from services.location_service import search_locations
+            results = await search_locations(location_id)
+            if results:
+                location = results[0]
+            else:
+                await callback.answer("Локация не найдена", show_alert=True)
+                return
+        
+        # Получаем текущие фильтры
+        filters = await get_user_filters_turso(user_id)
+        if not filters:
+            filters = {
+                "city": None,
+                "min_rooms": 1,
+                "max_rooms": 4,
+                "min_price": 0,
+                "max_price": 100000,
+                "seller_type": "all",
+                "delivery_mode": "brief",
+            }
+        
+        # Сохраняем location dict
+        filters["city"] = location
+        
+        # Сохраняем фильтры
+        await set_user_filters_turso(user_id, filters)
+        
+        # Логируем выбор
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.info(
+            f"[LOC_USER_SELECT] user={user_id} chosen={location.get('id')} name={location.get('name')}"
+        )
+        
+        # Сообщаем пользователю
+        region_text = f" ({location.get('region', '')})" if location.get('region') else ""
+        await callback.answer(f"Выбран город: {location.get('name', '')}{region_text}")
+        
+        # Обновляем сообщение или показываем quick wizard
+        await show_filters_master(callback.message, user_id)
+        
+    except Exception as e:
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.error(f"Ошибка обработки выбора локации: {e}")
+        await callback.answer("Произошла ошибка", show_alert=True)
+
+
 @router.callback_query(F.data.startswith("show_house|"))
 async def cb_show_house(callback: CallbackQuery):
     """Обработчик кнопки 'Показать варианты' для конкретного дома с поддержкой пагинации"""
@@ -505,39 +575,98 @@ async def cb_mode_set(callback: CallbackQuery):
 
 @router.message(CityStates.waiting_for_city)
 async def process_city_input(message: Message, state: FSMContext):
-    """Обработка ввода города и запуск quick wizard"""
+    """Обработка ввода города с валидацией через location service"""
     from database_turso import ensure_user_filters, get_user_filters_turso, set_user_filters_turso
     from bot.handlers.filters_quick import show_filters_master
+    from services.location_service import validate_city_input
+    from aiogram.utils.keyboard import InlineKeyboardBuilder
     
     user_id = message.from_user.id
-    city = message.text.strip()
+    user_input = message.text.strip()
     
     # Гарантируем наличие фильтров
     await ensure_user_filters(telegram_id=user_id)
     
-    # Получаем текущие фильтры
-    filters = await get_user_filters_turso(user_id)
-    if not filters:
-        filters = {
-            "city": None,
-            "min_rooms": 1,
-            "max_rooms": 4,
-            "min_price": 0,
-            "max_price": 100000,
-            "seller_type": "all",
-            "delivery_mode": "brief",
-        }
+    # Валидируем ввод через location service
+    validation_result = await validate_city_input(user_input)
     
-    # Обновляем город
-    filters["city"] = city
+    if validation_result["status"] == "not_found":
+        # Город не найден
+        builder = InlineKeyboardBuilder()
+        builder.button(text="Попробовать ещё", callback_data="setup_filters")
+        await message.answer(
+            "Город не найден. Проверьте написание или уточните название.\n"
+            "Попробуйте, например: Минск, Барановичи.",
+            reply_markup=builder.as_markup()
+        )
+        return
     
-    # Сохраняем фильтры с городом
-    await set_user_filters_turso(user_id, filters)
+    elif validation_result["status"] == "ok" and validation_result.get("auto"):
+        # Один результат - автоматически выбираем
+        location = validation_result["location"]
+        
+        # Получаем текущие фильтры
+        filters = await get_user_filters_turso(user_id)
+        if not filters:
+            filters = {
+                "city": None,
+                "min_rooms": 1,
+                "max_rooms": 4,
+                "min_price": 0,
+                "max_price": 100000,
+                "seller_type": "all",
+                "delivery_mode": "brief",
+            }
+        
+        # Сохраняем location dict
+        filters["city"] = location
+        
+        # Сохраняем фильтры
+        await set_user_filters_turso(user_id, filters)
+        
+        # Сообщаем пользователю
+        region_text = f" ({location.get('region', '')})" if location.get('region') else ""
+        await message.answer(
+            f"✅ Город выбран: {location.get('name', user_input)}{region_text}"
+        )
+        
+        # Запускаем quick wizard
+        await show_filters_master(message, user_id)
+        await state.clear()
+        return
     
-    # Запускаем quick wizard
-    await show_filters_master(message, user_id)
+    elif validation_result["status"] == "multiple":
+        # Несколько вариантов - показываем кнопки
+        choices = validation_result["choices"]
+        builder = InlineKeyboardBuilder()
+        
+        for loc in choices:
+            label_parts = [loc.get("name", "")]
+            if loc.get("region"):
+                label_parts.append(loc["region"])
+            if loc.get("type"):
+                label_parts.append(loc["type"])
+            label = ", ".join(label_parts)
+            
+            builder.button(
+                text=label,
+                callback_data=f"loc_select:{user_id}:{loc.get('id', '')}"
+            )
+        builder.adjust(1)
+        
+        await message.answer(
+            "Найдено несколько вариантов. Выберите нужный:",
+            reply_markup=builder.as_markup()
+        )
+        return
     
-    await state.clear()
+    elif validation_result["status"] == "too_many":
+        # Слишком много результатов - просим уточнить
+        await message.answer(
+            "Найдено слишком много вариантов. Пожалуйста, уточните название города "
+            "(например, добавьте область: 'Барановичи, Брестская область')."
+        )
+        return
 
 
 # Импортируем остальные обработчики из старого bot.py

@@ -55,6 +55,13 @@ GROUP_BY_VENDOR_FOR_ADDRESS = os.getenv("GROUP_BY_VENDOR_FOR_ADDRESS", "true").l
 # User Agent для запросов
 USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
 
+# Location service настройки
+KUFAR_AUTOCOMPLETE_URL = os.getenv("KUFAR_AUTOCOMPLETE_URL", "https://api.kufar.by/search-api/v1/autocomplete/location")
+LOCATION_SERVICE_TIMEOUT = int(os.getenv("LOCATION_SERVICE_TIMEOUT", "5"))
+ENABLE_OSM_FALLBACK = os.getenv("ENABLE_OSM_FALLBACK", "false").lower() == "true"
+KUFAR_USE_SLUG_FOR_SEARCH = os.getenv("KUFAR_USE_SLUG_FOR_SEARCH", "true").lower() == "true"
+KUFAR_SEARCH_RADIUS_METERS = int(os.getenv("KUFAR_SEARCH_RADIUS_METERS", "10000"))
+
 # Администраторы бота (ID из Telegram)
 # Формат: ADMIN_TELEGRAM_IDS=714797710,123456789 (через запятую)
 # По умолчанию: 714797710
