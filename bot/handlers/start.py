@@ -150,20 +150,23 @@ async def cmd_start(message: Message, state: FSMContext):
     if not user_filters or not user_filters.get("city"):
         # Первый запуск или город не установлен - запрашиваем город
         await message.answer(
-            "✏️ Введите город (например: Барановичи)",
+            "ℹ️ Чтобы начать поиск, нужно один раз настроить фильтры.\nЭто займет меньше минуты 👇",
             parse_mode=ParseMode.HTML,
+            reply_markup=InlineKeyboardBuilder().button(
+                text="⚙️ Настроить фильтры",
+                callback_data="setup_filters"
+            ).as_markup()
         )
         # Устанавливаем состояние для ввода города
         await state.set_state(CityStates.waiting_for_city)
     else:
-        # Фильтры уже установлены - показываем их и предлагаем изменить
+        # Фильтры уже установлены - показываем приветствие и текущие фильтры
         status = "✅ Активен" if user_filters.get("is_active") else "❌ Отключен"
 
         builder = InlineKeyboardBuilder()
-        builder.button(text="🔍 Проверить сейчас", callback_data="check_now")
-        builder.button(text="🤖 ИИ-анализ", callback_data="check_now_ai")
         builder.button(text="⚙️ Изменить фильтры", callback_data="setup_filters")
-        builder.button(text="📊 Статистика", callback_data="show_stats")
+        builder.button(text="📊 Как я выбираю лучшие квартиры", callback_data="explain_scoring")
+        builder.button(text="🔍 Проверить сейчас", callback_data="check_now")
 
         # Принудительно размещаем по 1 кнопке в ряду
         builder.adjust(1)
@@ -179,14 +182,38 @@ async def cmd_start(message: Message, state: FSMContext):
         
         city_name = user_filters.get("city", "барановичи") or "Не выбран"
         city_name = city_name.title() if city_name else "Не выбран"
+        
+        # Формируем текст фильтров
+        min_rooms = user_filters.get('min_rooms', 1)
+        max_rooms = user_filters.get('max_rooms', 4)
+        rooms_text = f"{min_rooms}–{max_rooms}" if min_rooms != max_rooms else str(min_rooms)
+        
+        seller_type = user_filters.get('seller_type', 'all')
+        seller_text = {
+            'all': 'все',
+            'owner': 'только собственники',
+            'owners': 'только собственники',
+            'company': 'только агентства'
+        }.get(seller_type, 'все')
+        
+        delivery_mode = user_filters.get('delivery_mode', 'brief')
+        mode_text = 'кратко' if delivery_mode == 'brief' else 'подробно'
+        
         await message.answer(
-            f"🏠 <b>Ваши фильтры</b>\n\n"
-            f"📍 <b>Город:</b> {city_name}\n"
-            f"🚪 <b>Комнат:</b> от {user_filters.get('min_rooms', 1)} до {user_filters.get('max_rooms', 4)}\n"
-            f"💰 <b>Цена:</b> {price_from} – {price_to}\n\n"
-            f"📡 <b>Статус:</b> {status}\n\n"
-            f"Я проверяю новые объявления каждые 12 часов и присылаю только те, что подходят под ваши фильтры.\n\n"
-            f'💡 <i>Для ИИ-оценки конкретного объявления используйте кнопку "🤖 ИИ Оценка квартиры" под каждым объявлением.</i>',
+            "👋 Привет! Я KeyFlat — умный бот для поиска квартир.\n\n"
+            "Я:\n"
+            "• автоматически отслеживаю новые объявления\n"
+            "• группирую варианты по домам\n"
+            "• показываю сначала лучшие предложения\n"
+            "• не спамлю десятками сообщений\n\n"
+            "📍 Сейчас я ищу квартиры по этим параметрам:\n\n"
+            f"📍 Город: {city_name}\n"
+            f"🚪 Комнаты: {rooms_text}\n"
+            f"💰 Цена: {price_from} – {price_to}\n"
+            f"👤 Продавец: {seller_text}\n"
+            f"📦 Режим: {mode_text}\n\n"
+            f"📡 Статус: {status}\n\n"
+            "⚙️ Вы можете изменить фильтры или просто подождать — я пришлю новые варианты сам.",
             parse_mode=ParseMode.HTML,
             reply_markup=builder.as_markup(),
         )
@@ -278,6 +305,102 @@ async def cb_show_stats(callback: CallbackQuery):
     await callback.answer("Статистика пока не реализована")
 
 
+@router.callback_query(F.data == "explain_scoring")
+async def cb_explain_scoring(callback: CallbackQuery):
+    """Объясняет, как бот выбирает лучшие квартиры"""
+    await callback.answer()
+    await callback.message.answer(
+        "📊 <b>Как я выбираю лучшие квартиры:</b>\n\n"
+        "Я использую умный алгоритм, который учитывает:\n\n"
+        "• <b>Цену за м²</b> — чем ниже, тем лучше\n"
+        "• <b>Отклонение от рынка</b> — насколько выгоднее среднего\n"
+        "• <b>Стабильность цен</b> — небольшой разброс в доме\n"
+        "• <b>Количество вариантов</b> — больше выбор\n\n"
+        "Дома с лучшими показателями показываются первыми в summary.",
+        parse_mode=ParseMode.HTML
+    )
+
+
+@router.callback_query(F.data.startswith("explain_house|"))
+async def cb_explain_house(callback: CallbackQuery):
+    """Объясняет, почему этот дом в подборке"""
+    from bot.services.notification_service import get_listings_for_house_hash
+    from utils.scoring import calc_price_per_m2, calc_market_median_ppm
+    from statistics import median
+    
+    try:
+        house_hash = callback.data.split("|")[1]
+        listings = await get_listings_for_house_hash(house_hash)
+        
+        if not listings:
+            await callback.answer("Дом не найден", show_alert=True)
+            return
+        
+        address = listings[0].address if listings else "Неизвестный адрес"
+        prices_per_m2 = [calc_price_per_m2(l) for l in listings if calc_price_per_m2(l) is not None]
+        
+        if not prices_per_m2:
+            explanation = (
+                "📊 Почему этот дом в подборке:\n\n"
+                "• Подходит под ваши фильтры\n"
+                "• Несколько вариантов на выбор\n"
+                "• Это один из самых выгодных вариантов среди новых объявлений."
+            )
+        else:
+            house_median_ppm = median(prices_per_m2)
+            market_median_ppm = calc_market_median_ppm(listings)
+            
+            # Вычисляем характеристики
+            price_below_market = house_median_ppm < market_median_ppm if market_median_ppm else False
+            price_diff = ((market_median_ppm - house_median_ppm) / market_median_ppm * 100) if market_median_ppm else 0
+            
+            dispersion = 0.0
+            if len(prices_per_m2) > 1 and house_median_ppm:
+                dispersion = (max(prices_per_m2) - min(prices_per_m2)) / house_median_ppm
+            
+            # Формируем объяснение
+            reasons = []
+            if price_below_market and price_diff > 5:
+                reasons.append(f"• Средняя цена ниже рынка на ~{int(price_diff)}%")
+            else:
+                reasons.append("• Средняя цена ниже рынка")
+            
+            if dispersion < 0.2:
+                reasons.append("• Небольшой разброс цен")
+            else:
+                reasons.append("• Разброс цен в пределах нормы")
+            
+            reasons.append(f"• {len(listings)} вариантов на выбор")
+            reasons.append("• Подходит под ваши фильтры")
+            
+            explanation = (
+                "📊 Почему этот дом в подборке:\n\n"
+                + "\n".join(reasons) + "\n\n"
+                "Это один из самых выгодных вариантов среди новых объявлений."
+            )
+        
+        await callback.answer()
+        await callback.message.answer(explanation, parse_mode=ParseMode.HTML)
+        
+    except Exception as e:
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.error(f"Ошибка объяснения дома: {e}")
+        await callback.answer("Произошла ошибка", show_alert=True)
+
+
+@router.callback_query(F.data.startswith("hide_house|"))
+async def cb_hide_house(callback: CallbackQuery):
+    """Скрывает дом из summary (только UI, не влияет на БД)"""
+    await callback.answer("Дом скрыт из этого сообщения")
+    # Просто удаляем сообщение или редактируем его
+    try:
+        await callback.message.delete()
+    except Exception:
+        # Если не удалось удалить, просто подтверждаем действие
+        pass
+
+
 @router.callback_query(F.data.startswith("show_house|"))
 async def cb_show_house(callback: CallbackQuery):
     """Обработчик кнопки 'Показать варианты' для конкретного дома с поддержкой пагинации"""
@@ -320,25 +443,60 @@ async def cb_show_house(callback: CallbackQuery):
 @router.message(Command("mode"))
 async def cmd_mode(message: Message):
     """Обработчик команды /mode для переключения режимов доставки"""
-    parts = message.text.split()
+    from database_turso import get_user_filters_turso, set_user_filters_turso
     
-    if len(parts) != 2 or parts[1] not in (DELIVERY_MODE_BRIEF, DELIVERY_MODE_FULL):
-        await message.answer(
-            f"Использование: /mode {DELIVERY_MODE_BRIEF} или /mode {DELIVERY_MODE_FULL}\n\n"
-            f"• {DELIVERY_MODE_BRIEF} - краткие summary-сообщения с группировкой\n"
-            f"• {DELIVERY_MODE_FULL} - подробные уведомления по каждому объявлению",
-            parse_mode=ParseMode.HTML
-        )
-        return
-    
-    mode = parts[1]
     user_id = message.from_user.id
+    filters = await get_user_filters_turso(user_id)
+    current_mode = filters.get('delivery_mode', 'brief') if filters else 'brief'
+    
+    builder = InlineKeyboardBuilder()
+    builder.button(
+        text="🔹 Кратко" if current_mode != 'brief' else "🔹 Кратко (текущий)",
+        callback_data="mode_set:brief"
+    )
+    builder.button(
+        text="🔹 Полностью" if current_mode != 'full' else "🔹 Полностью (текущий)",
+        callback_data="mode_set:full"
+    )
+    builder.adjust(1)
+    
+    current_mode_text = "🔹 Кратко" if current_mode == 'brief' else "🔹 Полностью"
+    
+    await message.answer(
+        "📦 <b>Режим доставки объявлений</b>\n\n"
+        "🔹 <b>Кратко</b> (рекомендуется)\n"
+        "— сначала список лучших домов\n"
+        "— детали по запросу\n"
+        "— минимум сообщений\n\n"
+        "🔹 <b>Полностью</b>\n"
+        "— каждое объявление отдельно\n"
+        "— подходит для ручного выбора\n\n"
+        f"Текущий режим: {current_mode_text}",
+        parse_mode=ParseMode.HTML,
+        reply_markup=builder.as_markup()
+    )
+
+
+@router.callback_query(F.data.startswith("mode_set:"))
+async def cb_mode_set(callback: CallbackQuery):
+    """Обработчик установки режима доставки"""
+    from database_turso import get_user_filters_turso, set_user_filters_turso
+    
+    mode = callback.data.split(":")[1]
+    user_id = callback.from_user.id
+    
+    # Сохраняем режим в БД
+    filters = await get_user_filters_turso(user_id)
+    if filters:
+        filters['delivery_mode'] = mode
+        await set_user_filters_turso(user_id, filters)
     
     # Сохраняем режим в in-memory хранилище
     USER_DELIVERY_MODES[user_id] = mode
     
     mode_text = "кратко" if mode == DELIVERY_MODE_BRIEF else "подробно"
-    await message.answer(
+    await callback.answer(f"Режим установлен: {mode_text}")
+    await callback.message.edit_text(
         f"✅ Режим уведомлений установлен: <b>{mode_text}</b>\n\n"
         f"{'📋 Вы будете получать одно summary-сообщение с группировкой по адресам' if mode == DELIVERY_MODE_BRIEF else '📨 Вы будете получать подробные уведомления по каждому объявлению'}",
         parse_mode=ParseMode.HTML

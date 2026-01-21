@@ -14,28 +14,49 @@ router = Router()
 def format_filters_summary(f: dict) -> str:
     """Форматирует сводку фильтров для отображения"""
     city = f.get('city') or 'Не выбран'
+    min_rooms = f.get('min_rooms', 1)
+    max_rooms = f.get('max_rooms', 4)
+    rooms_text = f"{min_rooms}–{max_rooms}" if min_rooms != max_rooms else str(min_rooms)
+    
     seller_text = {
-        'all': 'Все',
-        'owner': 'Только собственники',
-        'owners': 'Только собственники',
-        'company': 'Только агентства'
-    }.get(f.get('seller_type', 'all'), 'Все')
-    mode_text = 'Кратко' if f.get('delivery_mode', 'brief') == 'brief' else 'Подробно'
+        'all': 'все',
+        'owner': 'только собственники',
+        'owners': 'только собственники',
+        'company': 'только агентства'
+    }.get(f.get('seller_type', 'all'), 'все')
+    mode_text = 'кратко' if f.get('delivery_mode', 'brief') == 'brief' else 'подробно'
+    
+    min_price = f.get('min_price', 0)
+    max_price = f.get('max_price', 100000)
+    price_text = f"${min_price:,} – ${max_price:,}".replace(",", " ")
     
     return (
         f"📍 Город: {city}\n"
-        f"🚪 Комнаты: {f.get('min_rooms', 1)}–{f.get('max_rooms', 4)}\n"
-        f"💰 Цена: ${f.get('min_price', 0):,} – ${f.get('max_price', 100000):,}\n"
+        f"🚪 Комнаты: {rooms_text}\n"
+        f"💰 Цена: {price_text}\n"
         f"👤 Продавец: {seller_text}\n"
-        f"📡 Режим: {mode_text}"
+        f"📦 Режим: {mode_text}"
     )
 
 
 def build_filters_keyboard(telegram_id: int) -> InlineKeyboardMarkup:
     """Строит клавиатуру для быстрой настройки фильтров"""
-    kb = InlineKeyboardMarkup(row_width=3)
+    kb = InlineKeyboardMarkup(row_width=1)
 
-    # Комнаты
+    # Кнопки в указанном порядке
+    kb.add(InlineKeyboardButton("📍 Город", callback_data=f"filters:{telegram_id}:city:select"))
+    kb.add(InlineKeyboardButton("🚪 Комнаты", callback_data=f"filters:{telegram_id}:rooms:select"))
+    kb.add(InlineKeyboardButton("💰 Цена", callback_data=f"filters:{telegram_id}:price:select"))
+    kb.add(InlineKeyboardButton("👤 Продавец", callback_data=f"filters:{telegram_id}:seller:select"))
+    kb.add(InlineKeyboardButton("📦 Режим доставки", callback_data=f"filters:{telegram_id}:mode:select"))
+    kb.add(InlineKeyboardButton("✅ Готово", callback_data=f"filters:{telegram_id}:done"))
+    
+    return kb
+
+
+def build_rooms_keyboard(telegram_id: int) -> InlineKeyboardMarkup:
+    """Клавиатура для выбора комнат"""
+    kb = InlineKeyboardMarkup(row_width=3)
     kb.add(
         InlineKeyboardButton("1", callback_data=f"filters:{telegram_id}:rooms:1"),
         InlineKeyboardButton("2", callback_data=f"filters:{telegram_id}:rooms:2"),
@@ -43,31 +64,37 @@ def build_filters_keyboard(telegram_id: int) -> InlineKeyboardMarkup:
         InlineKeyboardButton("4+", callback_data=f"filters:{telegram_id}:rooms:4+"),
         InlineKeyboardButton("Любые", callback_data=f"filters:{telegram_id}:rooms:any"),
     )
+    kb.add(InlineKeyboardButton("◀️ Назад", callback_data=f"filters:{telegram_id}:back"))
+    return kb
 
-    # Цена
-    kb.add(
-        InlineKeyboardButton("0–30k", callback_data=f"filters:{telegram_id}:price:0-30000"),
-        InlineKeyboardButton("30–50k", callback_data=f"filters:{telegram_id}:price:30000-50000"),
-        InlineKeyboardButton("50–80k", callback_data=f"filters:{telegram_id}:price:50000-80000"),
-        InlineKeyboardButton("80k+", callback_data=f"filters:{telegram_id}:price:80000-99999999"),
-        InlineKeyboardButton("Любая", callback_data=f"filters:{telegram_id}:price:any"),
-    )
 
-    # Тип продавца
-    kb.add(
-        InlineKeyboardButton("Все", callback_data=f"filters:{telegram_id}:seller:all"),
-        InlineKeyboardButton("Только собственники", callback_data=f"filters:{telegram_id}:seller:owner"),
-    )
+def build_price_keyboard(telegram_id: int) -> InlineKeyboardMarkup:
+    """Клавиатура для выбора цены"""
+    kb = InlineKeyboardMarkup(row_width=1)
+    kb.add(InlineKeyboardButton("0–30k", callback_data=f"filters:{telegram_id}:price:0-30000"))
+    kb.add(InlineKeyboardButton("30–50k", callback_data=f"filters:{telegram_id}:price:30000-50000"))
+    kb.add(InlineKeyboardButton("50–80k", callback_data=f"filters:{telegram_id}:price:50000-80000"))
+    kb.add(InlineKeyboardButton("80k+", callback_data=f"filters:{telegram_id}:price:80000-99999999"))
+    kb.add(InlineKeyboardButton("Любая", callback_data=f"filters:{telegram_id}:price:any"))
+    kb.add(InlineKeyboardButton("◀️ Назад", callback_data=f"filters:{telegram_id}:back"))
+    return kb
 
-    # Режим доставки
-    kb.add(
-        InlineKeyboardButton("📋 Кратко", callback_data=f"filters:{telegram_id}:mode:brief"),
-        InlineKeyboardButton("📨 Подробно", callback_data=f"filters:{telegram_id}:mode:full"),
-    )
 
-    # Готово
-    kb.add(InlineKeyboardButton("✅ Готово", callback_data=f"filters:{telegram_id}:done"))
-    
+def build_seller_keyboard(telegram_id: int) -> InlineKeyboardMarkup:
+    """Клавиатура для выбора продавца"""
+    kb = InlineKeyboardMarkup(row_width=1)
+    kb.add(InlineKeyboardButton("Все", callback_data=f"filters:{telegram_id}:seller:all"))
+    kb.add(InlineKeyboardButton("Только собственники", callback_data=f"filters:{telegram_id}:seller:owner"))
+    kb.add(InlineKeyboardButton("◀️ Назад", callback_data=f"filters:{telegram_id}:back"))
+    return kb
+
+
+def build_mode_keyboard(telegram_id: int) -> InlineKeyboardMarkup:
+    """Клавиатура для выбора режима доставки"""
+    kb = InlineKeyboardMarkup(row_width=1)
+    kb.add(InlineKeyboardButton("🔹 Кратко", callback_data=f"filters:{telegram_id}:mode:brief"))
+    kb.add(InlineKeyboardButton("🔹 Полностью", callback_data=f"filters:{telegram_id}:mode:full"))
+    kb.add(InlineKeyboardButton("◀️ Назад", callback_data=f"filters:{telegram_id}:back"))
     return kb
 
 
@@ -87,7 +114,7 @@ async def show_filters_master(callback_or_message, telegram_id: int):
             "delivery_mode": "brief",
         }
     
-    text = "⚙️ Быстрая настройка фильтров\n\n" + format_filters_summary(filters)
+    text = "⚙️ Настройка поиска квартир\n\n" + format_filters_summary(filters)
     keyboard = build_filters_keyboard(telegram_id)
     
     if isinstance(callback_or_message, CallbackQuery):
@@ -147,11 +174,63 @@ async def filters_callback_handler(callback: CallbackQuery):
         elif action == "mode":
             filters["delivery_mode"] = value if value else "brief"
         
+        elif action == "back":
+            # Возврат к главному меню
+            await show_filters_master(callback, telegram_id)
+            await callback.answer()
+            return
+        
+        elif action == "rooms" and value == "select":
+            # Показываем меню выбора комнат
+            await callback.message.edit_text(
+                "🚪 Выберите количество комнат:",
+                reply_markup=build_rooms_keyboard(telegram_id)
+            )
+            await callback.answer()
+            return
+        
+        elif action == "price" and value == "select":
+            # Показываем меню выбора цены
+            await callback.message.edit_text(
+                "💰 Выберите диапазон цены:",
+                reply_markup=build_price_keyboard(telegram_id)
+            )
+            await callback.answer()
+            return
+        
+        elif action == "seller" and value == "select":
+            # Показываем меню выбора продавца
+            await callback.message.edit_text(
+                "👤 Выберите тип продавца:",
+                reply_markup=build_seller_keyboard(telegram_id)
+            )
+            await callback.answer()
+            return
+        
+        elif action == "mode" and value == "select":
+            # Показываем меню выбора режима
+            await callback.message.edit_text(
+                "📦 Выберите режим доставки:",
+                reply_markup=build_mode_keyboard(telegram_id)
+            )
+            await callback.answer()
+            return
+        
+        elif action == "city" and value == "select":
+            # Запрашиваем город текстом
+            await callback.message.edit_text(
+                "📍 Введите название города (например: Барановичи):\n\n"
+                "Или используйте /start для выбора из списка."
+            )
+            await callback.answer()
+            # Сохраняем состояние ожидания города в callback data для обработки в start.py
+            return
+        
         elif action == "done":
             # Финальное сохранение
             await set_user_filters_turso(telegram_id, filters)
             await callback.message.edit_text(
-                "✅ Фильтры сохранены\n\n" + format_filters_summary(filters)
+                "✅ Фильтры сохранены. Я начну искать подходящие квартиры."
             )
             await callback.answer("Сохранено")
             return

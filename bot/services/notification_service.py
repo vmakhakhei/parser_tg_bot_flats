@@ -17,7 +17,7 @@ from aiogram.exceptions import TelegramRetryAfter
 from scrapers.base import Listing
 from scrapers.utils.id_utils import normalize_ad_id, normalize_telegram_id
 from scrapers.aggregator import group_similar_listings
-from utils.scoring import score_group, calc_market_median_ppm
+from utils.scoring import score_group, calc_market_median_ppm, calc_price_per_m2
 from database import (
     mark_listing_sent,
     mark_listing_sent_to_user,
@@ -70,8 +70,13 @@ def format_listing_message(listing: Listing, ai_valuation: Optional[Dict[str, An
     # Строим сообщение
     lines = [f"🏠 <b>{title}</b>", ""]
 
-    # Цена
-    lines.append(f"💰 <b>Цена:</b> {listing.price_formatted}")
+    # Цена с ценой за м²
+    price_per_m2 = calc_price_per_m2(listing)
+    if price_per_m2:
+        price_per_m2_formatted = f"${int(price_per_m2):,}".replace(",", " ")
+        lines.append(f"💰 {listing.price_formatted} (~{price_per_m2_formatted}/м²)")
+    else:
+        lines.append(f"💰 {listing.price_formatted}")
 
     # ИИ-оценка (если доступна)
     if ai_valuation:
@@ -115,9 +120,8 @@ def format_listing_message(listing: Listing, ai_valuation: Optional[Dict[str, An
 
             lines.append("")
 
-    # Цена за м² (вычисляется автоматически в Listing.__post_init__)
-    if listing.price_per_sqm_formatted:
-        lines.append(f"📊 <b>Цена/м²:</b> {listing.price_per_sqm_formatted}")
+    # Цена за м² уже добавлена выше в строке с ценой
+    # Добавляем индикатор сравнения с рынком, если доступен
 
     # Основная информация
     lines.append(f"🚪 <b>Комнат:</b> {listing.rooms}")
@@ -208,6 +212,13 @@ def format_listing_message(listing: Listing, ai_valuation: Optional[Dict[str, An
     # Адрес должен браться ТОЛЬКО из listing.address, без fallback'ов
     # Временно добавляем защиту: если адрес None - это ошибка данных
     assert listing.address is not None, f"listing.address is None for listing.id={listing.id}"
+    
+    # Добавляем индикатор сравнения с рынком, если цена за м² ниже рынка
+    price_per_m2 = calc_price_per_m2(listing)
+    if price_per_m2:
+        # Можно добавить индикатор здесь, если будет доступен market_median_ppm
+        pass
+    
     lines.append(f"📍 <b>Адрес:</b> {listing.address}")
     lines.append(f"🌐 <b>Источник:</b> {listing.source}")
     lines.append("")
@@ -594,11 +605,16 @@ async def send_grouped_listings_to_user(bot: Bot, user_id: int, listings: List[L
             text_lines.append(f"📣 Топ продавцы: {vendors_text}")
             text_lines.append("")
         
-        # Добавляем первые 5 объявлений
+        # Добавляем первые 5 объявлений с ценой за м²
         for i, listing in enumerate(sorted_listings[:5], start=1):
             area_text = f"{listing.area} м²" if listing.area > 0 else "—"
             price_text = f"${listing.price_usd:,}".replace(",", " ") if listing.price_usd else "—"
-            text_lines.append(f"{i}. {price_text} — {area_text} м²")
+            price_per_m2 = calc_price_per_m2(listing)
+            if price_per_m2:
+                price_per_m2_text = f"${int(price_per_m2):,}".replace(",", " ")
+                text_lines.append(f"{i}. {price_text} (~{price_per_m2_text}/м²) — {area_text}")
+            else:
+                text_lines.append(f"{i}. {price_text} — {area_text} м²")
         
         # Если объявлений больше 5, добавляем информацию об остальных
         if len(sorted_listings) > 5:
@@ -1087,6 +1103,28 @@ async def send_summary_message(bot: Bot, user_id: int, apartments: List[Listing]
             min_price = min(prices)
             max_price = max(prices)
             
+            # Вычисляем характеристики дома для индикаторов
+            prices_per_m2 = [calc_price_per_m2(l) for l in group if calc_price_per_m2(l) is not None]
+            house_median_ppm = None
+            price_indicator = ""
+            dispersion_indicator = ""
+            
+            if prices_per_m2:
+                from statistics import median
+                house_median_ppm = median(prices_per_m2)
+                
+                # Индикатор цены (если цена за м² ниже рынка > 10%)
+                if house_median_ppm and market_median_ppm:
+                    price_diff_percent = ((market_median_ppm - house_median_ppm) / market_median_ppm) * 100
+                    if price_diff_percent > 10:
+                        price_indicator = f"\n🔥 Цена ниже рынка на ~{int(price_diff_percent)}%"
+                
+                # Индикатор стабильности (если разброс низкий)
+                if len(prices_per_m2) > 1:
+                    dispersion = (max(prices_per_m2) - min(prices_per_m2)) / house_median_ppm if house_median_ppm else 1.0
+                    if dispersion < 0.15:  # Разброс меньше 15%
+                        dispersion_indicator = "\n🟢 Стабильные цены"
+            
             # Debug-лог для каждого дома (ОДИН РАЗ на дом)
             logger.info(
                 f"[SCORING] address={address} "
@@ -1099,27 +1137,35 @@ async def send_summary_message(bot: Bot, user_id: int, apartments: List[Listing]
             min_price_formatted = f"${min_price:,}".replace(",", " ")
             max_price_formatted = f"${max_price:,}".replace(",", " ")
             
+            # Новый формат блока дома
             text += (
                 f"🏢 {address}\n"
-                f"   • {len(group)} вариантов\n"
-                f"   • 💰 {min_price_formatted} – {max_price_formatted}\n\n"
+                f"💰 {min_price_formatted} – {max_price_formatted}\n"
+                f"📊 {len(group)} вариантов"
+                f"{price_indicator}"
+                f"{dispersion_indicator}\n\n"
             )
             
             # Создаем callback_data с hash адреса и offset=0 для первой страницы
             house_hash = str(hash(address))
-            callback_data = f"show_house|{house_hash}|0"
             
-            # Ограничиваем длину текста кнопки
-            button_text = f"Показать варианты · {address}"
-            if len(button_text) > 60:
-                button_text = f"Показать варианты · {address[:40]}..."
-            
-            keyboard.inline_keyboard.append([
+            # Новые кнопки для каждого дома
+            house_buttons = [
                 InlineKeyboardButton(
-                    text=button_text,
-                    callback_data=callback_data
+                    text="🔍 Смотреть квартиры",
+                    callback_data=f"show_house|{house_hash}|0"
+                ),
+                InlineKeyboardButton(
+                    text="📊 Почему этот дом?",
+                    callback_data=f"explain_house|{house_hash}"
+                ),
+                InlineKeyboardButton(
+                    text="❌ Скрыть дом",
+                    callback_data=f"hide_house|{house_hash}"
                 )
-            ])
+            ]
+            
+            keyboard.inline_keyboard.append(house_buttons)
         
         # Отправляем сообщение
         await safe_send_message(
