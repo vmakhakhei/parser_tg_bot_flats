@@ -575,6 +575,194 @@ async def update_cached_listings_daily():
         log_error("turso_daily", "Ошибка ежедневного обновления кэша", e)
 
 
+def migrate_user_filters_schema(conn):
+    """
+    Миграция user_filters:
+    user_id / rooms(JSON) -> telegram_id / min_rooms / max_rooms
+    
+    Args:
+        conn: Соединение с базой данных (синхронное)
+    """
+    try:
+        # Проверяем структуру таблицы
+        cur = conn.execute("PRAGMA table_info(user_filters)")
+        columns_info = cur.fetchall()
+        columns = {row[1]: row for row in columns_info}
+        
+        # Проверяем, является ли telegram_id PRIMARY KEY
+        # В PRAGMA table_info: [0]=cid, [1]=name, [2]=type, [3]=notnull, [4]=dflt_value, [5]=pk
+        has_telegram_id_pk = False
+        for row in columns_info:
+            if row[1] == "telegram_id" and row[5] == 1:  # row[5] = pk flag
+                has_telegram_id_pk = True
+                break
+        
+        # Если новая схема уже применена — выходим
+        if has_telegram_id_pk and "min_rooms" in columns and "max_rooms" in columns:
+            return
+        
+        logger.warning("[migration] Начинаю миграцию user_filters → новая схема")
+        
+        # Проверяем, есть ли старая таблица для миграции
+        if "user_id" not in columns and "telegram_id" not in columns:
+            # Таблица пустая или неожиданная структура - создаем заново
+            logger.warning("[migration] Таблица user_filters имеет неожиданную структуру, пересоздаю")
+            conn.execute("DROP TABLE IF EXISTS user_filters")
+            conn.execute("""
+                CREATE TABLE user_filters (
+                    telegram_id INTEGER PRIMARY KEY,
+                    city TEXT,
+                    min_rooms INTEGER,
+                    max_rooms INTEGER,
+                    min_price INTEGER,
+                    max_price INTEGER,
+                    is_active INTEGER DEFAULT 1,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
+            conn.execute("""
+                CREATE INDEX IF NOT EXISTS idx_user_filters_active 
+                ON user_filters(is_active)
+            """)
+            logger.warning("[migration] Таблица user_filters пересоздана с новой схемой")
+            return
+        
+        # 1. Переименовываем старую таблицу
+        conn.execute("ALTER TABLE user_filters RENAME TO user_filters_old")
+        logger.info("[migration] Старая таблица переименована в user_filters_old")
+        
+        # 2. Создаём новую таблицу
+        conn.execute("""
+            CREATE TABLE user_filters (
+                telegram_id INTEGER PRIMARY KEY,
+                city TEXT,
+                min_rooms INTEGER,
+                max_rooms INTEGER,
+                min_price INTEGER,
+                max_price INTEGER,
+                is_active INTEGER DEFAULT 1,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        conn.execute("""
+            CREATE INDEX IF NOT EXISTS idx_user_filters_active 
+            ON user_filters(is_active)
+        """)
+        logger.info("[migration] Новая таблица user_filters создана")
+        
+        # 3. Перенос данных (best-effort)
+        try:
+            # Определяем какие колонки есть в старой таблице
+            cur = conn.execute("PRAGMA table_info(user_filters_old)")
+            old_columns = {row[1]: row[0] for row in cur.fetchall()}
+            
+            # Формируем SELECT с учетом доступных колонок
+            select_cols = []
+            if "user_id" in old_columns:
+                select_cols.append("user_id")
+            elif "telegram_id" in old_columns:
+                select_cols.append("telegram_id")
+            else:
+                raise ValueError("Не найдено поле user_id или telegram_id в старой таблице")
+            
+            # Добавляем остальные поля если они есть
+            if "region" in old_columns:
+                select_cols.append("region")
+            elif "city" in old_columns:
+                select_cols.append("city")
+            else:
+                select_cols.append("'барановичи' as city")
+            
+            if "rooms" in old_columns:
+                select_cols.append("rooms")
+            else:
+                select_cols.append("NULL as rooms")
+            
+            if "min_price" in old_columns:
+                select_cols.append("min_price")
+            else:
+                select_cols.append("0 as min_price")
+            
+            if "max_price" in old_columns:
+                select_cols.append("max_price")
+            else:
+                select_cols.append("100000 as max_price")
+            
+            if "active" in old_columns:
+                select_cols.append("active")
+            elif "is_active" in old_columns:
+                select_cols.append("is_active")
+            else:
+                select_cols.append("1 as active")
+            
+            select_query = f"SELECT {', '.join(select_cols)} FROM user_filters_old"
+            cur = conn.execute(select_query)
+            
+            migrated_count = 0
+            for row in cur.fetchall():
+                # Распаковываем строку в зависимости от количества колонок
+                user_id = row[0]
+                city = row[1] if len(row) > 1 else "барановичи"
+                rooms_json = row[2] if len(row) > 2 else None
+                min_price = row[3] if len(row) > 3 else 0
+                max_price = row[4] if len(row) > 4 else 100000
+                is_active = row[5] if len(row) > 5 else 1
+                
+                min_rooms = 1
+                max_rooms = 4
+                
+                if rooms_json:
+                    try:
+                        rooms = json.loads(rooms_json)
+                        if isinstance(rooms, list) and rooms:
+                            min_rooms = min(rooms)
+                            max_rooms = max(rooms)
+                    except Exception as e:
+                        logger.warning(f"[migration] Не удалось распарсить rooms для user_id={user_id}: {e}")
+                
+                # Нормализуем city
+                if city is None:
+                    city = "барановичи"
+                
+                conn.execute("""
+                    INSERT OR IGNORE INTO user_filters (
+                        telegram_id, city, min_rooms, max_rooms,
+                        min_price, max_price, is_active
+                    )
+                    VALUES (?, ?, ?, ?, ?, ?, ?)
+                """, (
+                    user_id, city, min_rooms, max_rooms,
+                    min_price, max_price, is_active
+                ))
+                migrated_count += 1
+            
+            logger.info(f"[migration] Перенесено {migrated_count} записей")
+            
+        except Exception as e:
+            logger.error(f"[migration] Ошибка при переносе данных: {e}")
+            # Откатываем изменения - переименовываем обратно
+            conn.execute("DROP TABLE IF EXISTS user_filters")
+            conn.execute("ALTER TABLE user_filters_old RENAME TO user_filters")
+            raise
+        
+        # 4. Удаляем старую таблицу
+        conn.execute("DROP TABLE user_filters_old")
+        logger.warning("[migration] Миграция user_filters завершена успешно")
+        
+    except Exception as e:
+        logger.error(f"[migration] Критическая ошибка миграции user_filters: {e}")
+        # Пытаемся восстановить старое состояние
+        try:
+            conn.execute("DROP TABLE IF EXISTS user_filters")
+            conn.execute("ALTER TABLE user_filters_old RENAME TO user_filters")
+            logger.warning("[migration] Откат миграции выполнен")
+        except:
+            pass
+        raise
+
+
 async def ensure_tables_exist():
     """
     Проверяет и создает все необходимые таблицы если их нет (атомарная операция)
@@ -632,23 +820,8 @@ async def ensure_tables_exist():
                     """)
                     logger.info("✅ Таблица user_filters создана")
                 else:
-                    # Проверяем, есть ли PRIMARY KEY на telegram_id
-                    # Если таблица существует, но схема старая - нужно мигрировать
-                    # Пока просто логируем предупреждение
-                    try:
-                        cursor = conn.execute("PRAGMA table_info(user_filters)")
-                        columns = cursor.fetchall()
-                        has_telegram_id_pk = any(
-                            col[1] == 'telegram_id' and col[5] == 1 
-                            for col in columns
-                        )
-                        if not has_telegram_id_pk:
-                            logger.warning(
-                                "[schema] Таблица user_filters существует, но схема может быть устаревшей. "
-                                "Рекомендуется миграция для использования telegram_id как PRIMARY KEY."
-                            )
-                    except Exception as e:
-                        logger.warning(f"[schema] Не удалось проверить схему user_filters: {e}")
+                    # Проверяем схему и мигрируем при необходимости
+                    migrate_user_filters_schema(conn)
                 
                 # 3. Таблица apartments (основная таблица объявлений)
                 cursor = conn.execute("""
