@@ -267,11 +267,11 @@ async def activate_user(telegram_id: int, is_active: bool = True) -> bool:
         return False
 
 
-async def get_user_filters(user_id: int) -> Optional[Dict[str, Any]]:
+async def get_user_filters(telegram_id: int) -> Optional[Dict[str, Any]]:
     """Получает фильтры пользователя"""
     async with aiosqlite.connect(DATABASE_PATH) as db:
         db.row_factory = aiosqlite.Row
-        cursor = await db.execute("SELECT * FROM user_filters WHERE user_id = ?", (user_id,))
+        cursor = await db.execute("SELECT * FROM user_filters WHERE user_id = ?", (telegram_id,))
         row = await cursor.fetchone()
         if row:
             filters = dict(row)
@@ -315,14 +315,13 @@ async def ensure_user_filters(telegram_id: int) -> bool:
             try:
                 from database_turso import set_user_filters_turso
                 success = await set_user_filters_turso(
-                    user_id=telegram_id,
+                    telegram_id=telegram_id,
+                    city="барановичи",
+                    min_rooms=1,
+                    max_rooms=4,
                     min_price=0,
                     max_price=100000,
-                    rooms=[1, 2, 3, 4],
-                    region="барановичи",
-                    active=True,
-                    ai_mode=False,
-                    seller_type=None
+                    active=True
                 )
                 if success:
                     logger.info(f"[filters] Созданы дефолтные фильтры для {telegram_id}")
@@ -332,7 +331,7 @@ async def ensure_user_filters(telegram_id: int) -> bool:
         
         # Fallback на SQLite
         await set_user_filters(
-            user_id=telegram_id,
+            telegram_id=telegram_id,
             city="барановичи",
             min_rooms=1,
             max_rooms=4,
@@ -352,7 +351,7 @@ async def ensure_user_filters(telegram_id: int) -> bool:
 
 
 async def set_user_filters(
-    user_id: int,
+    telegram_id: int,
     city: str = "барановичи",
     min_rooms: int = 1,
     max_rooms: int = 4,
@@ -365,7 +364,7 @@ async def set_user_filters(
     """Устанавливает фильтры пользователя"""
     async with aiosqlite.connect(DATABASE_PATH) as db:
         # Получаем текущие фильтры для сохранения seller_type если не передан
-        cursor = await db.execute("SELECT seller_type FROM user_filters WHERE user_id = ?", (user_id,))
+        cursor = await db.execute("SELECT seller_type FROM user_filters WHERE user_id = ?", (telegram_id,))
         row = await cursor.fetchone()
         current_seller_type = row[0] if row else None
         
@@ -378,7 +377,7 @@ async def set_user_filters(
             (user_id, city, min_rooms, max_rooms, min_price, max_price, is_active, ai_mode, seller_type, updated_at)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, (
-            user_id,
+            telegram_id,
             city,
             min_rooms,
             max_rooms,
@@ -392,14 +391,14 @@ async def set_user_filters(
         await db.commit()
 
 
-async def set_user_ai_mode(user_id: int, ai_mode: bool):
+async def set_user_ai_mode(telegram_id: int, ai_mode: bool):
     """Устанавливает режим ИИ для пользователя"""
     async with aiosqlite.connect(DATABASE_PATH) as db:
         await db.execute("""
             UPDATE user_filters 
             SET ai_mode = ?, updated_at = ?
             WHERE user_id = ?
-        """, (ai_mode, datetime.now().isoformat(), user_id))
+        """, (ai_mode, datetime.now().isoformat(), telegram_id))
         await db.commit()
 
 
@@ -473,7 +472,7 @@ async def get_active_users() -> List[int]:
             "SELECT DISTINCT user_id FROM user_filters"
         )
         rows = await cursor.fetchall()
-        result = [row[0] for row in rows]
+        result = [row[0] for row in rows]  # user_id в SQLite = telegram_id
         # #region agent log
         try:
             with open('/Users/vmakhakei/TG BOT/.cursor/debug.log', 'a') as f:
@@ -538,11 +537,11 @@ async def mark_listing_ai_valuated(user_id: int, listing_id: str):
         await db.commit()
 
 
-async def is_ad_sent_to_user(user_id: int, ad_external_id: str) -> bool:
+async def is_ad_sent_to_user(telegram_id: int, ad_external_id: str) -> bool:
     """Проверяет, было ли объявление уже отправлено пользователю (идемпотентная проверка)
     
     Args:
-        user_id: ID пользователя
+        telegram_id: ID пользователя в Telegram
         ad_external_id: Внешний ID объявления (listing.id)
     
     Returns:
@@ -553,24 +552,25 @@ async def is_ad_sent_to_user(user_id: int, ad_external_id: str) -> bool:
     if USE_TURSO_CACHE:
         try:
             from database_turso import is_ad_sent_to_user_turso
-            return await is_ad_sent_to_user_turso(user_id, ad_external_id)
+            return await is_ad_sent_to_user_turso(telegram_id, ad_external_id)
         except ImportError:
             pass  # Fallback to local DB
     
     async with aiosqlite.connect(DATABASE_PATH) as db:
+        # В SQLite user_id = telegram_id (для обратной совместимости)
         cursor = await db.execute(
             "SELECT 1 FROM sent_ads WHERE user_id = ? AND ad_external_id = ?",
-            (str(user_id), ad_external_id)
+            (str(telegram_id), ad_external_id)
         )
         result = await cursor.fetchone()
         return result is not None
 
 
-async def mark_ad_sent_to_user(user_id: int, ad_external_id: str):
+async def mark_ad_sent_to_user(telegram_id: int, ad_external_id: str):
     """Отмечает объявление как отправленное пользователю (идемпотентная запись)
     
     Args:
-        user_id: ID пользователя
+        telegram_id: ID пользователя в Telegram
         ad_external_id: Внешний ID объявления (listing.id)
     """
     from config import USE_TURSO_CACHE
@@ -578,16 +578,17 @@ async def mark_ad_sent_to_user(user_id: int, ad_external_id: str):
     if USE_TURSO_CACHE:
         try:
             from database_turso import mark_ad_sent_to_user_turso
-            await mark_ad_sent_to_user_turso(user_id, ad_external_id)
+            await mark_ad_sent_to_user_turso(telegram_id, ad_external_id)
             return
         except ImportError:
             pass  # Fallback to local DB
     
     async with aiosqlite.connect(DATABASE_PATH) as db:
+        # В SQLite user_id = telegram_id (для обратной совместимости)
         await db.execute("""
             INSERT OR IGNORE INTO sent_ads (user_id, ad_external_id, sent_at)
             VALUES (?, ?, ?)
-        """, (str(user_id), ad_external_id, datetime.now().isoformat()))
+        """, (str(telegram_id), ad_external_id, datetime.now().isoformat()))
         await db.commit()
 
 

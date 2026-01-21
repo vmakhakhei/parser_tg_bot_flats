@@ -575,6 +575,152 @@ async def update_cached_listings_daily():
         log_error("turso_daily", "Ошибка ежедневного обновления кэша", e)
 
 
+def migrate_users_schema(conn):
+    """
+    Миграция таблицы users:
+    user_id -> telegram_id (PRIMARY KEY)
+    
+    Args:
+        conn: Соединение с базой данных (синхронное)
+    """
+    try:
+        cols = {row[1] for row in conn.execute("PRAGMA table_info(users)").fetchall()}
+        if "telegram_id" in cols and "user_id" not in cols:
+            return  # уже новая схема
+        
+        logger.warning("[migration] Начинаю миграцию users → новая схема")
+        
+        # backup: переименовываем старую таблицу
+        conn.execute("ALTER TABLE users RENAME TO users_old")
+        logger.info("[migration] Старая таблица users переименована в users_old")
+        
+        # create new table
+        conn.execute("""
+        CREATE TABLE users (
+            telegram_id INTEGER PRIMARY KEY,
+            username TEXT,
+            is_active INTEGER DEFAULT 1,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+        """)
+        logger.info("[migration] Новая таблица users создана")
+        
+        # migrate rows best-effort: user_id -> telegram_id
+        try:
+            rows = conn.execute("SELECT user_id, username, is_active FROM users_old").fetchall()
+            migrated_count = 0
+            for user_id, username, is_active in rows:
+                try:
+                    conn.execute("""
+                        INSERT OR IGNORE INTO users (telegram_id, username, is_active)
+                        VALUES (?, ?, ?)
+                    """, (user_id, username, is_active))
+                    migrated_count += 1
+                except Exception as e:
+                    logger.warning(f"[migration] Пропущена проблемная строка user_id={user_id}: {e}")
+                    pass
+            
+            logger.info(f"[migration] Перенесено {migrated_count} записей из users_old")
+        except Exception as e:
+            logger.error(f"[migration] Ошибка при переносе данных из users_old: {e}")
+            # Откатываем изменения
+            conn.execute("DROP TABLE IF EXISTS users")
+            conn.execute("ALTER TABLE users_old RENAME TO users")
+            raise
+        
+        # Удаляем старую таблицу
+        conn.execute("DROP TABLE users_old")
+        logger.warning("[migration] Миграция users завершена успешно")
+        
+    except Exception as e:
+        logger.error(f"[migration] Критическая ошибка миграции users: {e}")
+        # Пытаемся восстановить старое состояние
+        try:
+            conn.execute("DROP TABLE IF EXISTS users")
+            conn.execute("ALTER TABLE users_old RENAME TO users")
+            logger.warning("[migration] Откат миграции users выполнен")
+        except:
+            pass
+        raise
+
+
+def migrate_sent_ads_schema(conn):
+    """
+    Миграция таблицы sent_ads:
+    user_id (TEXT) -> telegram_id (INTEGER)
+    
+    Args:
+        conn: Соединение с базой данных (синхронное)
+    """
+    try:
+        cols = {r[1] for r in conn.execute("PRAGMA table_info(sent_ads)").fetchall()}
+        if "telegram_id" in cols and "user_id" not in cols:
+            return  # уже новая схема
+        
+        logger.warning("[migration] Начинаю миграцию sent_ads → новая схема")
+        
+        # backup: переименовываем старую таблицу
+        conn.execute("ALTER TABLE sent_ads RENAME TO sent_ads_old")
+        logger.info("[migration] Старая таблица sent_ads переименована в sent_ads_old")
+        
+        # create new table
+        conn.execute("""
+        CREATE TABLE sent_ads (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            telegram_id INTEGER NOT NULL,
+            ad_external_id TEXT NOT NULL,
+            sent_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE(telegram_id, ad_external_id)
+        )
+        """)
+        conn.execute("""
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_sent_user_ad 
+        ON sent_ads(telegram_id, ad_external_id)
+        """)
+        logger.info("[migration] Новая таблица sent_ads создана")
+        
+        # migrate rows best-effort: user_id -> telegram_id
+        try:
+            rows = conn.execute("SELECT user_id, ad_external_id, sent_at FROM sent_ads_old").fetchall()
+            migrated_count = 0
+            for user_id, ad_external_id, sent_at in rows:
+                try:
+                    # Конвертируем user_id в int (если был TEXT)
+                    telegram_id = int(user_id) if isinstance(user_id, str) else user_id
+                    conn.execute("""
+                        INSERT OR IGNORE INTO sent_ads (telegram_id, ad_external_id, sent_at)
+                        VALUES (?, ?, ?)
+                    """, (telegram_id, ad_external_id, sent_at))
+                    migrated_count += 1
+                except Exception as e:
+                    logger.warning(f"[migration] Пропущена проблемная строка user_id={user_id}: {e}")
+                    pass
+            
+            logger.info(f"[migration] Перенесено {migrated_count} записей из sent_ads_old")
+        except Exception as e:
+            logger.error(f"[migration] Ошибка при переносе данных из sent_ads_old: {e}")
+            # Откатываем изменения
+            conn.execute("DROP TABLE IF EXISTS sent_ads")
+            conn.execute("ALTER TABLE sent_ads_old RENAME TO sent_ads")
+            raise
+        
+        # Удаляем старую таблицу
+        conn.execute("DROP TABLE sent_ads_old")
+        logger.warning("[migration] Миграция sent_ads завершена успешно")
+        
+    except Exception as e:
+        logger.error(f"[migration] Критическая ошибка миграции sent_ads: {e}")
+        # Пытаемся восстановить старое состояние
+        try:
+            conn.execute("DROP TABLE IF EXISTS sent_ads")
+            conn.execute("ALTER TABLE sent_ads_old RENAME TO sent_ads")
+            logger.warning("[migration] Откат миграции sent_ads выполнен")
+        except:
+            pass
+        raise
+
+
 def migrate_user_filters_schema(conn):
     """
     Миграция user_filters:
@@ -763,23 +909,19 @@ def migrate_user_filters_schema(conn):
         raise
 
 
-def assert_no_user_id_columns(conn):
+def assert_no_legacy_user_id_columns(conn):
     """
     Проверяет, что в таблицах нет колонок user_id (только telegram_id)
-    Вызывается после миграции для проверки корректности схемы
+    Вызывается после миграции для проверки корректности схемы (fail-fast)
     
     Args:
         conn: Соединение с базой данных (синхронное)
     """
-    for table in ["users", "user_filters", "sent_ads"]:
+    for table in ("users", "user_filters", "sent_ads"):
         try:
-            cursor = conn.execute(f"PRAGMA table_info({table})")
-            cols = [row[1] for row in cursor.fetchall()]
+            cols = [r[1] for r in conn.execute(f"PRAGMA table_info({table})").fetchall()]
             if "user_id" in cols:
-                raise RuntimeError(
-                    f"[SCHEMA ERROR] Таблица {table} всё ещё содержит колонку user_id. "
-                    f"Ожидается только telegram_id."
-                )
+                raise RuntimeError(f"[SCHEMA ERROR] table {table} still has column user_id")
         except RuntimeError:
             raise
         except Exception as e:
@@ -805,18 +947,15 @@ async def ensure_tables_exist():
                         CREATE TABLE IF NOT EXISTS users (
                             telegram_id INTEGER PRIMARY KEY,
                             username TEXT,
-                            first_name TEXT,
-                            last_name TEXT,
                             is_active INTEGER DEFAULT 1,
-                            last_activity TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                         )
                     """)
-                    conn.execute("""
-                        CREATE INDEX IF NOT EXISTS idx_users_last_activity 
-                        ON users(last_activity)
-                    """)
                     logger.info("✅ Таблица users создана")
+                else:
+                    # Проверяем схему и мигрируем при необходимости
+                    migrate_users_schema(conn)
                 
                 # 2. Таблица user_filters (исправленная структура)
                 cursor = conn.execute("""
@@ -846,10 +985,6 @@ async def ensure_tables_exist():
                 else:
                     # Проверяем схему и мигрируем при необходимости
                     migrate_user_filters_schema(conn)
-                    # Проверяем, что миграция прошла успешно
-                    assert_no_user_id_columns(conn)
-                    # Проверяем, что миграция прошла успешно
-                    assert_no_user_id_columns(conn)
                 
                 # 3. Таблица apartments (основная таблица объявлений)
                 cursor = conn.execute("""
@@ -994,7 +1129,8 @@ async def ensure_tables_exist():
                             id INTEGER PRIMARY KEY AUTOINCREMENT,
                             telegram_id INTEGER NOT NULL,
                             ad_external_id TEXT NOT NULL,
-                            sent_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                            sent_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                            UNIQUE(telegram_id, ad_external_id)
                         )
                     """)
                     conn.execute("""
@@ -1002,6 +1138,12 @@ async def ensure_tables_exist():
                         ON sent_ads(telegram_id, ad_external_id)
                     """)
                     logger.info("✅ Таблица sent_ads создана")
+                else:
+                    # Проверяем схему и мигрируем при необходимости
+                    migrate_sent_ads_schema(conn)
+                
+                # Проверяем, что все миграции прошли успешно (fail-fast)
+                assert_no_legacy_user_id_columns(conn)
                 
                 # Commit происходит автоматически при выходе из контекста
         
@@ -1082,14 +1224,12 @@ async def create_or_update_user(
         def _execute():
             with turso_transaction() as conn:
                 conn.execute("""
-                    INSERT INTO users (telegram_id, username, first_name, last_name, last_activity, created_at)
-                    VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+                    INSERT INTO users (telegram_id, username, created_at)
+                    VALUES (?, ?, CURRENT_TIMESTAMP)
                     ON CONFLICT(telegram_id) DO UPDATE SET
                         username = COALESCE(excluded.username, username),
-                        first_name = COALESCE(excluded.first_name, first_name),
-                        last_name = COALESCE(excluded.last_name, last_name),
-                        last_activity = CURRENT_TIMESTAMP
-                """, (telegram_id, username, first_name, last_name))
+                        updated_at = CURRENT_TIMESTAMP
+                """, (telegram_id, username))
                 # Commit происходит автоматически
         
         await asyncio.to_thread(_execute)
@@ -1206,7 +1346,7 @@ async def upsert_user(
                         UPDATE users
                         SET username = COALESCE(?, username), 
                             is_active = ?,
-                            last_activity = CURRENT_TIMESTAMP
+                            updated_at = CURRENT_TIMESTAMP
                         WHERE telegram_id = ?
                         """,
                         (username, 1 if is_active else 0, telegram_id),
@@ -1215,8 +1355,8 @@ async def upsert_user(
                     # 3. Создаём нового пользователя в users
                     conn.execute(
                         """
-                        INSERT INTO users (telegram_id, username, is_active, last_activity, created_at)
-                        VALUES (?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+                        INSERT INTO users (telegram_id, username, is_active, created_at)
+                        VALUES (?, ?, ?, CURRENT_TIMESTAMP)
                         """,
                         (telegram_id, username, 1 if is_active else 0),
                     )
@@ -1259,31 +1399,35 @@ async def upsert_user(
 
 async def set_user_filters_turso(
     telegram_id: int,
+    city: str = "барановичи",
+    min_rooms: int = 1,
+    max_rooms: int = 4,
     min_price: int = 0,
-    max_price: Optional[int] = None,
-    rooms: Optional[List[int]] = None,
-    region: str = "барановичи",
-    active: bool = True,
-    ai_mode: bool = False,
-    seller_type: Optional[str] = None
+    max_price: int = 100000,
+    active: bool = True
 ) -> bool:
     """
     Устанавливает фильтры пользователя в Turso (атомарная операция)
     Использует telegram_id как PRIMARY KEY для ON CONFLICT
+    
+    Args:
+        telegram_id: ID пользователя в Telegram
+        city: Город поиска
+        min_rooms: Минимальное количество комнат
+        max_rooms: Максимальное количество комнат
+        min_price: Минимальная цена
+        max_price: Максимальная цена
+        active: Активен ли пользователь
     """
     try:
         def _execute():
-            # Конвертируем rooms в min_rooms/max_rooms для новой схемы
-            min_rooms = min(rooms) if rooms and len(rooms) > 0 else 1
-            max_rooms = max(rooms) if rooms and len(rooms) > 0 else 4
-            
             with turso_transaction() as conn:
                 conn.execute("""
                     INSERT INTO user_filters (
                         telegram_id, city, min_rooms, max_rooms,
                         min_price, max_price, is_active, updated_at
                     )
-                    VALUES (?, ?, ?, ?, ?, ?, 1, CURRENT_TIMESTAMP)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
                     ON CONFLICT(telegram_id)
                     DO UPDATE SET
                         city = excluded.city,
@@ -1291,15 +1435,16 @@ async def set_user_filters_turso(
                         max_rooms = excluded.max_rooms,
                         min_price = excluded.min_price,
                         max_price = excluded.max_price,
-                        is_active = 1,
+                        is_active = excluded.is_active,
                         updated_at = CURRENT_TIMESTAMP
                 """, (
                     telegram_id,
-                    region,  # city
+                    city,
                     min_rooms,
                     max_rooms,
                     min_price,
-                    max_price if max_price is not None else 100000
+                    max_price,
+                    1 if active else 0
                 ))
                 # Commit происходит автоматически
         
