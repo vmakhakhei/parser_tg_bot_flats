@@ -568,20 +568,36 @@ async def is_ad_sent_to_user(telegram_id: int, ad_external_id: str) -> bool:
     Returns:
         True если объявление уже было отправлено, False иначе
     """
+    # Нормализуем входные параметры
+    tg = normalize_telegram_id(telegram_id)
+    ad = normalize_ad_id(ad_external_id)
+    
     from config import USE_TURSO_CACHE
     
     if USE_TURSO_CACHE:
         try:
             from database_turso import is_ad_sent_to_user_turso
-            return await is_ad_sent_to_user_turso(telegram_id, ad_external_id)
+            return await is_ad_sent_to_user_turso(tg, ad)
         except ImportError:
             pass  # Fallback to local DB
     
     async with aiosqlite.connect(DATABASE_PATH) as db:
-        # В SQLite user_id = telegram_id (для обратной совместимости)
+        # 1) Сначала проверить, есть ли такое объявление в apartments
         cursor = await db.execute(
-            "SELECT 1 FROM sent_ads WHERE user_id = ? AND ad_external_id = ?",
-            (str(telegram_id), ad_external_id)
+            "SELECT 1 FROM apartments WHERE ad_id = ? LIMIT 1",
+            (ad,)
+        )
+        row = await cursor.fetchone()
+        if not row:
+            # Объявление отсутствует в apartments — считаем, что оно НЕ отправлено;
+            # логируем для диагностики (не удаляем автоматически).
+            logger.warning(f"[sent_check][STALE] ad={ad} not found in apartments; treating as NOT sent for user={tg}")
+            return False
+        
+        # 2) Затем проверить sent_ads
+        cursor = await db.execute(
+            "SELECT 1 FROM sent_ads WHERE user_id = ? AND ad_external_id = ? LIMIT 1",
+            (str(tg), ad)
         )
         result = await cursor.fetchone()
         return result is not None
@@ -603,7 +619,7 @@ async def mark_ad_sent_to_user(telegram_id: int, ad_external_id: str):
     if USE_TURSO_CACHE:
         try:
             from database_turso import mark_ad_sent_to_user_turso
-            await mark_ad_sent_to_user_turso(telegram_id, ad_external_id)
+            await mark_ad_sent_to_user_turso(tg, ad)
             return
         except ImportError:
             pass  # Fallback to local DB
@@ -612,8 +628,8 @@ async def mark_ad_sent_to_user(telegram_id: int, ad_external_id: str):
         # В SQLite user_id = telegram_id (для обратной совместимости)
         await db.execute("""
             INSERT OR IGNORE INTO sent_ads (user_id, ad_external_id, sent_at)
-            VALUES (?, ?, ?)
-        """, (str(telegram_id), ad_external_id, datetime.now().isoformat()))
+            VALUES (?, ?, CURRENT_TIMESTAMP)
+        """, (str(tg), ad))
         await db.commit()
 
 

@@ -478,6 +478,11 @@ async def _process_user_listings_normal_mode(
     user_id: int,
     all_listings: List[Listing],
     user_filters: Dict[str, Any],
+    *,
+    ignore_sent_ads: bool = False,
+    force_send: bool = False,
+    bypass_summary: bool = False,
+    **kwargs
 ) -> int:
     """Обрабатывает объявления для пользователя в обычном режиме.
     

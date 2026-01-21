@@ -2208,11 +2208,25 @@ async def is_ad_sent_to_user_turso(telegram_id: int, ad_external_id: str) -> boo
     
     try:
         def _execute():
-            cursor = conn.execute(
-                "SELECT 1 FROM sent_ads WHERE telegram_id = ? AND ad_external_id = ?",
-                (tg, ad)
-            )
-            return cursor.fetchone() is not None
+            with turso_transaction() as conn:
+                # 1) Сначала проверить, есть ли такое объявление в apartments
+                cursor = conn.execute(
+                    "SELECT 1 FROM apartments WHERE ad_id = ? LIMIT 1",
+                    (ad,)
+                )
+                row = cursor.fetchone()
+                if not row:
+                    # Объявление отсутствует в apartments — считаем, что оно НЕ отправлено;
+                    # логируем для диагностики (не удаляем автоматически).
+                    logger.warning(f"[sent_check][STALE] ad={ad} not found in apartments; treating as NOT sent for user={tg}")
+                    return False
+                
+                # 2) Затем проверить sent_ads
+                cursor = conn.execute(
+                    "SELECT 1 FROM sent_ads WHERE telegram_id = ? AND ad_external_id = ? LIMIT 1",
+                    (tg, ad)
+                )
+                return cursor.fetchone() is not None
         
         return await asyncio.to_thread(_execute)
     except Exception as e:
@@ -2242,9 +2256,8 @@ async def mark_ad_sent_to_user_turso(telegram_id: int, ad_external_id: str) -> b
         def _execute():
             with turso_transaction() as conn:
                 conn.execute("""
-                    INSERT INTO sent_ads (telegram_id, ad_external_id, sent_at)
+                    INSERT OR IGNORE INTO sent_ads (telegram_id, ad_external_id, sent_at)
                     VALUES (?, ?, CURRENT_TIMESTAMP)
-                    ON CONFLICT(telegram_id, ad_external_id) DO NOTHING
                 """, (tg, ad))
                 # Commit происходит автоматически при выходе из контекста
         
@@ -2284,5 +2297,218 @@ async def delete_sent_ads_for_user(telegram_id: int) -> int:
     except Exception as e:
         logger.error(f"Ошибка удаления sent_ads для пользователя {tg}: {e}")
         return -1
+
+
+async def find_stale_sent_ads() -> List[Dict[str, Any]]:
+    """
+    Находит записи в sent_ads, которые ссылаются на несуществующие объявления в apartments.
+    
+    Returns:
+        Список словарей с информацией о стейл записях:
+        [{"telegram_id": int, "ad_external_id": str, "sent_at": str}, ...]
+    """
+    conn = get_turso_connection()
+    if not conn:
+        return []
+    
+    try:
+        def _execute():
+            # Находим записи в sent_ads, которых нет в apartments
+            cursor = conn.execute("""
+                SELECT sa.telegram_id, sa.ad_external_id, sa.sent_at
+                FROM sent_ads sa
+                LEFT JOIN apartments a ON sa.ad_external_id = a.ad_id
+                WHERE a.ad_id IS NULL
+                ORDER BY sa.sent_at DESC
+            """)
+            rows = cursor.fetchall()
+            return [
+                {
+                    "telegram_id": row[0],
+                    "ad_external_id": row[1],
+                    "sent_at": row[2]
+                }
+                for row in rows
+            ]
+        
+        return await asyncio.to_thread(_execute)
+    except Exception as e:
+        logger.error(f"Ошибка поиска стейл записей sent_ads: {e}")
+        return []
+    finally:
+        if conn:
+            conn.close()
+
+
+async def list_stale_sent_ads(limit: int = 100) -> List[tuple]:
+    """
+    Возвращает список стейл записей sent_ads (для админ-команды).
+    
+    Args:
+        limit: Максимальное количество записей для возврата
+        
+    Returns:
+        Список кортежей: [(ad_external_id, telegram_id, sent_at), ...]
+    """
+    conn = get_turso_connection()
+    if not conn:
+        return []
+    
+    try:
+        def _execute():
+            with turso_transaction() as conn:
+                rows = conn.execute(
+                    """
+                    SELECT s.ad_external_id, s.telegram_id, s.sent_at
+                    FROM sent_ads s
+                    LEFT JOIN apartments a ON s.ad_external_id = a.ad_id
+                    WHERE a.ad_id IS NULL
+                    LIMIT ?
+                    """,
+                    (limit,)
+                ).fetchall()
+                return rows
+        
+        return await asyncio.to_thread(_execute)
+    except Exception as e:
+        logger.error(f"Ошибка получения списка стейл записей: {e}")
+        return []
+    finally:
+        if conn:
+            conn.close()
+
+
+async def cleanup_stale_sent_ads(dry_run: bool = True) -> Dict[str, Any]:
+    """
+    Очищает стейл записи из sent_ads (записи, ссылающиеся на несуществующие apartments).
+    
+    Args:
+        dry_run: Если True, только подсчитывает записи без удаления
+        
+    Returns:
+        Словарь с результатами:
+        {
+            "total_stale": int,
+            "deleted": int,
+            "errors": int,
+            "dry_run": bool
+        }
+    """
+    stale_records = await find_stale_sent_ads()
+    total_stale = len(stale_records)
+    
+    if total_stale == 0:
+        return {
+            "total_stale": 0,
+            "deleted": 0,
+            "errors": 0,
+            "dry_run": dry_run
+        }
+    
+    if dry_run:
+        logger.info(f"[cleanup] Найдено {total_stale} стейл записей (dry_run=True, удаление не выполнено)")
+        return {
+            "total_stale": total_stale,
+            "deleted": 0,
+            "errors": 0,
+            "dry_run": True
+        }
+    
+    # Удаляем стейл записи
+    deleted = 0
+    errors = 0
+    
+    try:
+        def _execute():
+            with turso_transaction() as conn:
+                # Удаляем все стейл записи одной транзакцией
+                cursor = conn.execute("""
+                    DELETE FROM sent_ads
+                    WHERE ad_external_id NOT IN (
+                        SELECT ad_id FROM apartments
+                    )
+                """)
+                return cursor.rowcount
+        
+        deleted = await asyncio.to_thread(_execute)
+        logger.info(f"[cleanup] Удалено {deleted} стейл записей из sent_ads")
+    except Exception as e:
+        logger.error(f"[cleanup] Ошибка удаления стейл записей: {e}")
+        errors = 1
+    
+    return {
+        "total_stale": total_stale,
+        "deleted": deleted,
+        "errors": errors,
+        "dry_run": False
+    }
+
+
+async def check_sent_ads_sync() -> Dict[str, Any]:
+    """
+    Проверяет синхронизацию между sent_ads и apartments.
+    
+    Returns:
+        Словарь с результатами проверки:
+        {
+            "total_sent_ads": int,
+            "total_apartments": int,
+            "stale_count": int,
+            "sync_percent": float,
+            "is_synced": bool
+        }
+    """
+    conn = get_turso_connection()
+    if not conn:
+        return {
+            "total_sent_ads": 0,
+            "total_apartments": 0,
+            "stale_count": 0,
+            "sync_percent": 0.0,
+            "is_synced": False,
+            "error": "Turso connection unavailable"
+        }
+    
+    try:
+        def _execute():
+            # Подсчитываем общее количество записей
+            cursor = conn.execute("SELECT COUNT(*) FROM sent_ads")
+            total_sent_ads = cursor.fetchone()[0]
+            
+            cursor = conn.execute("SELECT COUNT(*) FROM apartments")
+            total_apartments = cursor.fetchone()[0]
+            
+            # Подсчитываем стейл записи
+            cursor = conn.execute("""
+                SELECT COUNT(*)
+                FROM sent_ads sa
+                LEFT JOIN apartments a ON sa.ad_external_id = a.ad_id
+                WHERE a.ad_id IS NULL
+            """)
+            stale_count = cursor.fetchone()[0]
+            
+            return {
+                "total_sent_ads": total_sent_ads,
+                "total_apartments": total_apartments,
+                "stale_count": stale_count,
+                "sync_percent": (1.0 - stale_count / total_sent_ads * 100) if total_sent_ads > 0 else 100.0,
+                "is_synced": stale_count == 0
+            }
+        
+        result = await asyncio.to_thread(_execute)
+        return result
+    except Exception as e:
+        logger.error(f"Ошибка проверки синхронизации sent_ads: {e}")
+        return {
+            "total_sent_ads": 0,
+            "total_apartments": 0,
+            "stale_count": 0,
+            "sync_percent": 0.0,
+            "is_synced": False,
+            "error": str(e)
+        }
+    finally:
+        if conn:
+            conn.close()
 
 
