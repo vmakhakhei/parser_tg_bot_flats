@@ -6,6 +6,10 @@ Entrypoint для приложения:
 2. Инициализирует базу данных
 3. Запускает Telegram-бот
 """
+# ВАЖНО: Импортируем error_logger ПЕРВЫМ, чтобы настроить логирование
+# Это гарантирует, что логи идут в stdout/stderr для Railway
+import error_logger
+
 import asyncio
 import logging
 import sys
@@ -24,29 +28,18 @@ def setup_logging():
     """
     Настройка логирования
     
-    Примечание: Основное логирование настраивается в error_logger.py
-    Здесь настраиваем только дополнительный логгер для main.py
+    Примечание: Основное логирование настраивается в error_logger.py при импорте
+    Здесь просто получаем логгер для main.py
     """
-    # Импортируем error_logger, чтобы он инициализировал систему логирования
-    import error_logger
+    # error_logger уже импортирован в начале файла и настроил логирование
+    # Все логи идут в stdout/stderr (для Railway) и опционально в файл
     
     # Создаем отдельный логгер для main.py
     logger = logging.getLogger(__name__)
     logger.setLevel(logging.INFO)
     
-    # Также сохраняем логи в bot.log для обратной совместимости
-    # (основные логи идут в logs/app.log через error_logger)
-    try:
-        file_handler = logging.FileHandler('bot.log', encoding='utf-8')
-        file_handler.setLevel(logging.INFO)
-        formatter = logging.Formatter(
-            '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-        )
-        file_handler.setFormatter(formatter)
-        logger.addHandler(file_handler)
-    except Exception:
-        # Если не удалось создать файл, продолжаем без него
-        pass
+    # НЕ добавляем дополнительные handlers здесь, т.к. это может конфликтовать
+    # Все логи уже настроены в error_logger.py
     
     return logger
 

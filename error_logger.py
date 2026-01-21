@@ -26,22 +26,17 @@ LOG_FILE = LOG_DIR / "app.log"
 
 
 def setup_logging():
-    """Настраивает систему логирования"""
+    """
+    Настраивает систему логирования
+    
+    ВАЖНО: Логи должны идти в stdout/stderr для Railway и других платформ.
+    Файловый handler опционален и используется только если возможно создать файл.
+    """
     # Создаем форматтер
     formatter = logging.Formatter(
         fmt='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
         datefmt='%Y-%m-%d %H:%M:%S'
     )
-    
-    # Создаем файловый handler для записи в logs/app.log
-    file_handler = logging.FileHandler(LOG_FILE, encoding='utf-8')
-    file_handler.setLevel(logging.DEBUG)  # В файл пишем все уровни
-    file_handler.setFormatter(formatter)
-    
-    # Создаем консольный handler для вывода в stdout
-    console_handler = logging.StreamHandler(sys.stdout)
-    console_handler.setLevel(logging.INFO)  # В консоль только INFO и выше
-    console_handler.setFormatter(formatter)
     
     # Настраиваем корневой логгер
     root_logger = logging.getLogger()
@@ -50,9 +45,30 @@ def setup_logging():
     # Удаляем существующие handlers, чтобы избежать дублирования
     root_logger.handlers.clear()
     
-    # Добавляем наши handlers
-    root_logger.addHandler(file_handler)
+    # ВАЖНО: Консольный handler ДОЛЖЕН быть первым для Railway
+    # Railway читает логи из stdout/stderr
+    console_handler = logging.StreamHandler(sys.stdout)
+    console_handler.setLevel(logging.INFO)  # В консоль только INFO и выше
+    console_handler.setFormatter(formatter)
     root_logger.addHandler(console_handler)
+    
+    # Также добавляем stderr handler для ошибок (Railway читает и его)
+    stderr_handler = logging.StreamHandler(sys.stderr)
+    stderr_handler.setLevel(logging.WARNING)  # В stderr только WARNING и ERROR
+    stderr_handler.setFormatter(formatter)
+    root_logger.addHandler(stderr_handler)
+    
+    # Файловый handler опционален (может не работать в Railway)
+    # Пытаемся создать только если возможно
+    try:
+        file_handler = logging.FileHandler(LOG_FILE, encoding='utf-8')
+        file_handler.setLevel(logging.DEBUG)  # В файл пишем все уровни
+        file_handler.setFormatter(formatter)
+        root_logger.addHandler(file_handler)
+    except (OSError, PermissionError, FileNotFoundError):
+        # Если не удалось создать файл (например, в Railway), продолжаем без него
+        # Логи все равно будут в stdout/stderr
+        pass
     
     return root_logger
 

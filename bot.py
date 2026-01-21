@@ -3,6 +3,7 @@ Telegram бот для мониторинга объявлений о кварт
 """
 import asyncio
 import logging
+import sys
 import aiosqlite
 import json
 import base64
@@ -50,10 +51,19 @@ except ImportError:
     select_best_listings = None
 
 # Логирование
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-)
+# ВАЖНО: Не используем basicConfig здесь, т.к. логирование настраивается в error_logger.py
+# Импортируем error_logger ПЕРВЫМ, чтобы он настроил логирование правильно
+# Это гарантирует, что логи идут в stdout/stderr для Railway
+try:
+    import error_logger  # Инициализирует логирование при импорте
+except ImportError:
+    # Fallback если error_logger недоступен
+    logging.basicConfig(
+        level=logging.INFO,
+        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+        handlers=[logging.StreamHandler(sys.stdout)]  # Обязательно stdout для Railway
+    )
+
 logger = logging.getLogger(__name__)
 
 # Роутер для обработки команд
