@@ -9,13 +9,15 @@ from time import time
 from typing import Optional, Dict, Any, List
 
 from aiogram import Bot
-from aiogram.types import InputMediaPhoto, Message
+from aiogram.types import InputMediaPhoto, Message, InlineKeyboardMarkup, InlineKeyboardButton
 from aiogram.enums import ParseMode
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 from aiogram.exceptions import TelegramRetryAfter
 
 from scrapers.base import Listing
 from scrapers.utils.id_utils import normalize_ad_id, normalize_telegram_id
+from scrapers.aggregator import group_similar_listings
+from utils.scoring import score_group, calc_market_median_ppm
 from database import (
     mark_listing_sent,
     mark_listing_sent_to_user,
@@ -873,31 +875,6 @@ async def show_listings_list(bot: Bot, user_id: int, listings: List[Listing], st
         )
 
 
-def score_group(group: List[Listing]) -> float:
-    """
-    Вычисляет score для группы объявлений.
-    
-    Чем выше score, тем лучше группа (больше вариантов, ниже цена, больше площадь).
-    
-    Args:
-        group: Список Listing объектов в группе
-    
-    Returns:
-        Числовой score (чем выше, тем лучше)
-    """
-    prices = [l.price_usd for l in group if l.price_usd]
-    areas = [l.area for l in group if l.area]
-    
-    # Бонус за количество вариантов (каждый вариант = +2 балла)
-    count_score = len(group) * 2
-    
-    # Бонус за низкую цену (минимальная цена, деленная на 10k, с минусом для сортировки по убыванию)
-    price_score = -min(prices) / 10_000 if prices else 0
-    
-    # Бонус за большую площадь (средняя площадь, деленная на 10)
-    area_score = (sum(areas) / len(areas)) / 10 if areas else 0
-    
-    return count_score + price_score + area_score
 
 
 async def notify_users_about_new_apartments_summary(
@@ -1085,18 +1062,22 @@ async def send_summary_message(bot: Bot, user_id: int, apartments: List[Listing]
         if not groups:
             return
         
-        # Сортируем группы по score (лучшие первыми)
-        groups = sorted(
-            groups,
-            key=score_group,
-            reverse=True
-        )[:MAX_GROUPS_IN_SUMMARY]
+        # Вычисляем медианную цену за м² по всему рынку (один раз)
+        market_median_ppm = calc_market_median_ppm(apartments)
+        
+        # Вычисляем score для каждой группы и сортируем (лучшие первыми)
+        groups_with_scores = [
+            (group, score_group(group, market_median_ppm))
+            for group in groups
+        ]
+        groups_with_scores.sort(key=lambda x: x[1], reverse=True)
+        groups_with_scores = groups_with_scores[:MAX_GROUPS_IN_SUMMARY]
         
         # Формируем текст сообщения
         text = "🏙 Найдено подходящих квартир:\n\n"
         keyboard = InlineKeyboardMarkup(inline_keyboard=[])
         
-        for idx, group in enumerate(groups, 1):
+        for idx, (group, group_score) in enumerate(groups_with_scores, 1):
             address = group[0].address
             prices = [l.price_usd for l in group if l.price_usd]
             
@@ -1105,6 +1086,14 @@ async def send_summary_message(bot: Bot, user_id: int, apartments: List[Listing]
             
             min_price = min(prices)
             max_price = max(prices)
+            
+            # Debug-лог для каждого дома (ОДИН РАЗ на дом)
+            logger.info(
+                f"[SCORING] address={address} "
+                f"count={len(group)} "
+                f"score={group_score} "
+                f"market_ppm={market_median_ppm}"
+            )
             
             # Форматируем цены с пробелами вместо запятых
             min_price_formatted = f"${min_price:,}".replace(",", " ")
@@ -1141,7 +1130,7 @@ async def send_summary_message(bot: Bot, user_id: int, apartments: List[Listing]
             reply_markup=keyboard
         )
         
-        log_info("notification", f"[SUMMARY] отправлено summary пользователю {user_id}: {len(groups)} групп")
+        log_info("notification", f"[SUMMARY] отправлено summary пользователю {user_id}: {len(groups_with_scores)} групп")
         
     except Exception as e:
         log_error("notification", f"[SUMMARY] ошибка отправки summary пользователю {user_id}: {e}")
