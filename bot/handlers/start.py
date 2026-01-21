@@ -296,7 +296,18 @@ async def cb_setup_filters(callback: CallbackQuery, state: FSMContext):
         await state.set_state(CityStates.waiting_for_city)
     else:
         # Город есть - открываем quick master
-        await show_filters_master(callback, user_id)
+        try:
+            await show_filters_master(callback, user_id)
+        except Exception as e:
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.error(
+                "[FILTER_UI][START] Failed to show filters master in setup user=%s error=%s",
+                user_id,
+                e,
+                exc_info=True
+            )
+            await callback.answer("Ошибка открытия настроек", show_alert=True)
 
 
 @router.callback_query(F.data == "show_stats")
@@ -462,7 +473,18 @@ async def cb_loc_select(callback: CallbackQuery):
         await callback.answer(f"Выбран город: {location.get('name', '')}{region_text}")
         
         # Обновляем сообщение или показываем quick wizard
-        await show_filters_master(callback.message, user_id)
+        try:
+            await show_filters_master(callback.message, user_id)
+        except Exception as e:
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.error(
+                "[FILTER_UI][START] Failed to show filters master after location select user=%s error=%s",
+                user_id,
+                e,
+                exc_info=True
+            )
+            await callback.answer("Ошибка открытия настроек", show_alert=True)
         
     except Exception as e:
         import logging
@@ -631,7 +653,21 @@ async def process_city_input(message: Message, state: FSMContext):
         )
         
         # Запускаем quick wizard
-        await show_filters_master(message, user_id)
+        try:
+            await show_filters_master(message, user_id)
+        except Exception as e:
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.error(
+                "[FILTER_UI][START] Failed to show filters master after city select user=%s error=%s",
+                user_id,
+                e,
+                exc_info=True
+            )
+            await message.answer(
+                "⚠️ Не удалось открыть настройки.\n"
+                "Попробуйте ещё раз: /start"
+            )
         await state.clear()
         return
     
