@@ -703,7 +703,7 @@ def migrate_user_filters_schema(conn):
             migrated_count = 0
             for row in cur.fetchall():
                 # Распаковываем строку в зависимости от количества колонок
-                user_id = row[0]
+                telegram_id = row[0]  # user_id из старой схемы становится telegram_id
                 city = row[1] if len(row) > 1 else "барановичи"
                 rooms_json = row[2] if len(row) > 2 else None
                 min_price = row[3] if len(row) > 3 else 0
@@ -720,7 +720,7 @@ def migrate_user_filters_schema(conn):
                             min_rooms = min(rooms)
                             max_rooms = max(rooms)
                     except Exception as e:
-                        logger.warning(f"[migration] Не удалось распарсить rooms для user_id={user_id}: {e}")
+                        logger.warning(f"[migration] Не удалось распарсить rooms для telegram_id={telegram_id}: {e}")
                 
                 # Нормализуем city
                 if city is None:
@@ -733,7 +733,7 @@ def migrate_user_filters_schema(conn):
                     )
                     VALUES (?, ?, ?, ?, ?, ?, ?)
                 """, (
-                    user_id, city, min_rooms, max_rooms,
+                    telegram_id, city, min_rooms, max_rooms,
                     min_price, max_price, is_active
                 ))
                 migrated_count += 1
@@ -763,6 +763,29 @@ def migrate_user_filters_schema(conn):
         raise
 
 
+def assert_no_user_id_columns(conn):
+    """
+    Проверяет, что в таблицах нет колонок user_id (только telegram_id)
+    Вызывается после миграции для проверки корректности схемы
+    
+    Args:
+        conn: Соединение с базой данных (синхронное)
+    """
+    for table in ["users", "user_filters", "sent_ads"]:
+        try:
+            cursor = conn.execute(f"PRAGMA table_info({table})")
+            cols = [row[1] for row in cursor.fetchall()]
+            if "user_id" in cols:
+                raise RuntimeError(
+                    f"[SCHEMA ERROR] Таблица {table} всё ещё содержит колонку user_id. "
+                    f"Ожидается только telegram_id."
+                )
+        except RuntimeError:
+            raise
+        except Exception as e:
+            logger.warning(f"[schema] Не удалось проверить таблицу {table}: {e}")
+
+
 async def ensure_tables_exist():
     """
     Проверяет и создает все необходимые таблицы если их нет (атомарная операция)
@@ -780,10 +803,11 @@ async def ensure_tables_exist():
                     logger.info("📋 Создание таблицы users...")
                     conn.execute("""
                         CREATE TABLE IF NOT EXISTS users (
-                            user_id INTEGER PRIMARY KEY,
+                            telegram_id INTEGER PRIMARY KEY,
                             username TEXT,
                             first_name TEXT,
                             last_name TEXT,
+                            is_active INTEGER DEFAULT 1,
                             last_activity TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                         )
@@ -822,6 +846,10 @@ async def ensure_tables_exist():
                 else:
                     # Проверяем схему и мигрируем при необходимости
                     migrate_user_filters_schema(conn)
+                    # Проверяем, что миграция прошла успешно
+                    assert_no_user_id_columns(conn)
+                    # Проверяем, что миграция прошла успешно
+                    assert_no_user_id_columns(conn)
                 
                 # 3. Таблица apartments (основная таблица объявлений)
                 cursor = conn.execute("""
@@ -964,14 +992,14 @@ async def ensure_tables_exist():
                     conn.execute("""
                         CREATE TABLE IF NOT EXISTS sent_ads (
                             id INTEGER PRIMARY KEY AUTOINCREMENT,
-                            user_id TEXT NOT NULL,
+                            telegram_id INTEGER NOT NULL,
                             ad_external_id TEXT NOT NULL,
                             sent_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                         )
                     """)
                     conn.execute("""
                         CREATE UNIQUE INDEX IF NOT EXISTS idx_sent_user_ad 
-                        ON sent_ads(user_id, ad_external_id)
+                        ON sent_ads(telegram_id, ad_external_id)
                     """)
                     logger.info("✅ Таблица sent_ads создана")
                 
@@ -1041,7 +1069,7 @@ def _extract_city_from_address(address: str) -> str:
 # ========== НОВЫЕ ФУНКЦИИ ДЛЯ РЕФАКТОРИНГА ==========
 
 async def create_or_update_user(
-    user_id: int,
+    telegram_id: int,
     username: Optional[str] = None,
     first_name: Optional[str] = None,
     last_name: Optional[str] = None
@@ -1054,27 +1082,27 @@ async def create_or_update_user(
         def _execute():
             with turso_transaction() as conn:
                 conn.execute("""
-                    INSERT INTO users (user_id, username, first_name, last_name, last_activity, created_at)
+                    INSERT INTO users (telegram_id, username, first_name, last_name, last_activity, created_at)
                     VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
-                    ON CONFLICT(user_id) DO UPDATE SET
+                    ON CONFLICT(telegram_id) DO UPDATE SET
                         username = COALESCE(excluded.username, username),
                         first_name = COALESCE(excluded.first_name, first_name),
                         last_name = COALESCE(excluded.last_name, last_name),
                         last_activity = CURRENT_TIMESTAMP
-                """, (user_id, username, first_name, last_name))
+                """, (telegram_id, username, first_name, last_name))
                 # Commit происходит автоматически
         
         await asyncio.to_thread(_execute)
         return True
     except Exception as e:
-        log_error("turso_users", f"Ошибка создания/обновления пользователя {user_id}", e)
+        log_error("turso_users", f"Ошибка создания/обновления пользователя {telegram_id}", e)
         return False
 
 
-async def get_user_filters_turso(user_id: int) -> Optional[Dict[str, Any]]:
+async def get_user_filters_turso(telegram_id: int) -> Optional[Dict[str, Any]]:
     """
     Получает фильтры пользователя из Turso
-    Поддерживает как старую схему (user_id), так и новую (telegram_id как PRIMARY KEY)
+    Использует telegram_id как PRIMARY KEY
     Возвращает словарь с фильтрами или None
     """
     conn = get_turso_connection()
@@ -1083,23 +1111,13 @@ async def get_user_filters_turso(user_id: int) -> Optional[Dict[str, Any]]:
     
     try:
         def _execute():
-            # Пробуем сначала новую схему (telegram_id как PRIMARY KEY)
+            # Используем новую схему (telegram_id как PRIMARY KEY)
             cursor = conn.execute("""
                 SELECT * FROM user_filters 
                 WHERE telegram_id = ? 
                 LIMIT 1
-            """, (user_id,))
+            """, (telegram_id,))
             row = cursor.fetchone()
-            
-            if not row:
-                # Fallback на старую схему (user_id)
-                cursor = conn.execute("""
-                    SELECT * FROM user_filters 
-                    WHERE user_id = ? 
-                    ORDER BY updated_at DESC 
-                    LIMIT 1
-                """, (user_id,))
-                row = cursor.fetchone()
             
             if row:
                 # Конвертируем Row в словарь
@@ -1131,7 +1149,7 @@ async def get_user_filters_turso(user_id: int) -> Optional[Dict[str, Any]]:
         
         return await asyncio.to_thread(_execute)
     except Exception as e:
-        logger.error(f"Ошибка получения фильтров пользователя {user_id}: {e}")
+        logger.error(f"Ошибка получения фильтров пользователя {telegram_id}: {e}")
         return None
     finally:
         if conn:
@@ -1164,7 +1182,7 @@ async def upsert_user(
     Работает без ON CONFLICT (совместимо с SQLite/Turso).
     
     Args:
-        telegram_id: ID пользователя в Telegram (используется как user_id)
+        telegram_id: ID пользователя в Telegram
         username: Имя пользователя (опционально)
         is_active: Активен ли пользователь (по умолчанию True)
     
@@ -1174,12 +1192,10 @@ async def upsert_user(
     try:
         def _execute():
             with turso_transaction() as conn:
-                user_id = telegram_id
-                
                 # 1. Проверяем, существует ли пользователь в таблице users
                 cur = conn.execute(
-                    "SELECT user_id FROM users WHERE user_id = ?",
-                    (user_id,),
+                    "SELECT telegram_id FROM users WHERE telegram_id = ?",
+                    (telegram_id,),
                 )
                 row = cur.fetchone()
                 
@@ -1188,25 +1204,27 @@ async def upsert_user(
                     conn.execute(
                         """
                         UPDATE users
-                        SET username = COALESCE(?, username), last_activity = CURRENT_TIMESTAMP
-                        WHERE user_id = ?
+                        SET username = COALESCE(?, username), 
+                            is_active = ?,
+                            last_activity = CURRENT_TIMESTAMP
+                        WHERE telegram_id = ?
                         """,
-                        (username, user_id),
+                        (username, 1 if is_active else 0, telegram_id),
                     )
                 else:
                     # 3. Создаём нового пользователя в users
                     conn.execute(
                         """
-                        INSERT INTO users (user_id, username, last_activity, created_at)
-                        VALUES (?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+                        INSERT INTO users (telegram_id, username, is_active, last_activity, created_at)
+                        VALUES (?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
                         """,
-                        (user_id, username),
+                        (telegram_id, username, 1 if is_active else 0),
                     )
                 
                 # 4. Проверяем, существует ли запись в user_filters
                 cur = conn.execute(
-                    "SELECT user_id FROM user_filters WHERE user_id = ?",
-                    (user_id,),
+                    "SELECT telegram_id FROM user_filters WHERE telegram_id = ?",
+                    (telegram_id,),
                 )
                 row = cur.fetchone()
                 
@@ -1215,20 +1233,20 @@ async def upsert_user(
                     conn.execute(
                         """
                         UPDATE user_filters
-                        SET active = ?, updated_at = CURRENT_TIMESTAMP
-                        WHERE user_id = ?
+                        SET is_active = ?, updated_at = CURRENT_TIMESTAMP
+                        WHERE telegram_id = ?
                         """,
-                        (1 if is_active else 0, user_id),
+                        (1 if is_active else 0, telegram_id),
                     )
                 else:
                     # 6. Создаём новую запись в user_filters с дефолтными значениями
                     conn.execute(
                         """
                         INSERT INTO user_filters 
-                        (user_id, min_price, max_price, rooms, region, active, ai_mode, seller_type, updated_at)
-                        VALUES (?, 0, NULL, NULL, 'барановичи', ?, 0, NULL, CURRENT_TIMESTAMP)
+                        (telegram_id, city, min_rooms, max_rooms, min_price, max_price, is_active, updated_at)
+                        VALUES (?, 'барановичи', 1, 4, 0, 100000, ?, CURRENT_TIMESTAMP)
                         """,
-                        (user_id, 1 if is_active else 0),
+                        (telegram_id, 1 if is_active else 0),
                     )
                 # Commit происходит автоматически
         
@@ -1240,7 +1258,7 @@ async def upsert_user(
 
 
 async def set_user_filters_turso(
-    user_id: int,
+    telegram_id: int,
     min_price: int = 0,
     max_price: Optional[int] = None,
     rooms: Optional[List[int]] = None,
@@ -1258,9 +1276,6 @@ async def set_user_filters_turso(
             # Конвертируем rooms в min_rooms/max_rooms для новой схемы
             min_rooms = min(rooms) if rooms and len(rooms) > 0 else 1
             max_rooms = max(rooms) if rooms and len(rooms) > 0 else 4
-            
-            # Используем telegram_id как PRIMARY KEY
-            telegram_id = user_id
             
             with turso_transaction() as conn:
                 conn.execute("""
@@ -1291,7 +1306,7 @@ async def set_user_filters_turso(
         await asyncio.to_thread(_execute)
         return True
     except Exception as e:
-        log_error("turso_filters", f"Ошибка установки фильтров пользователя {user_id}", e)
+        log_error("turso_filters", f"Ошибка установки фильтров пользователя {telegram_id}", e)
         return False
 
 
@@ -1388,7 +1403,7 @@ async def get_active_users_turso() -> List[int]:
     try:
         def _execute():
             cursor = conn.execute("""
-                SELECT DISTINCT user_id FROM user_filters
+                SELECT DISTINCT telegram_id FROM user_filters
             """)
             return [row[0] for row in cursor.fetchall()]
         
@@ -1966,12 +1981,12 @@ async def save_api_query_cache(
         return False
 
 
-async def is_ad_sent_to_user_turso(user_id: int, ad_external_id: str) -> bool:
+async def is_ad_sent_to_user_turso(telegram_id: int, ad_external_id: str) -> bool:
     """
     Проверяет, было ли объявление уже отправлено пользователю (идемпотентная проверка для Turso)
     
     Args:
-        user_id: ID пользователя
+        telegram_id: ID пользователя в Telegram
         ad_external_id: Внешний ID объявления (listing.id)
     
     Returns:
@@ -1984,26 +1999,26 @@ async def is_ad_sent_to_user_turso(user_id: int, ad_external_id: str) -> bool:
     try:
         def _execute():
             cursor = conn.execute(
-                "SELECT 1 FROM sent_ads WHERE user_id = ? AND ad_external_id = ?",
-                (str(user_id), ad_external_id)
+                "SELECT 1 FROM sent_ads WHERE telegram_id = ? AND ad_external_id = ?",
+                (telegram_id, ad_external_id)
             )
             return cursor.fetchone() is not None
         
         return await asyncio.to_thread(_execute)
     except Exception as e:
-        logger.error(f"Ошибка проверки отправки объявления {ad_external_id} пользователю {user_id}: {e}")
+        logger.error(f"Ошибка проверки отправки объявления {ad_external_id} пользователю {telegram_id}: {e}")
         return False
     finally:
         if conn:
             conn.close()
 
 
-async def mark_ad_sent_to_user_turso(user_id: int, ad_external_id: str) -> bool:
+async def mark_ad_sent_to_user_turso(telegram_id: int, ad_external_id: str) -> bool:
     """
     Отмечает объявление как отправленное пользователю (идемпотентная запись для Turso)
     
     Args:
-        user_id: ID пользователя
+        telegram_id: ID пользователя в Telegram
         ad_external_id: Внешний ID объявления (listing.id)
     
     Returns:
@@ -2013,15 +2028,15 @@ async def mark_ad_sent_to_user_turso(user_id: int, ad_external_id: str) -> bool:
         def _execute():
             with turso_transaction() as conn:
                 conn.execute("""
-                    INSERT OR IGNORE INTO sent_ads (user_id, ad_external_id, sent_at)
+                    INSERT OR IGNORE INTO sent_ads (telegram_id, ad_external_id, sent_at)
                     VALUES (?, ?, CURRENT_TIMESTAMP)
-                """, (str(user_id), ad_external_id))
+                """, (telegram_id, ad_external_id))
                 # Commit происходит автоматически при выходе из контекста
         
         await asyncio.to_thread(_execute)
         return True
     except Exception as e:
-        logger.error(f"Ошибка отметки объявления {ad_external_id} как отправленного пользователю {user_id}: {e}")
+        logger.error(f"Ошибка отметки объявления {ad_external_id} как отправленного пользователю {telegram_id}: {e}")
         return False
 
 

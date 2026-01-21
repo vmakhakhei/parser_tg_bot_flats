@@ -297,10 +297,10 @@ async def cb_check_now_ai(callback: CallbackQuery):
 
 
 @router.callback_query(F.data == "setup_filters")
-async def cb_setup_filters(callback: CallbackQuery):
+async def cb_setup_filters(callback: CallbackQuery, state: FSMContext):
     """Настройка фильтров для пользователя"""
     await callback.answer("Настройка фильтров...")
-    await show_city_selection_menu(callback.message, callback.state)
+    await show_city_selection_menu(callback.message, state)
 
 
 @router.callback_query(F.data == "show_stats")
