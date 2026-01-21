@@ -1,0 +1,93 @@
+[
+  {
+    "name": "baseline",
+    "weights": [
+      0.45,
+      0.25,
+      0.15,
+      0.15
+    ],
+    "market_ppm_topk": 450.56829953765435,
+    "dispersion_topk": 0.04105931646755958,
+    "count_topk": 1.4,
+    "objective": 0.4066666666666667
+  },
+  {
+    "name": "count_favor",
+    "weights": [
+      0.35,
+      0.2,
+      0.15,
+      0.3
+    ],
+    "market_ppm_topk": 450.56829953765435,
+    "dispersion_topk": 0.04105931646755958,
+    "count_topk": 1.4,
+    "objective": 0.4066666666666667
+  },
+  {
+    "name": "conservative",
+    "weights": [
+      0.5,
+      0.3,
+      0.1,
+      0.1
+    ],
+    "market_ppm_topk": 450.56829953765435,
+    "dispersion_topk": 0.04105931646755958,
+    "count_topk": 1.4,
+    "objective": 0.4066666666666667
+  },
+  {
+    "name": "balanced",
+    "weights": [
+      0.3,
+      0.3,
+      0.2,
+      0.2
+    ],
+    "market_ppm_topk": 450.56829953765435,
+    "dispersion_topk": 0.04105931646755958,
+    "count_topk": 1.4,
+    "objective": 0.4066666666666667
+  },
+  {
+    "name": "price_heavy",
+    "weights": [
+      0.55,
+      0.2,
+      0.15,
+      0.1
+    ],
+    "market_ppm_topk": 450.9196903887879,
+    "dispersion_topk": 0.008997955010224951,
+    "count_topk": 1.2,
+    "objective": 0.62
+  },
+  {
+    "name": "dispersion_heavy",
+    "weights": [
+      0.4,
+      0.2,
+      0.25,
+      0.15
+    ],
+    "market_ppm_topk": 450.9196903887879,
+    "dispersion_topk": 0.008997955010224951,
+    "count_topk": 1.2,
+    "objective": 0.62
+  },
+  {
+    "name": "low_price",
+    "weights": [
+      0.3,
+      0.2,
+      0.3,
+      0.2
+    ],
+    "market_ppm_topk": 450.9196903887879,
+    "dispersion_topk": 0.008997955010224951,
+    "count_topk": 1.2,
+    "objective": 0.62
+  }
+]

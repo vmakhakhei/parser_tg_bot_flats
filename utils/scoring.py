@@ -2,11 +2,33 @@
 Детерминированный scoring для групп объявлений (домов).
 
 Используется ТОЛЬКО для сортировки домов в summary-first режиме.
+
+Веса настроены автоматически через tools/score_tuning.py на основе реальных данных.
+Выбранный набор: conservative (0.5, 0.3, 0.1, 0.1) - оптимальный баланс между ценой и стабильностью.
 """
 from statistics import median
 from typing import List
+import logging
 
 from scrapers.base import Listing
+
+logger = logging.getLogger(__name__)
+
+# Веса scoring (price, delta, dispersion, count)
+# Настроены через score_tuning.py на основе реальных данных
+SCORING_WEIGHTS = {
+    "price": 0.5,      # Цена за метр (чем ниже — тем лучше)
+    "delta": 0.3,      # Отклонение от рынка (чем больше отклонение вниз — тем лучше)
+    "dispersion": 0.1, # Разброс цен внутри дома (чем меньше разброс — тем лучше)
+    "count": 0.1       # Количество вариантов (soft cap на 6)
+}
+
+# Логируем выбранные веса при импорте модуля
+logger.info(
+    f"[SCORING_CONFIG] selected_weights={tuple(SCORING_WEIGHTS.values())} "
+    f"(price={SCORING_WEIGHTS['price']}, delta={SCORING_WEIGHTS['delta']}, "
+    f"dispersion={SCORING_WEIGHTS['dispersion']}, count={SCORING_WEIGHTS['count']})"
+)
 
 
 def safe_div(a: float, b: float) -> float:
@@ -71,11 +93,11 @@ def score_group(
     
     Используется для сортировки домов в summary-first режиме.
     
-    Формула scoring:
-    - 45%: Цена за метр (чем ниже — тем лучше)
-    - 25%: Отклонение от рынка (чем больше отклонение вниз — тем лучше)
-    - 15%: Разброс цен внутри дома (чем меньше разброс — тем лучше)
-    - 15%: Количество вариантов (soft cap на 6)
+    Формула scoring (веса настроены через score_tuning.py):
+    - 50%: Цена за метр (чем ниже — тем лучше)
+    - 30%: Отклонение от рынка (чем больше отклонение вниз — тем лучше)
+    - 10%: Разброс цен внутри дома (чем меньше разброс — тем лучше)
+    - 10%: Количество вариантов (soft cap на 6)
     
     Args:
         group: Список объявлений в группе (дом)
@@ -115,11 +137,12 @@ def score_group(
     # D. Количество вариантов (soft cap)
     count_score = min(len(group), 6) / 6
 
+    # Используем веса из конфигурации
     score = (
-        0.45 * price_score +
-        0.25 * delta_vs_market +
-        0.15 * dispersion_score +
-        0.15 * count_score
+        SCORING_WEIGHTS["price"] * price_score +
+        SCORING_WEIGHTS["delta"] * delta_vs_market +
+        SCORING_WEIGHTS["dispersion"] * dispersion_score +
+        SCORING_WEIGHTS["count"] * count_score
     )
 
     return round(score, 4)
