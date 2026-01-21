@@ -3,8 +3,9 @@
 БЕЗ FSM, мгновенное сохранение при каждом действии
 """
 from aiogram import Router, F
-from aiogram.types import CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
+from aiogram.types import CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton, Message
 from database_turso import get_user_filters_turso, set_user_filters_turso, ensure_user_filters
+from pydantic import ValidationError
 import logging
 
 logger = logging.getLogger(__name__)
@@ -44,67 +45,150 @@ def format_filters_summary(f: dict) -> str:
     )
 
 
+def _build_safe_keyboard(
+    telegram_id: int,
+    items: list[tuple[str, str]],
+    custom_rows: list[list[InlineKeyboardButton]] | None = None
+) -> InlineKeyboardMarkup:
+    """
+    Безопасное построение клавиатуры с fallback при ошибках валидации.
+    
+    Args:
+        telegram_id: ID пользователя
+        items: список (text, callback_data) - используется если custom_rows=None
+        custom_rows: кастомная структура строк (опционально)
+    
+    Returns:
+        InlineKeyboardMarkup с защитой от ошибок
+    """
+    rows: list[list[InlineKeyboardButton]] = []
+    
+    if custom_rows:
+        rows = custom_rows
+    else:
+        # Формируем строки из items (каждая кнопка в отдельной строке)
+        for text, cb in items:
+            rows.append([
+                InlineKeyboardButton(
+                    text=str(text),
+                    callback_data=str(cb)
+                )
+            ])
+    
+    try:
+        keyboard = InlineKeyboardMarkup(inline_keyboard=rows)
+    except ValidationError as e:
+        logger.error(
+            "[FILTER_UI] Keyboard validation error. user=%s rows=%s error=%s",
+            telegram_id,
+            rows,
+            e,
+            exc_info=True
+        )
+        # 🔥 FALLBACK — никогда не падаем
+        return InlineKeyboardMarkup(
+            inline_keyboard=[
+                [
+                    InlineKeyboardButton(
+                        text="⚙️ Настроить фильтры",
+                        callback_data=f"setup_filters:{telegram_id}"
+                    )
+                ]
+            ]
+        )
+    
+    logger.debug(
+        "[FILTER_UI] Keyboard built user=%s rows=%d",
+        telegram_id,
+        len(rows)
+    )
+    
+    return keyboard
+
+
 def build_filters_keyboard(telegram_id: int) -> InlineKeyboardMarkup:
     """Строит клавиатуру для быстрой настройки фильтров"""
-    kb = InlineKeyboardMarkup(row_width=1)
-
-    # Кнопки в указанном порядке
-    kb.add(InlineKeyboardButton("📍 Город", callback_data=f"filters:{telegram_id}:city:select"))
-    kb.add(InlineKeyboardButton("🚪 Комнаты", callback_data=f"filters:{telegram_id}:rooms:select"))
-    kb.add(InlineKeyboardButton("💰 Цена", callback_data=f"filters:{telegram_id}:price:select"))
-    kb.add(InlineKeyboardButton("👤 Продавец", callback_data=f"filters:{telegram_id}:seller:select"))
-    kb.add(InlineKeyboardButton("📦 Режим доставки", callback_data=f"filters:{telegram_id}:mode:select"))
-    kb.add(InlineKeyboardButton("✅ Готово", callback_data=f"filters:{telegram_id}:done"))
+    items = [
+        ("📍 Город", f"filters:{telegram_id}:city:select"),
+        ("🚪 Комнаты", f"filters:{telegram_id}:rooms:select"),
+        ("💰 Цена", f"filters:{telegram_id}:price:select"),
+        ("👤 Продавец", f"filters:{telegram_id}:seller:select"),
+        ("📦 Режим доставки", f"filters:{telegram_id}:mode:select"),
+        ("✅ Готово", f"filters:{telegram_id}:done"),
+    ]
     
-    return kb
+    return _build_safe_keyboard(telegram_id, items)
 
 
 def build_rooms_keyboard(telegram_id: int) -> InlineKeyboardMarkup:
     """Клавиатура для выбора комнат"""
-    kb = InlineKeyboardMarkup(row_width=3)
-    kb.add(
-        InlineKeyboardButton("1", callback_data=f"filters:{telegram_id}:rooms:1"),
-        InlineKeyboardButton("2", callback_data=f"filters:{telegram_id}:rooms:2"),
-        InlineKeyboardButton("3", callback_data=f"filters:{telegram_id}:rooms:3"),
-        InlineKeyboardButton("4+", callback_data=f"filters:{telegram_id}:rooms:4+"),
-        InlineKeyboardButton("Любые", callback_data=f"filters:{telegram_id}:rooms:any"),
-    )
-    kb.add(InlineKeyboardButton("◀️ Назад", callback_data=f"filters:{telegram_id}:back"))
-    return kb
+    items = [
+        ("1", f"filters:{telegram_id}:rooms:1"),
+        ("2", f"filters:{telegram_id}:rooms:2"),
+        ("3", f"filters:{telegram_id}:rooms:3"),
+        ("4+", f"filters:{telegram_id}:rooms:4+"),
+        ("Любые", f"filters:{telegram_id}:rooms:any"),
+        ("◀️ Назад", f"filters:{telegram_id}:back"),
+    ]
+    
+    # Первые 3 кнопки в одну строку, остальные по одной
+    rows: list[list[InlineKeyboardButton]] = [
+        [
+            InlineKeyboardButton(text=str(items[0][0]), callback_data=str(items[0][1])),
+            InlineKeyboardButton(text=str(items[1][0]), callback_data=str(items[1][1])),
+            InlineKeyboardButton(text=str(items[2][0]), callback_data=str(items[2][1])),
+        ],
+        [InlineKeyboardButton(text=str(items[3][0]), callback_data=str(items[3][1]))],
+        [InlineKeyboardButton(text=str(items[4][0]), callback_data=str(items[4][1]))],
+        [InlineKeyboardButton(text=str(items[5][0]), callback_data=str(items[5][1]))],
+    ]
+    
+    return _build_safe_keyboard(telegram_id, items, custom_rows=rows)
 
 
 def build_price_keyboard(telegram_id: int) -> InlineKeyboardMarkup:
     """Клавиатура для выбора цены"""
-    kb = InlineKeyboardMarkup(row_width=1)
-    kb.add(InlineKeyboardButton("0–30k", callback_data=f"filters:{telegram_id}:price:0-30000"))
-    kb.add(InlineKeyboardButton("30–50k", callback_data=f"filters:{telegram_id}:price:30000-50000"))
-    kb.add(InlineKeyboardButton("50–80k", callback_data=f"filters:{telegram_id}:price:50000-80000"))
-    kb.add(InlineKeyboardButton("80k+", callback_data=f"filters:{telegram_id}:price:80000-99999999"))
-    kb.add(InlineKeyboardButton("Любая", callback_data=f"filters:{telegram_id}:price:any"))
-    kb.add(InlineKeyboardButton("◀️ Назад", callback_data=f"filters:{telegram_id}:back"))
-    return kb
+    items = [
+        ("0–30k", f"filters:{telegram_id}:price:0-30000"),
+        ("30–50k", f"filters:{telegram_id}:price:30000-50000"),
+        ("50–80k", f"filters:{telegram_id}:price:50000-80000"),
+        ("80k+", f"filters:{telegram_id}:price:80000-99999999"),
+        ("Любая", f"filters:{telegram_id}:price:any"),
+        ("◀️ Назад", f"filters:{telegram_id}:back"),
+    ]
+    
+    return _build_safe_keyboard(telegram_id, items)
 
 
 def build_seller_keyboard(telegram_id: int) -> InlineKeyboardMarkup:
     """Клавиатура для выбора продавца"""
-    kb = InlineKeyboardMarkup(row_width=1)
-    kb.add(InlineKeyboardButton("Все", callback_data=f"filters:{telegram_id}:seller:all"))
-    kb.add(InlineKeyboardButton("Только собственники", callback_data=f"filters:{telegram_id}:seller:owner"))
-    kb.add(InlineKeyboardButton("◀️ Назад", callback_data=f"filters:{telegram_id}:back"))
-    return kb
+    items = [
+        ("Все", f"filters:{telegram_id}:seller:all"),
+        ("Только собственники", f"filters:{telegram_id}:seller:owner"),
+        ("◀️ Назад", f"filters:{telegram_id}:back"),
+    ]
+    
+    return _build_safe_keyboard(telegram_id, items)
 
 
 def build_mode_keyboard(telegram_id: int) -> InlineKeyboardMarkup:
     """Клавиатура для выбора режима доставки"""
-    kb = InlineKeyboardMarkup(row_width=1)
-    kb.add(InlineKeyboardButton("🔹 Кратко", callback_data=f"filters:{telegram_id}:mode:brief"))
-    kb.add(InlineKeyboardButton("🔹 Полностью", callback_data=f"filters:{telegram_id}:mode:full"))
-    kb.add(InlineKeyboardButton("◀️ Назад", callback_data=f"filters:{telegram_id}:back"))
-    return kb
+    items = [
+        ("🔹 Кратко", f"filters:{telegram_id}:mode:brief"),
+        ("🔹 Полностью", f"filters:{telegram_id}:mode:full"),
+        ("◀️ Назад", f"filters:{telegram_id}:back"),
+    ]
+    
+    return _build_safe_keyboard(telegram_id, items)
 
 
 async def show_filters_master(callback_or_message, telegram_id: int):
     """Показывает мастер фильтров с текущими значениями"""
+    logger.debug(
+        "[FILTER_UI] show_filters_master user=%s",
+        telegram_id
+    )
+    
     await ensure_user_filters(telegram_id)
     filters = await get_user_filters_turso(telegram_id)
     
@@ -119,13 +203,43 @@ async def show_filters_master(callback_or_message, telegram_id: int):
             "delivery_mode": "brief",
         }
     
+    logger.debug(
+        "[FILTER_UI] filters items=%s",
+        filters
+    )
+    
     text = "⚙️ Настройка поиска квартир\n\n" + format_filters_summary(filters)
     keyboard = build_filters_keyboard(telegram_id)
     
-    if isinstance(callback_or_message, CallbackQuery):
-        await callback_or_message.message.edit_text(text, reply_markup=keyboard)
-    else:
-        await callback_or_message.answer(text, reply_markup=keyboard)
+    try:
+        if isinstance(callback_or_message, CallbackQuery):
+            await callback_or_message.message.edit_text(text, reply_markup=keyboard)
+        else:
+            await callback_or_message.answer(text, reply_markup=keyboard)
+    except Exception as e:
+        logger.error(
+            "[FILTER_UI][SEND] Failed to send filters keyboard user=%s error=%s",
+            telegram_id,
+            e,
+            exc_info=True
+        )
+        # Fallback сообщение
+        fallback_text = (
+            "⚠️ Не удалось показать настройки.\n"
+            "Нажмите /start или используйте кнопку «⚙️ Настроить фильтры»."
+        )
+        try:
+            if isinstance(callback_or_message, CallbackQuery):
+                await callback_or_message.message.answer(fallback_text)
+            else:
+                await callback_or_message.answer(fallback_text)
+        except Exception as fallback_error:
+            logger.error(
+                "[FILTER_UI][SEND] Fallback also failed user=%s error=%s",
+                telegram_id,
+                fallback_error,
+                exc_info=True
+            )
 
 
 @router.callback_query(F.data.startswith("filters:"))
@@ -187,37 +301,73 @@ async def filters_callback_handler(callback: CallbackQuery):
         
         elif action == "rooms" and value == "select":
             # Показываем меню выбора комнат
-            await callback.message.edit_text(
-                "🚪 Выберите количество комнат:",
-                reply_markup=build_rooms_keyboard(telegram_id)
-            )
+            try:
+                await callback.message.edit_text(
+                    "🚪 Выберите количество комнат:",
+                    reply_markup=build_rooms_keyboard(telegram_id)
+                )
+            except Exception as e:
+                logger.error(
+                    "[FILTER_UI][SEND] Failed to send rooms keyboard user=%s error=%s",
+                    telegram_id,
+                    e,
+                    exc_info=True
+                )
+                await callback.answer("Ошибка отображения меню", show_alert=True)
             await callback.answer()
             return
         
         elif action == "price" and value == "select":
             # Показываем меню выбора цены
-            await callback.message.edit_text(
-                "💰 Выберите диапазон цены:",
-                reply_markup=build_price_keyboard(telegram_id)
-            )
+            try:
+                await callback.message.edit_text(
+                    "💰 Выберите диапазон цены:",
+                    reply_markup=build_price_keyboard(telegram_id)
+                )
+            except Exception as e:
+                logger.error(
+                    "[FILTER_UI][SEND] Failed to send price keyboard user=%s error=%s",
+                    telegram_id,
+                    e,
+                    exc_info=True
+                )
+                await callback.answer("Ошибка отображения меню", show_alert=True)
             await callback.answer()
             return
         
         elif action == "seller" and value == "select":
             # Показываем меню выбора продавца
-            await callback.message.edit_text(
-                "👤 Выберите тип продавца:",
-                reply_markup=build_seller_keyboard(telegram_id)
-            )
+            try:
+                await callback.message.edit_text(
+                    "👤 Выберите тип продавца:",
+                    reply_markup=build_seller_keyboard(telegram_id)
+                )
+            except Exception as e:
+                logger.error(
+                    "[FILTER_UI][SEND] Failed to send seller keyboard user=%s error=%s",
+                    telegram_id,
+                    e,
+                    exc_info=True
+                )
+                await callback.answer("Ошибка отображения меню", show_alert=True)
             await callback.answer()
             return
         
         elif action == "mode" and value == "select":
             # Показываем меню выбора режима
-            await callback.message.edit_text(
-                "📦 Выберите режим доставки:",
-                reply_markup=build_mode_keyboard(telegram_id)
-            )
+            try:
+                await callback.message.edit_text(
+                    "📦 Выберите режим доставки:",
+                    reply_markup=build_mode_keyboard(telegram_id)
+                )
+            except Exception as e:
+                logger.error(
+                    "[FILTER_UI][SEND] Failed to send mode keyboard user=%s error=%s",
+                    telegram_id,
+                    e,
+                    exc_info=True
+                )
+                await callback.answer("Ошибка отображения меню", show_alert=True)
             await callback.answer()
             return
         
