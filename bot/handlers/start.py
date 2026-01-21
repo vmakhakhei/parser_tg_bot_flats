@@ -102,9 +102,34 @@ def validate_city(city: str) -> tuple[bool, Optional[str]]:
 @router.message(CommandStart())
 async def cmd_start(message: Message, state: FSMContext):
     """Обработчик команды /start - пошаговая настройка фильтров"""
+    import logging
+    logger = logging.getLogger(__name__)
+    
     user_id = message.from_user.id
 
-    # Создаем/обновляем пользователя в Turso
+    # КРИТИЧНО: Создаем/обновляем пользователя и активируем его в user_filters
+    # Это гарантирует, что пользователь будет виден в get_active_users()
+    try:
+        from database_turso import upsert_user
+        
+        success = await upsert_user(
+            telegram_id=user_id,
+            username=message.from_user.username,
+            is_active=True
+        )
+        
+        if success:
+            logger.info(
+                "[user] activated user telegram_id=%s",
+                user_id
+            )
+        else:
+            logger.warning(f"[user] failed to activate user telegram_id={user_id}")
+    except Exception as e:
+        logger.warning(f"[user] failed to activate user telegram_id={user_id}: {e}")
+        # Продолжаем работу даже если не удалось активировать пользователя
+    
+    # Также создаем/обновляем пользователя в таблице users (для совместимости)
     try:
         from database import create_or_update_user_turso
 
@@ -115,9 +140,6 @@ async def cmd_start(message: Message, state: FSMContext):
             last_name=message.from_user.last_name,
         )
     except Exception as e:
-        import logging
-
-        logger = logging.getLogger(__name__)
         logger.warning(f"Не удалось создать пользователя в Turso: {e}")
 
     # Проверяем, есть ли у пользователя фильтры (из старой БД или Turso)

@@ -667,6 +667,10 @@ async def check_new_listings(bot: Any) -> None:
     # #endregion
 
     # Лог-валидация: обязательно логируем количество найденных активных пользователей
+    logger.info(
+        "[search] found %d active users",
+        len(active_users)
+    )
     log_info("search", f"Найдено активных пользователей: {len(active_users)}")
     
     if not active_users:

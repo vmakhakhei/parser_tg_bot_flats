@@ -932,6 +932,55 @@ async def get_user_filters_turso(user_id: int) -> Optional[Dict[str, Any]]:
             conn.close()
 
 
+async def upsert_user(
+    telegram_id: int,
+    username: Optional[str] = None,
+    is_active: bool = True
+) -> bool:
+    """
+    Создает или обновляет пользователя в таблице users и user_filters.
+    Гарантирует, что пользователь будет активным (is_active=True).
+    
+    Args:
+        telegram_id: ID пользователя в Telegram
+        username: Имя пользователя (опционально)
+        is_active: Активен ли пользователь (по умолчанию True)
+    
+    Returns:
+        True если успешно, False при ошибке
+    """
+    try:
+        def _execute():
+            with turso_transaction() as conn:
+                # 1. Создаем/обновляем пользователя в таблице users
+                conn.execute("""
+                    INSERT INTO users (user_id, username, last_activity, created_at)
+                    VALUES (?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+                    ON CONFLICT(user_id) DO UPDATE SET
+                        username = COALESCE(excluded.username, username),
+                        last_activity = CURRENT_TIMESTAMP
+                """, (telegram_id, username))
+                
+                # 2. Создаем/обновляем запись в user_filters с active=1
+                # Если записи нет - создаем с дефолтными значениями
+                # Если есть - обновляем active=1
+                conn.execute("""
+                    INSERT INTO user_filters 
+                    (user_id, min_price, max_price, rooms, region, active, ai_mode, seller_type, updated_at)
+                    VALUES (?, 0, NULL, NULL, 'барановичи', ?, 0, NULL, CURRENT_TIMESTAMP)
+                    ON CONFLICT(user_id) DO UPDATE SET
+                        active = excluded.active,
+                        updated_at = CURRENT_TIMESTAMP
+                """, (telegram_id, 1 if is_active else 0))
+                # Commit происходит автоматически
+        
+        await asyncio.to_thread(_execute)
+        return True
+    except Exception as e:
+        log_error("turso_users", f"Ошибка создания/обновления пользователя {telegram_id}", e)
+        return False
+
+
 async def set_user_filters_turso(
     user_id: int,
     min_price: int = 0,

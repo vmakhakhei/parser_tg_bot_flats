@@ -884,6 +884,8 @@ async def notify_users_about_new_apartments_summary(new_listings: List[Listing])
     """
     if not new_listings:
         log_info("notification", "[SUMMARY] нет новых объявлений для уведомлений")
+        # Опционально: можно отправить сообщение пользователям, что новых объявлений нет
+        # Но по умолчанию не отправляем, чтобы не спамить
         return
     
     try:
@@ -901,11 +903,11 @@ async def notify_users_about_new_apartments_summary(new_listings: List[Listing])
         
         # Получаем активных пользователей
         users = await get_active_users()
+        log_info("notification", f"[SUMMARY] found {len(users)} active users")
+        
         if not users:
             log_info("notification", "[SUMMARY] нет активных пользователей")
             return
-        
-        log_info("notification", f"[SUMMARY] найдено {len(users)} активных пользователей")
         
         # Создаем бот
         bot = Bot(token=BOT_TOKEN)
