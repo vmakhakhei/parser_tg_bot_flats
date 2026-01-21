@@ -235,7 +235,13 @@ async def send_listing_to_user(
         )
         
         # Идемпотентная проверка: если объявление уже было отправлено этому пользователю - не отправляем
-        if await is_ad_sent_to_user(user_id, listing.id):
+        # В DEBUG режиме игнорируем проверку sent_ads
+        from constants.constants import DEBUG_FORCE_RUN
+        from bot.handlers.debug import get_debug_force_run
+        
+        debug_force = get_debug_force_run() or DEBUG_FORCE_RUN
+        
+        if not debug_force and await is_ad_sent_to_user(user_id, listing.id):
             log_info(
                 "notification",
                 f"Объявление {listing.id} уже было отправлено пользователю {user_id}, пропускаем"
@@ -872,7 +878,7 @@ def score_group(group: List[Listing]) -> float:
     return count_score + price_score + area_score
 
 
-async def notify_users_about_new_apartments_summary(new_listings: List[Listing]) -> None:
+async def notify_users_about_new_apartments_summary(new_listings: List[Listing], force: bool = False) -> None:
     """
     Отправляет summary-уведомления пользователям о новых объявлениях.
     
@@ -881,11 +887,23 @@ async def notify_users_about_new_apartments_summary(new_listings: List[Listing])
     
     Args:
         new_listings: Список Listing объектов - реально новых объявлений (уже в БД)
+        force: Принудительный режим (игнорирует проверки sent_ads)
     """
-    if not new_listings:
-        log_info("notification", "[SUMMARY] нет новых объявлений для уведомлений")
-        # Опционально: можно отправить сообщение пользователям, что новых объявлений нет
-        # Но по умолчанию не отправляем, чтобы не спамить
+    from constants.constants import DEBUG_FORCE_RUN
+    from bot.handlers.debug import get_debug_force_run
+    
+    # Проверяем DEBUG режим
+    debug_force = force or get_debug_force_run() or DEBUG_FORCE_RUN
+    
+    # Явный лог DEBUG RUN
+    logger.warning(
+        "[DEBUG RUN] force=%s apartments=%d",
+        debug_force,
+        len(new_listings) if new_listings else 0
+    )
+    
+    if not new_listings and not debug_force:
+        log_info("notification", "[SUMMARY] skip: no new apartments")
         return
     
     try:
@@ -929,6 +947,10 @@ async def notify_users_about_new_apartments_summary(new_listings: List[Listing])
                     # Применяем фильтры пользователя к новым объявлениям
                     filtered_listings = []
                     for listing in listings:
+                        # В DEBUG режиме игнорируем проверку sent_ads
+                        if not debug_force and await is_ad_sent_to_user(user_id, listing.id):
+                            continue
+                        
                         # Проверяем соответствие фильтрам пользователя
                         if matches_user_filters(listing, user_filters, user_id=user_id, log_details=False):
                             filtered_listings.append(listing)
@@ -947,6 +969,9 @@ async def notify_users_about_new_apartments_summary(new_listings: List[Listing])
                             groups = group_similar_listings(filtered_listings)
                             for group in groups:
                                 if len(group) == 1:
+                                    # В DEBUG режиме игнорируем проверку sent_ads
+                                    if not debug_force and await is_ad_sent_to_user(user_id, group[0].id):
+                                        continue
                                     await send_listing_to_user(bot, user_id, group[0], use_ai_valuation=False)
                                 else:
                                     await send_grouped_listings_to_user(bot, user_id, group)

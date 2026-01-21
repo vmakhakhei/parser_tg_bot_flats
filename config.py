@@ -55,6 +55,15 @@ GROUP_BY_VENDOR_FOR_ADDRESS = os.getenv("GROUP_BY_VENDOR_FOR_ADDRESS", "true").l
 # User Agent для запросов
 USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
 
+# Администраторы бота (ID из Telegram)
+# Формат: ADMIN_TELEGRAM_IDS=714797710,123456789 (через запятую)
+# По умолчанию: 714797710
+ADMIN_TELEGRAM_IDS = {
+    int(x)
+    for x in os.getenv("ADMIN_TELEGRAM_IDS", "714797710").split(",")
+    if x.strip().isdigit()
+}
+
 # Импортируем константы из constants/constants.py
 try:
     from constants.constants import (

@@ -9,7 +9,7 @@ Entrypoint для приложения:
 import asyncio
 import logging
 import sys
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.interval import IntervalTrigger
@@ -178,13 +178,15 @@ async def main():
     scheduler = AsyncIOScheduler()
     
     # Проверка объявлений каждые N минут (30 минут по умолчанию)
+    # Задержка первого запуска на 2 минуты, чтобы пользователь успел нажать /start
     scheduler.add_job(
         scheduled_check,
         trigger=IntervalTrigger(minutes=CHECK_INTERVAL),
         args=[bot],
         id='check_listings',
         name='Проверка новых объявлений',
-        replace_existing=True
+        replace_existing=True,
+        next_run_time=datetime.utcnow() + timedelta(minutes=2)
     )
     
     # Очистка старых записей раз в день

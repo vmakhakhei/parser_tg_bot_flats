@@ -7,11 +7,11 @@ from aiogram import Bot, Dispatcher
 from aiogram.enums import ParseMode
 from aiogram.fsm.storage.memory import MemoryStorage
 
-from config import BOT_TOKEN
+from config import BOT_TOKEN, ADMIN_TELEGRAM_IDS
 from database import init_database
 
 # Импортируем handlers
-from bot.handlers import help, search, start
+from bot.handlers import help, search, start, debug
 
 # Импортируем middleware
 from bot.middlewares.error_middleware import ErrorMiddleware
@@ -55,6 +55,7 @@ async def create_bot() -> tuple[Bot, Dispatcher]:
     dp.include_router(start.router)
     dp.include_router(search.router)
     dp.include_router(help.router)
+    dp.include_router(debug.router)
 
     # Временно импортируем старый router для сохранения функциональности
     # Постепенно перенесем все обработчики в новые модули
@@ -87,5 +88,11 @@ async def create_bot() -> tuple[Bot, Dispatcher]:
 
     # Инициализация базы данных
     await init_database()
+    
+    # Логируем загруженных администраторов
+    logger.info(
+        "[admin] loaded admin ids: %s",
+        ADMIN_TELEGRAM_IDS
+    )
 
     return bot, dp

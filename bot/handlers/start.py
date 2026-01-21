@@ -107,14 +107,13 @@ async def cmd_start(message: Message, state: FSMContext):
     
     user_id = message.from_user.id
 
-    # КРИТИЧНО: Создаем/обновляем пользователя и активируем его в user_filters
+    # КРИТИЧНО: Активируем пользователя ДО любого await send_message(...)
     # Это гарантирует, что пользователь будет виден в get_active_users()
     try:
-        from database_turso import upsert_user
+        from database_turso import activate_user
         
-        success = await upsert_user(
+        success = await activate_user(
             telegram_id=user_id,
-            username=message.from_user.username,
             is_active=True
         )
         
@@ -129,18 +128,16 @@ async def cmd_start(message: Message, state: FSMContext):
         logger.warning(f"[user] failed to activate user telegram_id={user_id}: {e}")
         # Продолжаем работу даже если не удалось активировать пользователя
     
-    # Также создаем/обновляем пользователя в таблице users (для совместимости)
+    # Также обновляем username пользователя (для совместимости)
     try:
-        from database import create_or_update_user_turso
-
-        await create_or_update_user_turso(
-            user_id=user_id,
+        from database_turso import upsert_user
+        await upsert_user(
+            telegram_id=user_id,
             username=message.from_user.username,
-            first_name=message.from_user.first_name,
-            last_name=message.from_user.last_name,
+            is_active=True
         )
     except Exception as e:
-        logger.warning(f"Не удалось создать пользователя в Turso: {e}")
+        logger.warning(f"Не удалось обновить username пользователя: {e}")
 
     # Проверяем, есть ли у пользователя фильтры (из старой БД или Turso)
     user_filters = await get_user_filters(user_id)
@@ -212,12 +209,21 @@ async def cmd_start(message: Message, state: FSMContext):
         # Принудительно размещаем по 1 кнопке в ряду
         builder.adjust(1)
 
+        # Безопасное форматирование цен
+        def fmt_price(v):
+            return f"${int(v):,}".replace(",", " ") if v is not None else "—"
+        
+        min_price = user_filters.get('min_price')
+        max_price = user_filters.get('max_price')
+        price_from = fmt_price(min_price)
+        price_to = fmt_price(max_price)
+        
         city_name = user_filters.get("city", "барановичи").title()
         await message.answer(
             f"🏠 <b>Ваши фильтры</b>\n\n"
             f"📍 <b>Город:</b> {city_name}\n"
             f"🚪 <b>Комнат:</b> от {user_filters.get('min_rooms', 1)} до {user_filters.get('max_rooms', 4)}\n"
-            f"💰 <b>Цена:</b> ${user_filters.get('min_price', 0):,} - ${user_filters.get('max_price', 100000):,}\n\n"
+            f"💰 <b>Цена:</b> {price_from} – {price_to}\n\n"
             f"📡 <b>Статус:</b> {status}\n\n"
             f"Я проверяю новые объявления каждые 12 часов и присылаю только те, что подходят под ваши фильтры.\n\n"
             f'💡 <i>Для ИИ-оценки конкретного объявления используйте кнопку "🤖 ИИ Оценка квартиры" под каждым объявлением.</i>',

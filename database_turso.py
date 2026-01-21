@@ -932,6 +932,21 @@ async def get_user_filters_turso(user_id: int) -> Optional[Dict[str, Any]]:
             conn.close()
 
 
+async def activate_user(telegram_id: int, is_active: bool = True) -> bool:
+    """
+    Активирует пользователя (алиас для upsert_user с is_active=True).
+    Гарантирует, что пользователь будет активным.
+    
+    Args:
+        telegram_id: ID пользователя в Telegram
+        is_active: Активен ли пользователь (по умолчанию True)
+    
+    Returns:
+        True если успешно, False при ошибке
+    """
+    return await upsert_user(telegram_id, username=None, is_active=is_active)
+
+
 async def upsert_user(
     telegram_id: int,
     username: Optional[str] = None,

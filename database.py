@@ -241,6 +241,32 @@ async def clear_old_listings(days: int = 30):
 
 # ========== Функции для работы с пользователями ==========
 
+async def activate_user(telegram_id: int, is_active: bool = True) -> bool:
+    """
+    Активирует пользователя (алиас для upsert_user с is_active=True).
+    Гарантирует, что пользователь будет активным.
+    
+    Args:
+        telegram_id: ID пользователя в Telegram
+        is_active: Активен ли пользователь (по умолчанию True)
+    
+    Returns:
+        True если успешно, False при ошибке
+    """
+    from config import USE_TURSO_CACHE
+    if not USE_TURSO_CACHE:
+        return False
+    
+    try:
+        from database_turso import activate_user as activate_user_turso
+        return await activate_user_turso(telegram_id, is_active)
+    except Exception as e:
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.warning(f"Не удалось активировать пользователя {telegram_id} в Turso: {e}")
+        return False
+
+
 async def get_user_filters(user_id: int) -> Optional[Dict[str, Any]]:
     """Получает фильтры пользователя"""
     async with aiosqlite.connect(DATABASE_PATH) as db:

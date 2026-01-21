@@ -659,6 +659,14 @@ async def check_new_listings(bot: Any) -> None:
     except: pass
     # #endregion
     active_users = await get_active_users()
+    
+    # Диагностический лог: 100% понимание, почему уведомления не идут
+    logger.info(
+        "[search][diag] active_users=%s ids=%s",
+        len(active_users),
+        active_users
+    )
+    
     # #region agent log
     try:
         with open('/Users/vmakhakei/TG BOT/.cursor/debug.log', 'a') as f:
