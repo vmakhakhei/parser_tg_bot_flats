@@ -1254,19 +1254,21 @@ async def send_grouped_listings_with_pagination(
             text += f"• {price_text} — {rooms_text} — {area_text}\n"
         
         # Создаем клавиатуру с кнопкой "Показать ещё" если есть еще объявления
-        keyboard = InlineKeyboardMarkup(inline_keyboard=[])
+        keyboard_rows: List[List[InlineKeyboardButton]] = []
         
         if offset + MAX_LISTINGS_PER_GROUP_PREVIEW < len(listings):
             house_hash = str(hash(address))
             next_offset = offset + MAX_LISTINGS_PER_GROUP_PREVIEW
             callback_data = f"show_house|{house_hash}|{next_offset}"
             
-            keyboard.inline_keyboard.append([
+            keyboard_rows.append([
                 InlineKeyboardButton(
                     text="Показать ещё",
                     callback_data=callback_data
                 )
             ])
+        
+        keyboard = InlineKeyboardMarkup(inline_keyboard=keyboard_rows)
         
         # Отправляем сообщение
         await safe_send_message(
