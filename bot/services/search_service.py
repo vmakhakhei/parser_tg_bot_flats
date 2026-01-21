@@ -3,17 +3,19 @@
 """
 
 import logging
+import json
+import time
 from typing import List, Dict, Any, Optional, Tuple
 
 from scrapers.aggregator import ListingsAggregator
 from scrapers.base import Listing
 from database import (
-    get_user_filters,
     get_active_users,
     is_ad_sent_to_user,
     is_duplicate_content,
 )
-from error_logger import log_info, log_warning
+from database_turso import get_user_filters_turso
+from error_logger import log_info, log_warning, log_error
 from config import DEFAULT_SOURCES, USE_TURSO_CACHE
 
 logger = logging.getLogger(__name__)
@@ -716,54 +718,49 @@ async def check_new_listings(
                 f.write(json.dumps({"sessionId":"debug-session","runId":"run1","hypothesisId":"A","location":"search_service.py:524","message":"Processing user","data":{"user_id":user_id},"timestamp":int(time.time()*1000)})+'\n')
         except: pass
         # #endregion
-        user_filters = await get_user_filters(user_id)
+        # ОДИН ИСТОЧНИК ФИЛЬТРОВ: только Turso, без fallback на SQLite
+        user_filters = await get_user_filters_turso(user_id)
+        
+        # ЖЁСТКАЯ ДИАГНОСТИКА: логируем источник фильтров
+        logger.critical(
+            f"[FILTER_DUMP] user={user_id} filters={user_filters} source=TURSO"
+        )
+        
         # #region agent log
         try:
             with open('/Users/vmakhakei/TG BOT/.cursor/debug.log', 'a') as f:
                 f.write(json.dumps({"sessionId":"debug-session","runId":"run1","hypothesisId":"A","location":"search_service.py:526","message":"User filters retrieved","data":{"user_id":user_id,"has_filters":user_filters is not None,"is_active":user_filters.get("is_active") if user_filters else None},"timestamp":int(time.time()*1000)})+'\n')
         except: pass
         # #endregion
-        # ФАТАЛЬНЫЙ ЛОГ: контрольный лог состояния пользователя
-        logger.error(
-            f"[FILTER_STATE] user={user_id} "
-            f"filters={'exists' if user_filters else 'None'} "
-            f"active={'yes' if user_filters and user_filters.get('is_active') else 'unknown'}"
-        )
         
-        # УБРАЛИ проверку is_active - теперь все пользователи с фильтрами считаются активными
-        if not user_filters:
-            # #region agent log
-            try:
-                with open('/Users/vmakhakei/TG BOT/.cursor/debug.log', 'a') as f:
-                    f.write(json.dumps({"sessionId":"debug-session","runId":"run1","hypothesisId":"A","location":"search_service.py:528","message":"Skipping user - no filters","data":{"user_id":user_id},"timestamp":int(time.time()*1000)})+'\n')
-            except: pass
-            # #endregion
-            logger.error(
-                f"[FILTER_STATE] user={user_id} active, but filters=None — redirecting to setup"
-            )
-            
-            # Отправляем пользователя в мастер настройки фильтров
-            try:
-                from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
-                
-                keyboard = InlineKeyboardMarkup(inline_keyboard=[[
-                    InlineKeyboardButton(
-                        text="⚙️ Настроить фильтры",
-                        callback_data="setup_filters"
-                    )
-                ]])
-                
-                await bot.send_message(
-                    user_id,
-                    "⚠️ У вас не настроены фильтры.\n\nДавайте настроим их заново 👇",
-                    reply_markup=keyboard
+        # ФИКС ЛОГИКИ filters is None: это ошибка данных, не нормальное состояние
+        # DEBUG RUN должен игнорировать фильтры
+        from bot.handlers.debug import get_debug_force_run
+        debug_force_run = get_debug_force_run()
+        
+        if user_filters is None:
+            if not force_send and not debug_force_run:
+                logger.error(
+                    f"[FILTER_BUG] user={user_id} is active but filters=None — DB inconsistency"
                 )
-                
-                logger.info(f"[filters] Redirected user {user_id} to filter setup wizard")
-            except Exception as e:
-                logger.error(f"[filters] Failed to send message to user {user_id}: {e}")
+                await _send_setup_filters_message(bot, user_id)
+                continue
             
-            continue  # НЕ search, НЕ notify
+            # ВРЕМЕННЫЙ FAIL-SAFE: для DEBUG режима используем дефолтные фильтры
+            if force_send or debug_force_run:
+                logger.critical("[FILTER_FAILSAFE] forcing default filters for DEBUG run")
+                user_filters = {
+                    "city": "барановичи",
+                    "min_rooms": 1,
+                    "max_rooms": 4,
+                    "min_price": 0,
+                    "max_price": 100000,
+                    "is_active": True,
+                    "ai_mode": False,
+                    "seller_type": None
+                }
+            else:
+                continue
 
         # Проверяем валидность фильтров
         is_valid, error_msg = validate_user_filters(user_filters)
@@ -803,3 +800,32 @@ async def check_new_listings(
         log_warning("search", "⚠️ Новых объявлений нет - проверьте фильтры и логи выше")
 
     log_info("search", "=" * 50)
+
+
+async def _send_setup_filters_message(bot: Any, telegram_id: int) -> None:
+    """
+    Отправляет пользователю сообщение с предложением настроить фильтры
+    
+    Args:
+        bot: Экземпляр бота
+        telegram_id: ID пользователя в Telegram
+    """
+    try:
+        from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+        
+        keyboard = InlineKeyboardMarkup(inline_keyboard=[[
+            InlineKeyboardButton(
+                text="⚙️ Настроить фильтры",
+                callback_data="setup_filters"
+            )
+        ]])
+        
+        await bot.send_message(
+            telegram_id,
+            "⚠️ У вас не настроены фильтры.\n\nДавайте настроим их заново 👇",
+            reply_markup=keyboard
+        )
+        
+        logger.info(f"[filters] Redirected user {telegram_id} to filter setup wizard")
+    except Exception as e:
+        logger.error(f"[filters] Failed to send message to user {telegram_id}: {e}")

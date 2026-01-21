@@ -1512,6 +1512,17 @@ async def cb_filters_done(callback: CallbackQuery):
         
         # Показываем меню ИИ-режима после отправки
         await show_actions_menu(callback.bot, user_id, sent_count, "ИИ-режим")
+        
+        # ПОИСК ПОСЛЕ МАСТЕРА ФИЛЬТРОВ: запускаем поиск сразу после настройки
+        try:
+            from bot.services.search_service import check_new_listings
+            await check_new_listings(
+                bot=callback.bot,
+                force_send=True  # Принудительный запуск после настройки фильтров
+            )
+            logger.info(f"[filters] Search triggered after filter setup for user {user_id}")
+        except Exception as e:
+            logger.error(f"[filters] Failed to trigger search after filter setup: {e}")
     else:
         await status_msg.edit_text(
             "😔 <b>Объявлений не найдено</b>\n\n"
@@ -1521,6 +1532,17 @@ async def cb_filters_done(callback: CallbackQuery):
             "Используйте /start для изменения настроек.",
             parse_mode=ParseMode.HTML
         )
+        
+        # ПОИСК ПОСЛЕ МАСТЕРА ФИЛЬТРОВ: запускаем поиск даже если ничего не найдено
+        try:
+            from bot.services.search_service import check_new_listings
+            await check_new_listings(
+                bot=callback.bot,
+                force_send=True  # Принудительный запуск после настройки фильтров
+            )
+            logger.info(f"[filters] Search triggered after filter setup for user {user_id} (no listings found)")
+        except Exception as e:
+            logger.error(f"[filters] Failed to trigger search after filter setup: {e}")
 
 
 @router.callback_query(F.data == "check_now")
