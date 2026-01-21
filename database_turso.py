@@ -1357,8 +1357,10 @@ async def get_user_filters_turso(telegram_id: int) -> Optional[Dict[str, Any]]:
                 cursor = conn.execute(query, (telegram_id,))
                 row = cursor.fetchone()
                 
+                from constants.constants import LOG_FILTER_LOAD
+                
                 if not row:
-                    logger.critical(f"[FILTER_LOAD] telegram_id={telegram_id} NOT_FOUND")
+                    logger.info(f"{LOG_FILTER_LOAD} user={telegram_id} NOT_FOUND")
                     return None
                 
                 # Конвертируем Row в словарь
@@ -1367,6 +1369,8 @@ async def get_user_filters_turso(telegram_id: int) -> Optional[Dict[str, Any]]:
                 
                 # Конвертируем INTEGER в bool
                 result["is_active"] = bool(result.get("is_active", 1))
+                
+                logger.info(f"{LOG_FILTER_LOAD} user={telegram_id} FOUND")
                 
                 # Обрабатываем city_json: если есть - используем его, иначе city (обратная совместимость)
                 city_data = result.get("city")
@@ -1379,7 +1383,7 @@ async def get_user_filters_turso(telegram_id: int) -> Optional[Dict[str, Any]]:
                         # Если не удалось распарсить, используем city как строку
                         pass
                 
-                logger.critical(f"[FILTER_LOAD] telegram_id={telegram_id} FOUND city_json={'yes' if city_json_str else 'no'}")
+                # Логирование уже выполнено выше
                 
                 return {
                     "telegram_id": result.get("telegram_id"),
