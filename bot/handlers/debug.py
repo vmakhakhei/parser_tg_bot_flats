@@ -18,6 +18,7 @@ router = Router()
 _debug_force_run = False
 _debug_bypass_summary = False
 _debug_ignore_sent_ads = False
+_debug_skip_filter_validation = False
 
 
 @router.message(Command("debug"))
@@ -40,11 +41,12 @@ async def cmd_debug(message: Message):
         )
         return
     
-    global _debug_force_run, _debug_bypass_summary, _debug_ignore_sent_ads
+    global _debug_force_run, _debug_bypass_summary, _debug_ignore_sent_ads, _debug_skip_filter_validation
     
     _debug_force_run = True
     _debug_bypass_summary = True
     _debug_ignore_sent_ads = True
+    _debug_skip_filter_validation = True
     
     await message.answer("🧪 DEBUG RUN запущен. Принудительный прогон поиска…")
     
@@ -72,6 +74,7 @@ async def cmd_debug(message: Message):
         _debug_force_run = False
         _debug_bypass_summary = False
         _debug_ignore_sent_ads = False
+        _debug_skip_filter_validation = False
 
 
 def get_debug_force_run() -> bool:
@@ -90,3 +93,9 @@ def get_debug_ignore_sent_ads() -> bool:
     """Возвращает текущее значение DEBUG_IGNORE_SENT_ADS"""
     global _debug_ignore_sent_ads
     return _debug_ignore_sent_ads
+
+
+def get_debug_skip_filter_validation() -> bool:
+    """Возвращает текущее значение DEBUG_SKIP_FILTER_VALIDATION"""
+    global _debug_skip_filter_validation
+    return _debug_skip_filter_validation

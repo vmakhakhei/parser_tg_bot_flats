@@ -1323,6 +1323,40 @@ async def get_user_filters_turso(telegram_id: int) -> Optional[Dict[str, Any]]:
             conn.close()
 
 
+def has_valid_user_filters(filters: dict | None) -> bool:
+    """
+    Проверяет валидность фильтров пользователя.
+    
+    Фильтры считаются валидными, если:
+    - filters не None
+    - есть city (не пустая строка)
+    - min_rooms и max_rooms заданы (не None)
+    
+    Args:
+        filters: Словарь с фильтрами пользователя или None
+        
+    Returns:
+        True если фильтры валидны, False иначе
+    """
+    if not filters:
+        return False
+    
+    # Проверяем обязательные поля
+    city = filters.get("city")
+    min_rooms = filters.get("min_rooms")
+    max_rooms = filters.get("max_rooms")
+    
+    # city должен быть не None и не пустой строкой
+    if not city or not isinstance(city, str) or not city.strip():
+        return False
+    
+    # min_rooms и max_rooms должны быть заданы (не None)
+    if min_rooms is None or max_rooms is None:
+        return False
+    
+    return True
+
+
 async def activate_user(telegram_id: int, is_active: bool = True) -> bool:
     """
     Активирует пользователя (алиас для upsert_user с is_active=True).

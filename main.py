@@ -223,26 +223,27 @@ async def main():
     interval_hours = CHECK_INTERVAL / 60
     logger.info(f"✅ Планировщик запущен (интервал: {interval_hours:.1f} часов)")
     
-    # Первая проверка при запуске ТОЛЬКО если есть активные пользователи с фильтрами
+    # Первая проверка при запуске ТОЛЬКО если есть активные пользователи с валидными фильтрами
     # Это предотвращает запуск поиска до того, как пользователь нажмет /start
     async def check_and_run_search():
-        from database import get_active_users, get_user_filters
+        from database import get_active_users
+        from database_turso import get_user_filters_turso, has_valid_user_filters
         
         active_users = await get_active_users()
         if not active_users:
             logger.info("[startup] Нет активных пользователей, пропускаю initial search")
             return
         
-        # Проверяем, что у всех активных пользователей есть фильтры
-        invalid_users = []
+        # Проверяем, что у всех активных пользователей есть валидные фильтры
+        users_without_filters = []
         for user_id in active_users:
-            filters = await get_user_filters(user_id)
-            if not filters:
-                invalid_users.append(user_id)
+            filters = await get_user_filters_turso(user_id)
+            if not has_valid_user_filters(filters):
+                users_without_filters.append(user_id)
         
-        if invalid_users:
+        if users_without_filters:
             logger.error(
-                f"[startup] ❌ Active users without filters: {invalid_users}. "
+                f"[startup] ❌ Active users without valid filters: {users_without_filters}. "
                 f"Skipping initial search."
             )
             return

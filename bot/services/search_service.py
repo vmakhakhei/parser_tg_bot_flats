@@ -14,7 +14,7 @@ from database import (
     is_ad_sent_to_user,
     is_duplicate_content,
 )
-from database_turso import get_user_filters_turso
+from database_turso import get_user_filters_turso, has_valid_user_filters
 from error_logger import log_info, log_warning, log_error
 from config import DEFAULT_SOURCES, USE_TURSO_CACHE
 
@@ -726,6 +726,12 @@ async def check_new_listings(
             f"[FILTER_DUMP] user={user_id} filters={user_filters} source=TURSO"
         )
         
+        # ФИНАЛЬНЫЙ ЛОГ: однозначно показывает валидность фильтров
+        filters_valid = has_valid_user_filters(user_filters)
+        logger.critical(
+            f"[SEARCH_ENTRY] user={user_id} filters_valid={filters_valid}"
+        )
+        
         # #region agent log
         try:
             with open('/Users/vmakhakei/TG BOT/.cursor/debug.log', 'a') as f:
@@ -733,15 +739,18 @@ async def check_new_listings(
         except: pass
         # #endregion
         
-        # ФИКС ЛОГИКИ filters is None: это ошибка данных, не нормальное состояние
-        # DEBUG RUN должен игнорировать фильтры
-        from bot.handlers.debug import get_debug_force_run
+        # ЕДИНАЯ ПРОВЕРКА ФИЛЬТРОВ: используем has_valid_user_filters
+        # DEBUG RUN должен игнорировать проверку фильтров
+        from bot.handlers.debug import get_debug_force_run, get_debug_skip_filter_validation
         debug_force_run = get_debug_force_run()
+        skip_filter_validation = get_debug_skip_filter_validation()
         
-        if user_filters is None:
+        if skip_filter_validation:
+            logger.warning("[DEBUG] Skipping filter validation")
+        elif not has_valid_user_filters(user_filters):
             if not force_send and not debug_force_run:
-                logger.error(
-                    f"[FILTER_BUG] user={user_id} is active but filters=None — DB inconsistency"
+                logger.critical(
+                    f"[FILTER_STATE] user={user_id} filters invalid → redirect to setup"
                 )
                 await _send_setup_filters_message(bot, user_id)
                 continue
@@ -762,10 +771,9 @@ async def check_new_listings(
             else:
                 continue
 
-        # Проверяем валидность фильтров
-        is_valid, error_msg = validate_user_filters(user_filters)
-        if not is_valid:
-            log_warning("bot", f"Пропускаю пользователя {user_id}: {error_msg}")
+        # Проверяем валидность фильтров (используем единую функцию)
+        if not skip_filter_validation and not has_valid_user_filters(user_filters):
+            log_warning("bot", f"Пропускаю пользователя {user_id}: фильтры невалидны")
             continue
 
         # Получаем объявления для пользователя
