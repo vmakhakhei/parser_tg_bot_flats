@@ -429,7 +429,11 @@ async def _process_listing_for_user(
         return False
 
     # Проверяем, не отправляли ли уже этому пользователю
-    if await is_ad_sent_to_user(user_id, listing.id):
+    # В DEBUG режиме игнорируем проверку sent_ads
+    from bot.handlers.debug import get_debug_ignore_sent_ads
+    debug_ignore_sent_ads = get_debug_ignore_sent_ads()
+    
+    if not debug_ignore_sent_ads and await is_ad_sent_to_user(user_id, listing.id):
         return False
 
     # Проверяем глобальную дедупликацию по контенту
@@ -525,7 +529,11 @@ async def _process_user_listings_normal_mode(
         except: pass
         # #endregion
         
-        if await is_ad_sent_to_user(user_id, listing.id):
+        # В DEBUG режиме игнорируем проверку sent_ads
+        from bot.handlers.debug import get_debug_ignore_sent_ads
+        debug_ignore_sent_ads = get_debug_ignore_sent_ads()
+        
+        if not debug_ignore_sent_ads and await is_ad_sent_to_user(user_id, listing.id):
             already_sent_count += 1
             # #region agent log
             try:
@@ -640,8 +648,21 @@ async def _process_user_listings_normal_mode(
     return user_new_count
 
 
-async def check_new_listings(bot: Any) -> None:
-    """Проверяет новые объявления и отправляет их активным пользователям."""
+async def check_new_listings(
+    bot: Any,
+    force_send: bool = False,
+    ignore_sent_ads: bool = False,
+    bypass_summary: bool = False
+) -> None:
+    """
+    Проверяет новые объявления и отправляет их активным пользователям.
+    
+    Args:
+        bot: Экземпляр бота
+        force_send: Принудительная отправка (игнорирует некоторые проверки)
+        ignore_sent_ads: Игнорировать проверку sent_ads
+        bypass_summary: Обойти summary и отправлять полные уведомления
+    """
     from bot.services.ai_service import check_new_listings_ai_mode
 
     reset_filter_counters()
@@ -702,6 +723,13 @@ async def check_new_listings(bot: Any) -> None:
                 f.write(json.dumps({"sessionId":"debug-session","runId":"run1","hypothesisId":"A","location":"search_service.py:526","message":"User filters retrieved","data":{"user_id":user_id,"has_filters":user_filters is not None,"is_active":user_filters.get("is_active") if user_filters else None},"timestamp":int(time.time()*1000)})+'\n')
         except: pass
         # #endregion
+        # ФАТАЛЬНЫЙ ЛОГ: контрольный лог состояния пользователя
+        logger.error(
+            f"[FILTER_STATE] user={user_id} "
+            f"filters={'exists' if user_filters else 'None'} "
+            f"active={'yes' if user_filters and user_filters.get('is_active') else 'unknown'}"
+        )
+        
         # УБРАЛИ проверку is_active - теперь все пользователи с фильтрами считаются активными
         if not user_filters:
             # #region agent log
@@ -710,7 +738,10 @@ async def check_new_listings(bot: Any) -> None:
                     f.write(json.dumps({"sessionId":"debug-session","runId":"run1","hypothesisId":"A","location":"search_service.py:528","message":"Skipping user - no filters","data":{"user_id":user_id},"timestamp":int(time.time()*1000)})+'\n')
             except: pass
             # #endregion
-            log_warning("search", f"Пропускаю пользователя {user_id}: фильтры не настроены")
+            logger.error(
+                f"[CRITICAL] Пользователь {user_id} активен, "
+                f"но filters=None — это ошибка инициализации"
+            )
             continue
 
         # Проверяем валидность фильтров

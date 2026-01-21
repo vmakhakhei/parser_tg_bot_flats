@@ -285,6 +285,72 @@ async def get_user_filters(user_id: int) -> Optional[Dict[str, Any]]:
         return None
 
 
+async def ensure_user_filters(telegram_id: int) -> bool:
+    """
+    Гарантирует наличие фильтров у пользователя.
+    Создает дефолтные фильтры, если их нет.
+    
+    Args:
+        telegram_id: ID пользователя в Telegram
+    
+    Returns:
+        True если фильтры созданы/существуют, False при ошибке
+    """
+    import logging
+    logger = logging.getLogger(__name__)
+    
+    try:
+        # Проверяем, есть ли уже фильтры
+        user_filters = await get_user_filters(telegram_id)
+        
+        if user_filters:
+            # Фильтры уже существуют
+            return True
+        
+        # Фильтров нет - создаем дефолтные
+        # Проверяем, используется ли Turso
+        from config import USE_TURSO_CACHE
+        
+        if USE_TURSO_CACHE:
+            try:
+                from database_turso import set_user_filters_turso
+                success = await set_user_filters_turso(
+                    user_id=telegram_id,
+                    min_price=0,
+                    max_price=100000,
+                    rooms=[1, 2, 3, 4],
+                    region="барановичи",
+                    active=True,
+                    ai_mode=False,
+                    seller_type=None
+                )
+                if success:
+                    logger.info(f"[filters] Созданы дефолтные фильтры для {telegram_id}")
+                    return True
+            except Exception as e:
+                logger.warning(f"Не удалось создать фильтры в Turso для {telegram_id}: {e}")
+        
+        # Fallback на SQLite
+        await set_user_filters(
+            user_id=telegram_id,
+            city="барановичи",
+            min_rooms=1,
+            max_rooms=4,
+            min_price=0,
+            max_price=100000,
+            is_active=True,
+            ai_mode=False,
+            seller_type=None
+        )
+        
+        logger.info(f"[filters] Созданы дефолтные фильтры для {telegram_id}")
+        return True
+        
+    except Exception as e:
+        logger.error(f"Ошибка создания фильтров для {telegram_id}: {e}")
+        return False
+
+
 async def set_user_filters(
     user_id: int,
     city: str = "барановичи",

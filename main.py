@@ -223,8 +223,18 @@ async def main():
     interval_hours = CHECK_INTERVAL / 60
     logger.info(f"✅ Планировщик запущен (интервал: {interval_hours:.1f} часов)")
     
-    # Первая проверка при запуске (неблокирующая, в фоне)
-    asyncio.create_task(run_search_once(bot))
+    # Первая проверка при запуске ТОЛЬКО если есть активные пользователи с фильтрами
+    # Это предотвращает запуск поиска до того, как пользователь нажмет /start
+    async def check_and_run_search():
+        from database import get_active_users
+        active_users = await get_active_users()
+        if active_users:
+            logger.info(f"[startup] Найдено {len(active_users)} активных пользователей, запускаю initial search")
+            await run_search_once(bot)
+        else:
+            logger.info("[startup] Нет активных пользователей, пропускаю initial search")
+    
+    asyncio.create_task(check_and_run_search())
     
     # Запуск бота
     logger.info("🚀 Бот запущен и готов к работе!")

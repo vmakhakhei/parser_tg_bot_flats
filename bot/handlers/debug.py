@@ -14,8 +14,10 @@ from bot.services.notification_service import notify_users_about_new_apartments_
 logger = logging.getLogger(__name__)
 router = Router()
 
-# Глобальная переменная для DEBUG_FORCE_RUN (можно изменять во время выполнения)
+# Глобальные переменные для DEBUG режима (можно изменять во время выполнения)
 _debug_force_run = False
+_debug_bypass_summary = False
+_debug_ignore_sent_ads = False
 
 
 @router.message(Command("debug"))
@@ -38,32 +40,28 @@ async def cmd_debug(message: Message):
         )
         return
     
+    global _debug_force_run, _debug_bypass_summary, _debug_ignore_sent_ads
+    
     _debug_force_run = True
+    _debug_bypass_summary = True
+    _debug_ignore_sent_ads = True
     
     await message.answer("🧪 DEBUG RUN запущен. Принудительный прогон поиска…")
     
     try:
-        # Создаем агрегатор и получаем объявления
-        aggregator = ListingsAggregator()
-        listings = await aggregator.fetch_all_listings(
-            city="барановичи",
-            min_rooms=1,
-            max_rooms=4,
-            min_price=0,
-            max_price=100000,
-        )
+        # Используем check_new_listings с флагами для DEBUG режима
+        from bot.services.search_service import check_new_listings
         
-        # Для debug режима используем все объявления как "новые"
-        # В реальном режиме это будут только новые из БД
-        await notify_users_about_new_apartments_summary(
-            listings,
-            force=True
+        await check_new_listings(
+            bot=message.bot,
+            force_send=True,
+            ignore_sent_ads=True,
+            bypass_summary=True
         )
         
         await message.answer(
             f"✅ DEBUG RUN завершён\n"
-            f"Найдено объявлений: {len(listings)}\n"
-            f"Передано в notify: {len(listings)}"
+            f"Запущен принудительный поиск с игнорированием sent_ads и summary"
         )
         
     except Exception as e:
@@ -72,9 +70,23 @@ async def cmd_debug(message: Message):
     
     finally:
         _debug_force_run = False
+        _debug_bypass_summary = False
+        _debug_ignore_sent_ads = False
 
 
 def get_debug_force_run() -> bool:
     """Возвращает текущее значение DEBUG_FORCE_RUN"""
     global _debug_force_run
     return _debug_force_run or DEBUG_FORCE_RUN
+
+
+def get_debug_bypass_summary() -> bool:
+    """Возвращает текущее значение DEBUG_BYPASS_SUMMARY"""
+    global _debug_bypass_summary
+    return _debug_bypass_summary
+
+
+def get_debug_ignore_sent_ads() -> bool:
+    """Возвращает текущее значение DEBUG_IGNORE_SENT_ADS"""
+    global _debug_ignore_sent_ads
+    return _debug_ignore_sent_ads

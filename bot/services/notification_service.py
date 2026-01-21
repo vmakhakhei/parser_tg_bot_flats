@@ -237,11 +237,12 @@ async def send_listing_to_user(
         # Идемпотентная проверка: если объявление уже было отправлено этому пользователю - не отправляем
         # В DEBUG режиме игнорируем проверку sent_ads
         from constants.constants import DEBUG_FORCE_RUN
-        from bot.handlers.debug import get_debug_force_run
+        from bot.handlers.debug import get_debug_force_run, get_debug_ignore_sent_ads
         
         debug_force = get_debug_force_run() or DEBUG_FORCE_RUN
+        debug_ignore_sent_ads = get_debug_ignore_sent_ads()
         
-        if not debug_force and await is_ad_sent_to_user(user_id, listing.id):
+        if not (debug_force or debug_ignore_sent_ads) and await is_ad_sent_to_user(user_id, listing.id):
             log_info(
                 "notification",
                 f"Объявление {listing.id} уже было отправлено пользователю {user_id}, пропускаем"
@@ -878,7 +879,11 @@ def score_group(group: List[Listing]) -> float:
     return count_score + price_score + area_score
 
 
-async def notify_users_about_new_apartments_summary(new_listings: List[Listing], force: bool = False) -> None:
+async def notify_users_about_new_apartments_summary(
+    new_listings: List[Listing],
+    force: bool = False,
+    bypass_summary: bool = False
+) -> None:
     """
     Отправляет summary-уведомления пользователям о новых объявлениях.
     
@@ -888,12 +893,15 @@ async def notify_users_about_new_apartments_summary(new_listings: List[Listing],
     Args:
         new_listings: Список Listing объектов - реально новых объявлений (уже в БД)
         force: Принудительный режим (игнорирует проверки sent_ads)
+        bypass_summary: Обойти summary и отправлять полные уведомления (для DEBUG режима)
     """
     from constants.constants import DEBUG_FORCE_RUN
-    from bot.handlers.debug import get_debug_force_run
+    from bot.handlers.debug import get_debug_force_run, get_debug_bypass_summary, get_debug_ignore_sent_ads
     
     # Проверяем DEBUG режим
     debug_force = force or get_debug_force_run() or DEBUG_FORCE_RUN
+    debug_bypass_summary = bypass_summary or get_debug_bypass_summary()
+    debug_ignore_sent_ads = get_debug_ignore_sent_ads()
     
     # Явный лог DEBUG RUN
     logger.warning(
@@ -948,7 +956,7 @@ async def notify_users_about_new_apartments_summary(new_listings: List[Listing],
                     filtered_listings = []
                     for listing in listings:
                         # В DEBUG режиме игнорируем проверку sent_ads
-                        if not debug_force and await is_ad_sent_to_user(user_id, listing.id):
+                        if not (debug_force or debug_ignore_sent_ads) and await is_ad_sent_to_user(user_id, listing.id):
                             continue
                         
                         # Проверяем соответствие фильтрам пользователя
@@ -956,6 +964,20 @@ async def notify_users_about_new_apartments_summary(new_listings: List[Listing],
                             filtered_listings.append(listing)
                     
                     if not filtered_listings:
+                        continue
+                    
+                    # Если bypass_summary=True, отправляем полные уведомления для всех
+                    if debug_bypass_summary or bypass_summary:
+                        # DEBUG режим: отправляем полные уведомления, игнорируя summary
+                        if user_filters.get("ai_mode"):
+                            await check_new_listings_ai_mode(bot, user_id, user_filters, filtered_listings)
+                        else:
+                            groups = group_similar_listings(filtered_listings)
+                            for group in groups:
+                                if len(group) == 1:
+                                    await send_listing_to_user(bot, user_id, group[0], use_ai_valuation=False)
+                                else:
+                                    await send_grouped_listings_to_user(bot, user_id, group)
                         continue
                     
                     # Получаем delivery_mode пользователя (по умолчанию "brief")

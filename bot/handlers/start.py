@@ -139,6 +139,14 @@ async def cmd_start(message: Message, state: FSMContext):
     except Exception as e:
         logger.warning(f"Не удалось обновить username пользователя: {e}")
 
+    # КРИТИЧНО: Гарантируем наличие фильтров у пользователя
+    # Это должно происходить ДО проверки фильтров
+    try:
+        from database import ensure_user_filters
+        await ensure_user_filters(telegram_id=user_id)
+    except Exception as e:
+        logger.warning(f"Не удалось гарантировать фильтры для пользователя {user_id}: {e}")
+
     # Проверяем, есть ли у пользователя фильтры (из старой БД или Turso)
     user_filters = await get_user_filters(user_id)
 
