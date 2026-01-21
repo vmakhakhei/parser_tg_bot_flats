@@ -788,6 +788,8 @@ def migrate_user_filters_schema(conn):
                     max_rooms INTEGER,
                     min_price INTEGER,
                     max_price INTEGER,
+                    seller_type TEXT DEFAULT 'all',
+                    delivery_mode TEXT DEFAULT 'brief',
                     is_active INTEGER DEFAULT 1,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
@@ -813,6 +815,8 @@ def migrate_user_filters_schema(conn):
                 max_rooms INTEGER,
                 min_price INTEGER,
                 max_price INTEGER,
+                seller_type TEXT DEFAULT 'all',
+                delivery_mode TEXT DEFAULT 'brief',
                 is_active INTEGER DEFAULT 1,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
@@ -1001,6 +1005,8 @@ async def ensure_tables_exist():
                             max_rooms INTEGER DEFAULT 4,
                             min_price INTEGER DEFAULT 0,
                             max_price INTEGER DEFAULT 100000,
+                            seller_type TEXT DEFAULT 'all',
+                            delivery_mode TEXT DEFAULT 'brief',
                             is_active INTEGER DEFAULT 1,
                             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                             updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
@@ -1014,6 +1020,18 @@ async def ensure_tables_exist():
                 else:
                     # Проверяем схему и мигрируем при необходимости
                     migrate_user_filters_schema(conn)
+                    
+                    # Добавляем seller_type и delivery_mode если их нет
+                    try:
+                        cols = {r[1] for r in conn.execute("PRAGMA table_info(user_filters)").fetchall()}
+                        if "seller_type" not in cols:
+                            conn.execute("ALTER TABLE user_filters ADD COLUMN seller_type TEXT DEFAULT 'all'")
+                            logger.info("[migration] Добавлена колонка seller_type в user_filters")
+                        if "delivery_mode" not in cols:
+                            conn.execute("ALTER TABLE user_filters ADD COLUMN delivery_mode TEXT DEFAULT 'brief'")
+                            logger.info("[migration] Добавлена колонка delivery_mode в user_filters")
+                    except Exception as e:
+                        logger.warning(f"[migration] Ошибка добавления колонок seller_type/delivery_mode: {e}")
                 
                 # 3. Таблица apartments (основная таблица объявлений)
                 cursor = conn.execute("""
@@ -1279,41 +1297,41 @@ async def get_user_filters_turso(telegram_id: int) -> Optional[Dict[str, Any]]:
     
     try:
         def _execute():
-            # Используем новую схему (telegram_id как PRIMARY KEY)
-            cursor = conn.execute("""
-                SELECT * FROM user_filters 
-                WHERE telegram_id = ? 
+            with turso_transaction() as conn:
+                query = """
+                SELECT telegram_id, city, min_rooms, max_rooms, min_price, max_price,
+                       seller_type, delivery_mode, is_active
+                FROM user_filters
+                WHERE telegram_id = ?
                 LIMIT 1
-            """, (telegram_id,))
-            row = cursor.fetchone()
-            
-            if row:
+                """
+                cursor = conn.execute(query, (telegram_id,))
+                row = cursor.fetchone()
+                
+                if not row:
+                    logger.warning(f"[FILTER_LOAD] telegram_id={telegram_id} NOT FOUND")
+                    return None
+                
                 # Конвертируем Row в словарь
                 columns = [desc[0] for desc in cursor.description]
                 result = dict(zip(columns, row))
                 
-                # Новая схема: конвертируем min_rooms/max_rooms в rooms
-                if "min_rooms" in result and "max_rooms" in result:
-                    min_rooms = result.get("min_rooms", 1)
-                    max_rooms = result.get("max_rooms", 4)
-                    result["rooms"] = list(range(min_rooms, max_rooms + 1))
-                    result["region"] = result.get("city", "барановичи")
-                    result["active"] = bool(result.get("is_active", 1))
-                else:
-                    # Старая схема: конвертируем rooms из JSON строки в список
-                    if result.get("rooms"):
-                        try:
-                            result["rooms"] = json.loads(result["rooms"])
-                        except:
-                            result["rooms"] = []
-                    else:
-                        result["rooms"] = []
-                    # Конвертируем INTEGER в bool
-                    result["active"] = bool(result.get("active", 1))
-                    result["ai_mode"] = bool(result.get("ai_mode", 0))
+                # Конвертируем INTEGER в bool
+                result["is_active"] = bool(result.get("is_active", 1))
                 
-                return result
-            return None
+                logger.info(f"[FILTER_LOAD] telegram_id={telegram_id} FOUND")
+                
+                return {
+                    "telegram_id": result.get("telegram_id"),
+                    "city": result.get("city"),
+                    "min_rooms": result.get("min_rooms"),
+                    "max_rooms": result.get("max_rooms"),
+                    "min_price": result.get("min_price"),
+                    "max_price": result.get("max_price"),
+                    "seller_type": result.get("seller_type"),
+                    "delivery_mode": result.get("delivery_mode"),
+                    "is_active": result.get("is_active"),
+                }
         
         result = await asyncio.to_thread(_execute)
         
@@ -1466,71 +1484,90 @@ async def upsert_user(
         return False
 
 
-async def set_user_filters_turso(
-    telegram_id: int,
-    city: str = "барановичи",
-    min_rooms: int = 1,
-    max_rooms: int = 4,
-    min_price: int = 0,
-    max_price: int = 100000,
-    active: bool = True,
-    seller_type: Optional[str] = None
-) -> bool:
+async def set_user_filters_turso(telegram_id: int, filters: Dict[str, Any]) -> None:
     """
     Устанавливает фильтры пользователя в Turso (атомарная операция)
     Использует telegram_id как PRIMARY KEY для ON CONFLICT
     
     Args:
         telegram_id: ID пользователя в Telegram
-        city: Город поиска
-        min_rooms: Минимальное количество комнат
-        max_rooms: Максимальное количество комнат
-        min_price: Минимальная цена
-        max_price: Максимальная цена
-        active: Активен ли пользователь
-        seller_type: Тип продавца (None = все, "owner" = только собственники, "company" = только агентства)
+        filters: Словарь с фильтрами (city, min_rooms, max_rooms, min_price, max_price, seller_type, delivery_mode)
     """
+    logger.critical(
+        "[FILTER_SAVE] telegram_id=%s city=%s rooms=%s-%s price=%s-%s seller=%s mode=%s",
+        telegram_id,
+        filters.get("city"),
+        filters.get("min_rooms"),
+        filters.get("max_rooms"),
+        filters.get("min_price"),
+        filters.get("max_price"),
+        filters.get("seller_type"),
+        filters.get("delivery_mode", "brief"),
+    )
+    
     try:
         def _execute():
             with turso_transaction() as conn:
-                conn.execute("""
+                conn.execute(
+                    """
                     INSERT INTO user_filters (
                         telegram_id, city, min_rooms, max_rooms,
-                        min_price, max_price, is_active, updated_at
+                        min_price, max_price, seller_type,
+                        delivery_mode, is_active
                     )
-                    VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
-                    ON CONFLICT(telegram_id)
-                    DO UPDATE SET
-                        city = excluded.city,
-                        min_rooms = excluded.min_rooms,
-                        max_rooms = excluded.max_rooms,
-                        min_price = excluded.min_price,
-                        max_price = excluded.max_price,
-                        is_active = excluded.is_active,
-                        updated_at = CURRENT_TIMESTAMP
-                """, (
-                    telegram_id,
-                    city,
-                    min_rooms,
-                    max_rooms,
-                    min_price,
-                    max_price,
-                    1 if active else 0
-                ))
-                # Commit происходит автоматически
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1)
+                    ON CONFLICT(telegram_id) DO UPDATE SET
+                        city=excluded.city,
+                        min_rooms=excluded.min_rooms,
+                        max_rooms=excluded.max_rooms,
+                        min_price=excluded.min_price,
+                        max_price=excluded.max_price,
+                        seller_type=excluded.seller_type,
+                        delivery_mode=excluded.delivery_mode,
+                        is_active=excluded.is_active,
+                        updated_at=CURRENT_TIMESTAMP
+                    """,
+                    (
+                        telegram_id,
+                        filters.get("city"),
+                        filters.get("min_rooms", 0),
+                        filters.get("max_rooms", 99),
+                        filters.get("min_price", 0),
+                        filters.get("max_price", 99999999),
+                        filters.get("seller_type", "all"),
+                        filters.get("delivery_mode", "brief"),
+                    ),
+                )
         
         await asyncio.to_thread(_execute)
-        
-        # ФАТАЛЬНЫЙ ЛОГ сохранения
-        logger.critical(
-            "[FILTER_SAVE] telegram_id=%s city=%s rooms=%s-%s price=%s-%s seller_type=%s",
-            telegram_id, city, min_rooms, max_rooms, min_price, max_price, seller_type
-        )
-        
-        return True
     except Exception as e:
         log_error("turso_filters", f"Ошибка установки фильтров пользователя {telegram_id}", e)
-        return False
+        raise
+
+
+async def ensure_user_filters(telegram_id: int) -> None:
+    """
+    Гарантирует наличие фильтров у пользователя.
+    Создает дефолтные фильтры, если их нет.
+    
+    Args:
+        telegram_id: ID пользователя в Telegram
+    """
+    existing = await get_user_filters_turso(telegram_id)
+    if existing is None:
+        await set_user_filters_turso(
+            telegram_id,
+            {
+                "city": None,
+                "min_rooms": 1,
+                "max_rooms": 4,
+                "min_price": 0,
+                "max_price": 100000,
+                "seller_type": "all",
+                "delivery_mode": "brief",
+            },
+        )
+        logger.info(f"[FILTER_INIT] default filters created for {telegram_id}")
 
 
 async def get_latest_ad_external_id(source: str, city: str = None) -> Optional[str]:

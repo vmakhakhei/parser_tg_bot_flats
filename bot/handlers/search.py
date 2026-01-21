@@ -36,15 +36,19 @@ async def cmd_start_monitoring(message: Message):
         )
         return
 
+    from database_turso import get_user_filters_turso
+    current_filters = await get_user_filters_turso(user_id) or {}
     await set_user_filters_turso(
-        telegram_id=user_id,
-        city=user_filters.get("city", "барановичи"),
-        min_rooms=user_filters.get("min_rooms", 1),
-        max_rooms=user_filters.get("max_rooms", 4),
-        min_price=user_filters.get("min_price", 0),
-        max_price=user_filters.get("max_price", 100000),
-        active=True,
-        seller_type=user_filters.get("seller_type")
+        user_id,
+        {
+            "city": current_filters.get("city", "барановичи"),
+            "min_rooms": current_filters.get("min_rooms", 1),
+            "max_rooms": current_filters.get("max_rooms", 4),
+            "min_price": current_filters.get("min_price", 0),
+            "max_price": current_filters.get("max_price", 100000),
+            "seller_type": current_filters.get("seller_type", "all"),
+            "delivery_mode": current_filters.get("delivery_mode", "brief"),
+        }
     )
     await message.answer("✅ Мониторинг включен!")
 
@@ -61,15 +65,19 @@ async def cmd_stop_monitoring(message: Message):
         )
         return
 
+    from database_turso import get_user_filters_turso
+    current_filters = await get_user_filters_turso(user_id) or {}
     await set_user_filters_turso(
-        telegram_id=user_id,
-        city=user_filters.get("city", "барановичи"),
-        min_rooms=user_filters.get("min_rooms", 1),
-        max_rooms=user_filters.get("max_rooms", 4),
-        min_price=user_filters.get("min_price", 0),
-        max_price=user_filters.get("max_price", 100000),
-        active=False,
-        seller_type=user_filters.get("seller_type")
+        user_id,
+        {
+            "city": current_filters.get("city", "барановичи"),
+            "min_rooms": current_filters.get("min_rooms", 1),
+            "max_rooms": current_filters.get("max_rooms", 4),
+            "min_price": current_filters.get("min_price", 0),
+            "max_price": current_filters.get("max_price", 100000),
+            "seller_type": current_filters.get("seller_type", "all"),
+            "delivery_mode": current_filters.get("delivery_mode", "brief"),
+        }
     )
     await message.answer("❌ Мониторинг отключен.")
 

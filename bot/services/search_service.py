@@ -761,6 +761,15 @@ async def check_new_listings(
         # ОДИН ИСТОЧНИК ФИЛЬТРОВ: только Turso, без fallback на SQLite
         user_filters = await get_user_filters_turso(user_id)
         
+        # ЧАСТЬ D — БЛОКИРОВКА ПОИСКА БЕЗ ФИЛЬТРОВ (ФИНАЛЬНО)
+        if not user_filters or not user_filters.get("city"):
+            await bot.send_message(
+                user_id,
+                "⚠️ Сначала настройте фильтры"
+            )
+            logger.warning(f"[SEARCH_BLOCKED] user={user_id} filters missing or city not set")
+            continue
+        
         # ЖЁСТКАЯ ДИАГНОСТИКА: логируем источник фильтров
         logger.critical(
             f"[FILTER_DUMP] user={user_id} filters={user_filters} source=TURSO"

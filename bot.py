@@ -84,14 +84,16 @@ async def sync_user_filters_to_turso(
         rooms = list(range(min_rooms, max_rooms + 1)) if min_rooms > 0 and max_rooms > 0 else None
         
         return await set_user_filters_turso(
-            telegram_id=user_id,
-            min_price=min_price,
-            max_price=max_price if max_price < 1000000 else None,
-            rooms=rooms,
-            region=city,
-            active=is_active,
-            ai_mode=ai_mode,
-            seller_type=seller_type
+            user_id,
+            {
+                "city": city,
+                "min_rooms": min_rooms,
+                "max_rooms": max_rooms,
+                "min_price": min_price,
+                "max_price": max_price if max_price < 1000000 else 99999999,
+                "seller_type": seller_type or "all",
+                "delivery_mode": "brief",
+            }
         )
     except Exception as e:
         logger.warning(f"Не удалось синхронизировать фильтры в Turso: {e}")
@@ -2076,14 +2078,16 @@ async def cb_setup_mode(callback: CallbackQuery, state: FSMContext):
     from database_turso import set_user_filters_turso
     
     await set_user_filters_turso(
-        telegram_id=user_id,
-        city=city,
-        min_rooms=min_rooms,
-        max_rooms=max_rooms,
-        min_price=min_price,
-        max_price=max_price,
-        active=True,
-        seller_type=seller_type
+        user_id,
+        {
+            "city": city,
+            "min_rooms": min_rooms,
+            "max_rooms": max_rooms,
+            "min_price": min_price,
+            "max_price": max_price,
+            "seller_type": seller_type or "all",
+            "delivery_mode": "brief",
+        }
     )
     
     await state.clear()
@@ -2586,15 +2590,19 @@ async def cb_user_set_rooms(callback: CallbackQuery):
     min_rooms = int(parts[2])
     max_rooms = int(parts[3])
     
-    user_filters = await get_user_filters(user_id)
+    from database_turso import get_user_filters_turso
+    current_filters = await get_user_filters_turso(user_id) or {}
     await set_user_filters_turso(
-        telegram_id=user_id,
-        city=user_filters.get("city", "барановичи") if user_filters else "барановичи",
-        min_rooms=min_rooms,
-        max_rooms=max_rooms,
-        min_price=user_filters.get("min_price", 0) if user_filters else 0,
-        max_price=user_filters.get("max_price", 100000) if user_filters else 100000,
-        active=True
+        user_id,
+        {
+            "city": current_filters.get("city", "барановичи"),
+            "min_rooms": min_rooms,
+            "max_rooms": max_rooms,
+            "min_price": current_filters.get("min_price", 0),
+            "max_price": current_filters.get("max_price", 100000),
+            "seller_type": current_filters.get("seller_type", "all"),
+            "delivery_mode": current_filters.get("delivery_mode", "brief"),
+        }
     )
     
     await callback.answer(f"✅ Комнаты: {min_rooms}-{max_rooms}")
@@ -2707,15 +2715,19 @@ async def cb_set_seller_type(callback: CallbackQuery):
         seller_type = "owner"
     # seller_data == "all" -> seller_type = None
     
+    from database_turso import get_user_filters_turso
+    current_filters = await get_user_filters_turso(user_id) or {}
     await set_user_filters_turso(
-        telegram_id=user_id,
-        city=user_filters.get("city") if user_filters else "барановичи",
-        min_rooms=user_filters.get("min_rooms") or 1 if user_filters else 1,
-        max_rooms=user_filters.get("max_rooms") or 4 if user_filters else 4,
-        min_price=user_filters.get("min_price") or 0 if user_filters else 0,
-        max_price=user_filters.get("max_price") or 100000 if user_filters else 100000,
-        active=True,
-        seller_type=seller_type
+        user_id,
+        {
+            "city": current_filters.get("city", "барановичи"),
+            "min_rooms": current_filters.get("min_rooms", 1),
+            "max_rooms": current_filters.get("max_rooms", 4),
+            "min_price": current_filters.get("min_price", 0),
+            "max_price": current_filters.get("max_price", 100000),
+            "seller_type": seller_type or "all",
+            "delivery_mode": current_filters.get("delivery_mode", "brief"),
+        }
     )
     
     seller_text = "Все" if not seller_type else ("Только собственники" if seller_type == "owner" else "Только агентства")
@@ -3232,28 +3244,27 @@ async def cb_user_set_city(callback: CallbackQuery, state: FSMContext):
     
     # Устанавливаем город из списка
     user_filters = await get_user_filters(user_id)
-    if not user_filters:
+    from database_turso import get_user_filters_turso
+    current_filters = await get_user_filters_turso(user_id) or {}
+    
+    if not current_filters:
         # Если фильтров нет, создаём новые только с городом
         await set_user_filters_turso(
-            telegram_id=user_id,
-            city=city_data,
-            min_rooms=1,  # Временные значения, пользователь должен настроить
-            max_rooms=4,
-            min_price=0,
-            max_price=100000,
-            active=False  # Не активен, пока не настроены все параметры
+            user_id,
+            {
+                "city": city_data,
+                "min_rooms": 1,
+                "max_rooms": 4,
+                "min_price": 0,
+                "max_price": 100000,
+                "seller_type": "all",
+                "delivery_mode": "brief",
+            }
         )
     else:
         # Обновляем только город, остальные параметры оставляем как есть
-        await set_user_filters_turso(
-            telegram_id=user_id,
-            city=city_data,
-            min_rooms=user_filters.get("min_rooms") or 1,
-            max_rooms=user_filters.get("max_rooms") or 4,
-            min_price=user_filters.get("min_price") or 0,
-            max_price=user_filters.get("max_price") or 100000,
-            active=user_filters.get("is_active", False)
-        )
+        current_filters["city"] = city_data
+        await set_user_filters_turso(user_id, current_filters)
     
     await callback.answer(f"✅ Город установлен: {city_data.title()}")
     await cb_setup_filters(callback)
@@ -3298,28 +3309,27 @@ async def process_city_input(message: Message, state: FSMContext):
     
     # Сохраняем город
     user_filters = await get_user_filters(user_id)
-    if not user_filters:
+    from database_turso import get_user_filters_turso
+    current_filters = await get_user_filters_turso(user_id) or {}
+    
+    if not current_filters:
         # Если фильтров нет, создаём новые только с городом
         await set_user_filters_turso(
-            telegram_id=user_id,
-            city=normalized_city,
-            min_rooms=1,  # Временные значения, пользователь должен настроить
-            max_rooms=4,
-            min_price=0,
-            max_price=100000,
-            active=False  # Не активен, пока не настроены все параметры
+            user_id,
+            {
+                "city": normalized_city,
+                "min_rooms": 1,
+                "max_rooms": 4,
+                "min_price": 0,
+                "max_price": 100000,
+                "seller_type": "all",
+                "delivery_mode": "brief",
+            }
         )
     else:
         # Обновляем только город, остальные параметры оставляем как есть
-        await set_user_filters_turso(
-            telegram_id=user_id,
-            city=normalized_city,
-            min_rooms=user_filters.get("min_rooms") or 1,
-            max_rooms=user_filters.get("max_rooms") or 4,
-            min_price=user_filters.get("min_price") or 0,
-            max_price=user_filters.get("max_price") or 100000,
-            active=user_filters.get("is_active", False)
-        )
+        current_filters["city"] = normalized_city
+        await set_user_filters_turso(user_id, current_filters)
     
     await state.clear()
     
@@ -3344,14 +3354,19 @@ async def cb_user_price_reset(callback: CallbackQuery):
     user_id = callback.from_user.id
     user_filters = await get_user_filters(user_id)
     
+    from database_turso import get_user_filters_turso
+    current_filters = await get_user_filters_turso(user_id) or {}
     await set_user_filters_turso(
-        telegram_id=user_id,
-        city=user_filters.get("city", "барановичи") if user_filters else "барановичи",
-        min_rooms=user_filters.get("min_rooms", 1) if user_filters else 1,
-        max_rooms=user_filters.get("max_rooms", 4) if user_filters else 4,
-        min_price=0,
-        max_price=1000000,
-        active=True
+        user_id,
+        {
+            "city": current_filters.get("city", "барановичи"),
+            "min_rooms": current_filters.get("min_rooms", 1),
+            "max_rooms": current_filters.get("max_rooms", 4),
+            "min_price": 0,
+            "max_price": 1000000,
+            "seller_type": current_filters.get("seller_type", "all"),
+            "delivery_mode": current_filters.get("delivery_mode", "brief"),
+        }
     )
     
     await callback.answer("✅ Цена сброшена: $0 - $1,000,000")
@@ -3377,15 +3392,10 @@ async def process_min_price_input(message: Message, state: FSMContext):
         user_filters = await get_user_filters(user_id)
         
         # Обновляем минимальную цену
-        await set_user_filters_turso(
-            telegram_id=user_id,
-            city=user_filters.get("city", "барановичи") if user_filters else "барановичи",
-            min_rooms=user_filters.get("min_rooms", 1) if user_filters else 1,
-            max_rooms=user_filters.get("max_rooms", 4) if user_filters else 4,
-            min_price=min_price,
-            max_price=user_filters.get("max_price", 100000) if user_filters else 100000,
-            active=True
-        )
+        from database_turso import get_user_filters_turso
+        current_filters = await get_user_filters_turso(user_id) or {}
+        current_filters["min_price"] = min_price
+        await set_user_filters_turso(user_id, current_filters)
         
         await state.clear()
         await message.answer(
@@ -3457,15 +3467,11 @@ async def process_max_price_input(message: Message, state: FSMContext):
             return
         
         # Обновляем максимальную цену
-        await set_user_filters_turso(
-            telegram_id=user_id,
-            city=user_filters.get("city", "барановичи") if user_filters else "барановичи",
-            min_rooms=user_filters.get("min_rooms", 1) if user_filters else 1,
-            max_rooms=user_filters.get("max_rooms", 4) if user_filters else 4,
-            min_price=current_min,
-            max_price=max_price,
-            active=True
-        )
+        from database_turso import get_user_filters_turso
+        current_filters = await get_user_filters_turso(user_id) or {}
+        current_filters["min_price"] = current_min
+        current_filters["max_price"] = max_price
+        await set_user_filters_turso(user_id, current_filters)
         
         await state.clear()
         await message.answer(
@@ -3525,15 +3531,19 @@ async def cmd_start_monitoring(message: Message):
         )
         return
     
+    from database_turso import get_user_filters_turso
+    current_filters = await get_user_filters_turso(user_id) or {}
     await set_user_filters_turso(
-        telegram_id=user_id,
-        city=user_filters.get("city", "барановичи"),
-        min_rooms=user_filters.get("min_rooms", 1),
-        max_rooms=user_filters.get("max_rooms", 4),
-        min_price=user_filters.get("min_price", 0),
-        max_price=user_filters.get("max_price", 100000),
-        active=True,
-        seller_type=user_filters.get("seller_type")
+        user_id,
+        {
+            "city": current_filters.get("city", "барановичи"),
+            "min_rooms": current_filters.get("min_rooms", 1),
+            "max_rooms": current_filters.get("max_rooms", 4),
+            "min_price": current_filters.get("min_price", 0),
+            "max_price": current_filters.get("max_price", 100000),
+            "seller_type": current_filters.get("seller_type", "all"),
+            "delivery_mode": current_filters.get("delivery_mode", "brief"),
+        }
     )
     await message.answer("✅ Мониторинг включен!")
 
@@ -3551,15 +3561,19 @@ async def cmd_stop_monitoring(message: Message):
         )
         return
     
+    from database_turso import get_user_filters_turso
+    current_filters = await get_user_filters_turso(user_id) or {}
     await set_user_filters_turso(
-        telegram_id=user_id,
-        city=user_filters.get("city", "барановичи"),
-        min_rooms=user_filters.get("min_rooms", 1),
-        max_rooms=user_filters.get("max_rooms", 4),
-        min_price=user_filters.get("min_price", 0),
-        max_price=user_filters.get("max_price", 100000),
-        active=False,
-        seller_type=user_filters.get("seller_type")
+        user_id,
+        {
+            "city": current_filters.get("city", "барановичи"),
+            "min_rooms": current_filters.get("min_rooms", 1),
+            "max_rooms": current_filters.get("max_rooms", 4),
+            "min_price": current_filters.get("min_price", 0),
+            "max_price": current_filters.get("max_price", 100000),
+            "seller_type": current_filters.get("seller_type", "all"),
+            "delivery_mode": current_filters.get("delivery_mode", "brief"),
+        }
     )
     await message.answer("❌ Мониторинг отключен.")
 

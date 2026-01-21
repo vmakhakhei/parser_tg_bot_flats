@@ -11,7 +11,7 @@ from config import BOT_TOKEN, ADMIN_TELEGRAM_IDS
 from database import init_database
 
 # Импортируем handlers
-from bot.handlers import help, search, start, debug, admin
+from bot.handlers import help, search, start, debug, admin, filters_quick
 
 # Импортируем middleware
 from bot.middlewares.error_middleware import ErrorMiddleware
@@ -57,6 +57,7 @@ async def create_bot() -> tuple[Bot, Dispatcher]:
     dp.include_router(help.router)
     dp.include_router(debug.router)
     dp.include_router(admin.router)
+    dp.include_router(filters_quick.router)
 
     # Временно импортируем старый router для сохранения функциональности
     # Постепенно перенесем все обработчики в новые модули

@@ -139,72 +139,22 @@ async def cmd_start(message: Message, state: FSMContext):
     except Exception as e:
         logger.warning(f"Не удалось обновить username пользователя: {e}")
 
-    # КРИТИЧНО: Гарантируем наличие фильтров у пользователя
-    # Это должно происходить ДО проверки фильтров
-    try:
-        from database import ensure_user_filters
-        await ensure_user_filters(telegram_id=user_id)
-    except Exception as e:
-        logger.warning(f"Не удалось гарантировать фильтры для пользователя {user_id}: {e}")
-
-    # Проверяем, есть ли у пользователя фильтры (из старой БД или Turso)
-    user_filters = await get_user_filters(user_id)
-
-    # Если фильтров нет в старой БД, проверяем Turso
-    if not user_filters:
-        try:
-            from database import get_user_filters_turso
-
-            user_filters = await get_user_filters_turso(user_id)
-            # Конвертируем формат фильтров из Turso в формат старой БД для совместимости
-            if user_filters:
-                # Конвертируем rooms из списка в min_rooms/max_rooms
-                rooms = user_filters.get("rooms", [])
-                if rooms and len(rooms) > 0:
-                    user_filters["min_rooms"] = min(rooms)
-                    user_filters["max_rooms"] = max(rooms)
-                else:
-                    user_filters["min_rooms"] = 1
-                    user_filters["max_rooms"] = 4
-                user_filters["is_active"] = user_filters.get("active", True)
-                user_filters["city"] = user_filters.get("region", "барановичи")
-        except Exception as e:
-            import logging
-
-            logger = logging.getLogger(__name__)
-            logger.warning(f"Не удалось получить фильтры из Turso: {e}")
-
-    if not user_filters:
-        # Первый запуск - активируем пользователя и начинаем пошаговую настройку
-        # ВАЖНО: Гарантируем активацию при /start - создаем запись с is_active=True
-        # ЕДИНАЯ ТОЧКА СОХРАНЕНИЯ: только database_turso.py
-        from database_turso import set_user_filters_turso
-        
-        await set_user_filters_turso(
-            telegram_id=user_id,
-            city="барановичи",  # Значение по умолчанию
-            min_rooms=1,
-            max_rooms=4,
-            min_price=0,
-            max_price=100000,
-            active=True  # Активируем пользователя при первом запуске
-        )
-        
+    # ЧАСТЬ C — START → QUICK MASTER
+    # Гарантируем наличие фильтров
+    from database_turso import ensure_user_filters, get_user_filters_turso
+    await ensure_user_filters(telegram_id=user_id)
+    
+    # Получаем фильтры из Turso
+    user_filters = await get_user_filters_turso(user_id)
+    
+    if not user_filters or not user_filters.get("city"):
+        # Первый запуск или город не установлен - запрашиваем город
         await message.answer(
-            "👋 <b>Добро пожаловать!</b>\n\n"
-            "Я помогу вам найти квартиру.\n\n"
-            "📋 <b>Давайте настроим фильтры пошагово:</b>\n"
-            "1️⃣ Выберите город\n"
-            "2️⃣ Выберите диапазон комнат\n"
-            "3️⃣ Укажите диапазон цен\n"
-            "4️⃣ Выберите тип продавца (Kufar)\n"
-            "5️⃣ Выберите режим работы\n\n"
-            "Начнем с выбора города:",
+            "✏️ Введите город (например: Барановичи)",
             parse_mode=ParseMode.HTML,
         )
-
-        # Показываем меню выбора города
-        await show_city_selection_menu(message, state)
+        # Устанавливаем состояние для ввода города
+        await state.set_state(CityStates.waiting_for_city)
     else:
         # Фильтры уже установлены - показываем их и предлагаем изменить
         status = "✅ Активен" if user_filters.get("is_active") else "❌ Отключен"
@@ -227,7 +177,8 @@ async def cmd_start(message: Message, state: FSMContext):
         price_from = fmt_price(min_price)
         price_to = fmt_price(max_price)
         
-        city_name = user_filters.get("city", "барановичи").title()
+        city_name = user_filters.get("city", "барановичи") or "Не выбран"
+        city_name = city_name.title() if city_name else "Не выбран"
         await message.answer(
             f"🏠 <b>Ваши фильтры</b>\n\n"
             f"📍 <b>Город:</b> {city_name}\n"
@@ -375,6 +326,46 @@ async def cmd_mode(message: Message):
         f"{'📋 Вы будете получать одно summary-сообщение с группировкой по адресам' if mode == DELIVERY_MODE_BRIEF else '📨 Вы будете получать подробные уведомления по каждому объявлению'}",
         parse_mode=ParseMode.HTML
     )
+
+
+@router.message(CityStates.waiting_for_city)
+async def process_city_input(message: Message, state: FSMContext):
+    """Обработка ввода города и запуск quick wizard"""
+    from database_turso import ensure_user_filters, get_user_filters_turso, set_user_filters_turso
+    from bot.handlers.filters_quick import build_kb, format_filters_summary
+    
+    user_id = message.from_user.id
+    city = message.text.strip()
+    
+    # Гарантируем наличие фильтров
+    await ensure_user_filters(telegram_id=user_id)
+    
+    # Получаем текущие фильтры
+    f = await get_user_filters_turso(user_id)
+    if not f:
+        f = {
+            "city": None,
+            "min_rooms": 1,
+            "max_rooms": 4,
+            "min_price": 0,
+            "max_price": 100000,
+            "seller_type": "all",
+            "delivery_mode": "brief",
+        }
+    
+    # Обновляем город
+    f["city"] = city
+    
+    # Сохраняем фильтры с городом
+    await set_user_filters_turso(user_id, f)
+    
+    # Запускаем quick wizard
+    await message.answer(
+        "⚙️ Быстрая настройка фильтров\n\n" + format_filters_summary(f),
+        reply_markup=build_kb(user_id),
+    )
+    
+    await state.clear()
 
 
 # Импортируем остальные обработчики из старого bot.py
