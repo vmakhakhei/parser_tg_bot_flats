@@ -600,25 +600,50 @@ def migrate_users_schema(conn):
             telegram_id INTEGER PRIMARY KEY,
             username TEXT,
             is_active INTEGER DEFAULT 1,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            created_at TEXT DEFAULT CURRENT_TIMESTAMP
         )
         """)
         logger.info("[migration] Новая таблица users создана")
         
         # migrate rows best-effort: user_id -> telegram_id
         try:
-            rows = conn.execute("SELECT user_id, username, is_active FROM users_old").fetchall()
+            # Проверяем наличие колонок в старой таблице
+            cols = [c[1] for c in conn.execute("PRAGMA table_info(users_old)").fetchall()]
+            
+            has_is_active = "is_active" in cols
+            has_username = "username" in cols
+            
+            select_cols = ["user_id"]
+            if has_username:
+                select_cols.append("username")
+            if has_is_active:
+                select_cols.append("is_active")
+            
+            rows = conn.execute(
+                f"SELECT {', '.join(select_cols)} FROM users_old"
+            ).fetchall()
+            
             migrated_count = 0
-            for user_id, username, is_active in rows:
+            for row in rows:
                 try:
+                    # Распаковываем строку в зависимости от наличия колонок
+                    # row - это кортеж, индексы зависят от порядка select_cols
+                    telegram_id = row[0]  # user_id всегда первый
+                    
+                    # Определяем индексы для username и is_active
+                    username_idx = 1 if has_username else None
+                    is_active_idx = (2 if has_username else 1) if has_is_active else None
+                    
+                    username = row[username_idx] if username_idx is not None and len(row) > username_idx else None
+                    is_active = row[is_active_idx] if is_active_idx is not None and len(row) > is_active_idx else 1
+                    
                     conn.execute("""
                         INSERT OR IGNORE INTO users (telegram_id, username, is_active)
                         VALUES (?, ?, ?)
-                    """, (user_id, username, is_active))
+                    """, (telegram_id, username, is_active))
                     migrated_count += 1
                 except Exception as e:
-                    logger.warning(f"[migration] Пропущена проблемная строка user_id={user_id}: {e}")
+                    logger.warning(f"[migration] Пропущена проблемная строка user_id={row[0] if row else 'unknown'}: {e}")
                     pass
             
             logger.info(f"[migration] Перенесено {migrated_count} записей из users_old")
@@ -631,7 +656,7 @@ def migrate_users_schema(conn):
         
         # Удаляем старую таблицу
         conn.execute("DROP TABLE users_old")
-        logger.warning("[migration] Миграция users завершена успешно")
+        logger.info("[migration] users schema migrated successfully")
         
     except Exception as e:
         logger.error(f"[migration] Критическая ошибка миграции users: {e}")
@@ -948,14 +973,17 @@ async def ensure_tables_exist():
                             telegram_id INTEGER PRIMARY KEY,
                             username TEXT,
                             is_active INTEGER DEFAULT 1,
-                            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                            created_at TEXT DEFAULT CURRENT_TIMESTAMP
                         )
                     """)
                     logger.info("✅ Таблица users создана")
                 else:
                     # Проверяем схему и мигрируем при необходимости
-                    migrate_users_schema(conn)
+                    try:
+                        migrate_users_schema(conn)
+                    except Exception as e:
+                        logger.critical("[migration] USERS MIGRATION FAILED", exc_info=e)
+                        raise
                 
                 # 2. Таблица user_filters (исправленная структура)
                 cursor = conn.execute("""
@@ -1224,11 +1252,10 @@ async def create_or_update_user(
         def _execute():
             with turso_transaction() as conn:
                 conn.execute("""
-                    INSERT INTO users (telegram_id, username, created_at)
-                    VALUES (?, ?, CURRENT_TIMESTAMP)
+                    INSERT INTO users (telegram_id, username)
+                    VALUES (?, ?)
                     ON CONFLICT(telegram_id) DO UPDATE SET
-                        username = COALESCE(excluded.username, username),
-                        updated_at = CURRENT_TIMESTAMP
+                        username = COALESCE(excluded.username, username)
                 """, (telegram_id, username))
                 # Commit происходит автоматически
         
@@ -1345,8 +1372,7 @@ async def upsert_user(
                         """
                         UPDATE users
                         SET username = COALESCE(?, username), 
-                            is_active = ?,
-                            updated_at = CURRENT_TIMESTAMP
+                            is_active = ?
                         WHERE telegram_id = ?
                         """,
                         (username, 1 if is_active else 0, telegram_id),
@@ -1355,8 +1381,8 @@ async def upsert_user(
                     # 3. Создаём нового пользователя в users
                     conn.execute(
                         """
-                        INSERT INTO users (telegram_id, username, is_active, created_at)
-                        VALUES (?, ?, ?, CURRENT_TIMESTAMP)
+                        INSERT INTO users (telegram_id, username, is_active)
+                        VALUES (?, ?, ?)
                         """,
                         (telegram_id, username, 1 if is_active else 0),
                     )

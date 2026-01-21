@@ -247,8 +247,12 @@ async def main():
             )
             return
         
-        logger.info(f"[startup] Найдено {len(active_users)} активных пользователей с фильтрами, запускаю initial search")
-        await run_search_once(bot)
+        logger.info(f"[startup] Найдено {len(active_users)} активных пользователей с фильтрами")
+        # ❌ ВРЕМЕННО КОММЕНТИРУЕМ initial search
+        # Пока не убедимся, что:
+        # - /start работает
+        # - users и user_filters консистентны
+        # await run_search_once(bot)
     
     asyncio.create_task(check_and_run_search())
     
