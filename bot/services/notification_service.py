@@ -1091,7 +1091,7 @@ async def send_summary_message(bot: Bot, user_id: int, apartments: List[Listing]
         
         # Формируем текст сообщения
         text = "🏙 Найдено подходящих квартир:\n\n"
-        keyboard = InlineKeyboardMarkup(inline_keyboard=[])
+        keyboard_rows: List[List[InlineKeyboardButton]] = []
         
         for idx, (group, group_score) in enumerate(groups_with_scores, 1):
             address = group[0].address
@@ -1165,7 +1165,9 @@ async def send_summary_message(bot: Bot, user_id: int, apartments: List[Listing]
                 )
             ]
             
-            keyboard.inline_keyboard.append(house_buttons)
+            keyboard_rows.append(house_buttons)
+        
+        keyboard = InlineKeyboardMarkup(inline_keyboard=keyboard_rows)
         
         # Отправляем сообщение
         await safe_send_message(
