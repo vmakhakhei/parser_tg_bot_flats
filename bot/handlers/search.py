@@ -8,7 +8,8 @@ from aiogram.filters import Command
 from aiogram.enums import ParseMode
 
 from bot.services.search_service import check_new_listings
-from database import get_user_filters, set_user_filters
+from database import get_user_filters
+from database_turso import set_user_filters_turso
 
 router = Router()
 
@@ -35,16 +36,15 @@ async def cmd_start_monitoring(message: Message):
         )
         return
 
-    await set_user_filters(
+    await set_user_filters_turso(
         telegram_id=user_id,
         city=user_filters.get("city", "барановичи"),
         min_rooms=user_filters.get("min_rooms", 1),
         max_rooms=user_filters.get("max_rooms", 4),
         min_price=user_filters.get("min_price", 0),
         max_price=user_filters.get("max_price", 100000),
-        is_active=True,
-        ai_mode=user_filters.get("ai_mode", False),
-        seller_type=user_filters.get("seller_type"),
+        active=True,
+        seller_type=user_filters.get("seller_type")
     )
     await message.answer("✅ Мониторинг включен!")
 
@@ -61,16 +61,15 @@ async def cmd_stop_monitoring(message: Message):
         )
         return
 
-    await set_user_filters(
+    await set_user_filters_turso(
         telegram_id=user_id,
         city=user_filters.get("city", "барановичи"),
         min_rooms=user_filters.get("min_rooms", 1),
         max_rooms=user_filters.get("max_rooms", 4),
         min_price=user_filters.get("min_price", 0),
         max_price=user_filters.get("max_price", 100000),
-        is_active=False,
-        ai_mode=user_filters.get("ai_mode", False),
-        seller_type=user_filters.get("seller_type"),
+        active=False,
+        seller_type=user_filters.get("seller_type")
     )
     await message.answer("❌ Мониторинг отключен.")
 

@@ -1315,7 +1315,15 @@ async def get_user_filters_turso(telegram_id: int) -> Optional[Dict[str, Any]]:
                 return result
             return None
         
-        return await asyncio.to_thread(_execute)
+        result = await asyncio.to_thread(_execute)
+        
+        # ФАТАЛЬНЫЙ ЛОГ загрузки
+        logger.critical(
+            "[FILTER_LOAD] telegram_id=%s result=%s",
+            telegram_id, "FOUND" if result else "NONE"
+        )
+        
+        return result
     except Exception as e:
         logger.error(f"Ошибка получения фильтров пользователя {telegram_id}: {e}")
         return None
@@ -1465,7 +1473,8 @@ async def set_user_filters_turso(
     max_rooms: int = 4,
     min_price: int = 0,
     max_price: int = 100000,
-    active: bool = True
+    active: bool = True,
+    seller_type: Optional[str] = None
 ) -> bool:
     """
     Устанавливает фильтры пользователя в Turso (атомарная операция)
@@ -1479,6 +1488,7 @@ async def set_user_filters_turso(
         min_price: Минимальная цена
         max_price: Максимальная цена
         active: Активен ли пользователь
+        seller_type: Тип продавца (None = все, "owner" = только собственники, "company" = только агентства)
     """
     try:
         def _execute():
@@ -1510,6 +1520,13 @@ async def set_user_filters_turso(
                 # Commit происходит автоматически
         
         await asyncio.to_thread(_execute)
+        
+        # ФАТАЛЬНЫЙ ЛОГ сохранения
+        logger.critical(
+            "[FILTER_SAVE] telegram_id=%s city=%s rooms=%s-%s price=%s-%s seller_type=%s",
+            telegram_id, city, min_rooms, max_rooms, min_price, max_price, seller_type
+        )
+        
         return True
     except Exception as e:
         log_error("turso_filters", f"Ошибка установки фильтров пользователя {telegram_id}", e)

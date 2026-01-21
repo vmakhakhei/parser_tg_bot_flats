@@ -792,6 +792,11 @@ async def check_new_listings(
                 logger.critical(
                     f"[FILTER_STATE] user={user_id} filters invalid → redirect to setup"
                 )
+                # БЛОКИРОВКА ПОИСКА: если фильтры не сохранились
+                await bot.send_message(
+                    user_id,
+                    "⚠️ Фильтры не сохранены. Пожалуйста, настройте фильтры заново."
+                )
                 await _send_setup_filters_message(bot, user_id)
                 continue
             

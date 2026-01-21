@@ -177,16 +177,17 @@ async def cmd_start(message: Message, state: FSMContext):
     if not user_filters:
         # Первый запуск - активируем пользователя и начинаем пошаговую настройку
         # ВАЖНО: Гарантируем активацию при /start - создаем запись с is_active=True
-        await set_user_filters(
+        # ЕДИНАЯ ТОЧКА СОХРАНЕНИЯ: только database_turso.py
+        from database_turso import set_user_filters_turso
+        
+        await set_user_filters_turso(
             telegram_id=user_id,
             city="барановичи",  # Значение по умолчанию
             min_rooms=1,
             max_rooms=4,
             min_price=0,
             max_price=100000,
-            is_active=True,  # Активируем пользователя при первом запуске
-            ai_mode=False,
-            seller_type=None
+            active=True  # Активируем пользователя при первом запуске
         )
         
         await message.answer(
