@@ -14,6 +14,7 @@ import hashlib
 from config import DATABASE_PATH
 from typing import Optional, List, Dict, Any
 from datetime import datetime
+from scrapers.utils.id_utils import normalize_ad_id, normalize_telegram_id
 
 
 def generate_content_hash(rooms: int, area: float, address: str, price: int) -> str:
@@ -593,6 +594,10 @@ async def mark_ad_sent_to_user(telegram_id: int, ad_external_id: str):
         telegram_id: ID пользователя в Telegram
         ad_external_id: Внешний ID объявления (listing.id)
     """
+    # Нормализуем входные параметры
+    tg = normalize_telegram_id(telegram_id)
+    ad = normalize_ad_id(ad_external_id)
+    
     from config import USE_TURSO_CACHE
     
     if USE_TURSO_CACHE:

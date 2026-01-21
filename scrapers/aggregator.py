@@ -646,6 +646,7 @@ async def notify_users_about_new_apartments(new_listings: List[Listing]) -> None
     try:
         # Импортируем необходимые функции
         from database import get_active_users, get_user_filters
+        from scrapers.utils.id_utils import normalize_ad_id, normalize_telegram_id
         from bot.services.search_service import _process_user_listings_normal_mode, validate_user_filters, matches_user_filters
         from bot.services.ai_service import check_new_listings_ai_mode
         from database import is_ad_sent_to_user
@@ -687,7 +688,9 @@ async def notify_users_about_new_apartments(new_listings: List[Listing]) -> None
                     filtered_listings = []
                     for listing in new_listings:
                         # Проверяем, не отправляли ли уже это объявление пользователю (sent_ads - финальная защита)
-                        if await is_ad_sent_to_user(user_id, listing.id):
+                        tg = normalize_telegram_id(user_id)
+                        ad_key = normalize_ad_id(listing.id)
+                        if await is_ad_sent_to_user(telegram_id=tg, ad_external_id=ad_key):
                             continue
                         
                         # Проверяем соответствие фильтрам пользователя

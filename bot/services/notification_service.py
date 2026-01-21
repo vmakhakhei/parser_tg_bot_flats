@@ -15,6 +15,7 @@ from aiogram.utils.keyboard import InlineKeyboardBuilder
 from aiogram.exceptions import TelegramRetryAfter
 
 from scrapers.base import Listing
+from scrapers.utils.id_utils import normalize_ad_id, normalize_telegram_id
 from database import (
     mark_listing_sent,
     mark_listing_sent_to_user,
@@ -242,11 +243,25 @@ async def send_listing_to_user(
         debug_force = get_debug_force_run() or DEBUG_FORCE_RUN
         debug_ignore_sent_ads = get_debug_ignore_sent_ads()
         
-        if not (debug_force or debug_ignore_sent_ads) and await is_ad_sent_to_user(user_id, listing.id):
+        # Логирование проверки sent_ads
+        ad_key = normalize_ad_id(listing.id)
+        tg = normalize_telegram_id(user_id)
+        already = False
+        try:
+            if not (debug_force or debug_ignore_sent_ads):
+                already = await is_ad_sent_to_user(telegram_id=tg, ad_external_id=ad_key)
+            else:
+                logger.info(f"[sent_check][DEBUG] debug_force={debug_force} debug_ignore={debug_ignore_sent_ads} — пропускаю проверку sent_ads для user={tg} ad={ad_key}")
+        except Exception as e:
+            logger.exception(f"[sent_check][ERROR] user={tg} ad={ad_key} check failed: {e}")
+        logger.info(f"[sent_check] user={tg} ad={ad_key} already_sent={already}")
+        
+        if already:
             log_info(
                 "notification",
-                f"Объявление {listing.id} уже было отправлено пользователю {user_id}, пропускаем"
+                f"Объявление {ad_key} уже было отправлено пользователю {tg}, пропускаем"
             )
+            logger.info(f"[search][skip] user={tg} skip ad={ad_key} reason=already_sent")
             return False
         
         # Проверка per-user rate limit (soft lock)
@@ -361,7 +376,9 @@ async def send_listing_to_user(
             # Медиагруппа отправлена успешно - отмечаем как отправленное
             await mark_listing_sent_to_user(user_id, listing.id)
             await mark_listing_sent(listing.to_dict())  # Глобальная дедупликация
-            await mark_ad_sent_to_user(user_id, listing.id)  # Идемпотентная запись
+            tg = normalize_telegram_id(user_id)
+            ad_key = normalize_ad_id(listing.id)
+            await mark_ad_sent_to_user(telegram_id=tg, ad_external_id=ad_key)  # Идемпотентная запись
             log_info(
                 "notification", f"Отправлено пользователю {user_id}: {listing.id} ({listing.source})"
             )
@@ -412,7 +429,9 @@ async def send_listing_to_user(
             # Сообщение отправлено успешно - отмечаем как отправленное
             await mark_listing_sent_to_user(user_id, listing.id)
             await mark_listing_sent(listing.to_dict())  # Глобальная дедупликация
-            await mark_ad_sent_to_user(user_id, listing.id)  # Идемпотентная запись
+            tg = normalize_telegram_id(user_id)
+            ad_key = normalize_ad_id(listing.id)
+            await mark_ad_sent_to_user(telegram_id=tg, ad_external_id=ad_key)  # Идемпотентная запись
             log_info(
                 "notification", f"Отправлено пользователю {user_id}: {listing.id} ({listing.source})"
             )
@@ -651,10 +670,12 @@ async def send_grouped_listings_to_user(bot: Bot, user_id: int, listings: List[L
         
         # КРИТИЧНО: Помечаем КАЖДОЕ объявление как отправленное
         # Иначе будут повторные уведомления
+        tg = normalize_telegram_id(user_id)
         for listing in sorted_listings:
             await mark_listing_sent_to_user(user_id, listing.id)
             await mark_listing_sent(listing.to_dict())  # Глобальная дедупликация
-            await mark_ad_sent_to_user(user_id, listing.id)  # Идемпотентная запись
+            ad_key = normalize_ad_id(listing.id)
+            await mark_ad_sent_to_user(telegram_id=tg, ad_external_id=ad_key)  # Идемпотентная запись
         
         log_info(
             "notification",
@@ -954,9 +975,22 @@ async def notify_users_about_new_apartments_summary(
                     
                     # Применяем фильтры пользователя к новым объявлениям
                     filtered_listings = []
+                    tg = normalize_telegram_id(user_id)
                     for listing in listings:
                         # В DEBUG режиме игнорируем проверку sent_ads
-                        if not (debug_force or debug_ignore_sent_ads) and await is_ad_sent_to_user(user_id, listing.id):
+                        ad_key = normalize_ad_id(listing.id)
+                        already = False
+                        try:
+                            if not (debug_force or debug_ignore_sent_ads):
+                                already = await is_ad_sent_to_user(telegram_id=tg, ad_external_id=ad_key)
+                            else:
+                                logger.info(f"[sent_check][DEBUG] debug_force={debug_force} debug_ignore={debug_ignore_sent_ads} — пропускаю проверку sent_ads для user={tg} ad={ad_key}")
+                        except Exception as e:
+                            logger.exception(f"[sent_check][ERROR] user={tg} ad={ad_key} check failed: {e}")
+                        logger.info(f"[sent_check] user={tg} ad={ad_key} already_sent={already}")
+                        
+                        if already:
+                            logger.info(f"[search][skip] user={tg} skip ad={ad_key} reason=already_sent")
                             continue
                         
                         # Проверяем соответствие фильтрам пользователя
@@ -992,7 +1026,19 @@ async def notify_users_about_new_apartments_summary(
                             for group in groups:
                                 if len(group) == 1:
                                     # В DEBUG режиме игнорируем проверку sent_ads
-                                    if not debug_force and await is_ad_sent_to_user(user_id, group[0].id):
+                                    ad_key = normalize_ad_id(group[0].id)
+                                    already = False
+                                    try:
+                                        if not debug_force:
+                                            already = await is_ad_sent_to_user(telegram_id=tg, ad_external_id=ad_key)
+                                        else:
+                                            logger.info(f"[sent_check][DEBUG] debug_force=True — пропускаю проверку sent_ads для user={tg} ad={ad_key}")
+                                    except Exception as e:
+                                        logger.exception(f"[sent_check][ERROR] user={tg} ad={ad_key} check failed: {e}")
+                                    logger.info(f"[sent_check] user={tg} ad={ad_key} already_sent={already}")
+                                    
+                                    if already:
+                                        logger.info(f"[search][skip] user={tg} skip ad={ad_key} reason=already_sent")
                                         continue
                                     await send_listing_to_user(bot, user_id, group[0], use_ai_valuation=False)
                                 else:
@@ -1197,8 +1243,10 @@ async def send_grouped_listings_with_pagination(
         )
         
         # Помечаем объявления как отправленные
+        tg = normalize_telegram_id(user_id)
         for listing in chunk:
-            await mark_ad_sent_to_user(user_id, listing.id)
+            ad_key = normalize_ad_id(listing.id)
+            await mark_ad_sent_to_user(telegram_id=tg, ad_external_id=ad_key)
         
         log_info("notification", f"[PAGINATION] отправлено {len(chunk)} объявлений пользователю {user_id}, offset={offset}")
         

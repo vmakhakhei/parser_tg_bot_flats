@@ -15,6 +15,8 @@ from database import (
     is_duplicate_content,
 )
 from database_turso import get_user_filters_turso, has_valid_user_filters
+from database import is_ad_sent_to_user, mark_ad_sent_to_user
+from scrapers.utils.id_utils import normalize_ad_id, normalize_telegram_id
 from error_logger import log_info, log_warning, log_error
 from config import DEFAULT_SOURCES, USE_TURSO_CACHE
 
@@ -435,7 +437,21 @@ async def _process_listing_for_user(
     from bot.handlers.debug import get_debug_ignore_sent_ads
     debug_ignore_sent_ads = get_debug_ignore_sent_ads()
     
-    if not debug_ignore_sent_ads and await is_ad_sent_to_user(user_id, listing.id):
+    # Логирование проверки sent_ads
+    ad_key = normalize_ad_id(listing.id)
+    tg = normalize_telegram_id(user_id)
+    already = False
+    try:
+        if not debug_ignore_sent_ads:
+            already = await is_ad_sent_to_user(telegram_id=tg, ad_external_id=ad_key)
+        else:
+            logger.info(f"[sent_check][DEBUG] ignore_sent_ads=True — пропускаю проверку sent_ads для user={tg} ad={ad_key}")
+    except Exception as e:
+        logger.exception(f"[sent_check][ERROR] user={tg} ad={ad_key} check failed: {e}")
+    logger.info(f"[sent_check] user={tg} ad={ad_key} already_sent={already}")
+    
+    if already:
+        logger.info(f"[search][skip] user={tg} skip ad={ad_key} reason=already_sent")
         return False
 
     # Проверяем глобальную дедупликацию по контенту
@@ -535,8 +551,22 @@ async def _process_user_listings_normal_mode(
         from bot.handlers.debug import get_debug_ignore_sent_ads
         debug_ignore_sent_ads = get_debug_ignore_sent_ads()
         
-        if not debug_ignore_sent_ads and await is_ad_sent_to_user(user_id, listing.id):
+        # Логирование проверки sent_ads
+        ad_key = normalize_ad_id(listing.id)
+        tg = normalize_telegram_id(user_id)
+        already = False
+        try:
+            if not ignore_sent_ads and not debug_ignore_sent_ads:
+                already = await is_ad_sent_to_user(telegram_id=tg, ad_external_id=ad_key)
+            else:
+                logger.info(f"[sent_check][DEBUG] ignore_sent_ads={ignore_sent_ads} debug_ignore={debug_ignore_sent_ads} — пропускаю проверку sent_ads для user={tg} ad={ad_key}")
+        except Exception as e:
+            logger.exception(f"[sent_check][ERROR] user={tg} ad={ad_key} check failed: {e}")
+        logger.info(f"[sent_check] user={tg} ad={ad_key} already_sent={already}")
+        
+        if already:
             already_sent_count += 1
+            logger.info(f"[search][skip] user={tg} skip ad={ad_key} reason=already_sent")
             # #region agent log
             try:
                 with open('/Users/vmakhakei/TG BOT/.cursor/debug.log', 'a') as f:
@@ -666,6 +696,11 @@ async def check_new_listings(
         bypass_summary: Обойти summary и отправлять полные уведомления
     """
     from bot.services.ai_service import check_new_listings_ai_mode
+    from bot.handlers.debug import get_debug_ignore_sent_ads
+    
+    # Логирование debug run параметров
+    debug_ignore_sent_ads = get_debug_ignore_sent_ads()
+    logger.info(f"[debug_run] force_send={force_send} ignore_sent_ads={ignore_sent_ads} bypass_summary={bypass_summary} debug_ignore_sent_ads={debug_ignore_sent_ads}")
 
     reset_filter_counters()
 
@@ -797,7 +832,7 @@ async def check_new_listings(
         else:
             # Обычный режим: отправляем все подходящие объявления
             user_new_count = await _process_user_listings_normal_mode(
-                bot, user_id, all_listings, user_filters
+                bot, user_id, all_listings, user_filters, ignore_sent_ads=ignore_sent_ads
             )
             total_sent += user_new_count
 

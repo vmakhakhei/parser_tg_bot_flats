@@ -13,6 +13,7 @@ import asyncio
 from typing import Optional, List, Dict, Any
 from datetime import datetime
 from contextlib import contextmanager
+from scrapers.utils.id_utils import normalize_ad_id, normalize_telegram_id
 
 logger = logging.getLogger(__name__)
 
@@ -2197,6 +2198,10 @@ async def is_ad_sent_to_user_turso(telegram_id: int, ad_external_id: str) -> boo
     Returns:
         True если объявление уже было отправлено, False иначе
     """
+    # Нормализуем входные параметры
+    tg = normalize_telegram_id(telegram_id)
+    ad = normalize_ad_id(ad_external_id)
+    
     conn = get_turso_connection()
     if not conn:
         return False
@@ -2205,13 +2210,13 @@ async def is_ad_sent_to_user_turso(telegram_id: int, ad_external_id: str) -> boo
         def _execute():
             cursor = conn.execute(
                 "SELECT 1 FROM sent_ads WHERE telegram_id = ? AND ad_external_id = ?",
-                (telegram_id, ad_external_id)
+                (tg, ad)
             )
             return cursor.fetchone() is not None
         
         return await asyncio.to_thread(_execute)
     except Exception as e:
-        logger.error(f"Ошибка проверки отправки объявления {ad_external_id} пользователю {telegram_id}: {e}")
+        logger.error(f"Ошибка проверки отправки объявления {ad} пользователю {tg}: {e}")
         return False
     finally:
         if conn:
@@ -2229,19 +2234,55 @@ async def mark_ad_sent_to_user_turso(telegram_id: int, ad_external_id: str) -> b
     Returns:
         True если успешно, False при ошибке
     """
+    # Нормализуем входные параметры
+    tg = normalize_telegram_id(telegram_id)
+    ad = normalize_ad_id(ad_external_id)
+    
     try:
         def _execute():
             with turso_transaction() as conn:
                 conn.execute("""
-                    INSERT OR IGNORE INTO sent_ads (telegram_id, ad_external_id, sent_at)
+                    INSERT INTO sent_ads (telegram_id, ad_external_id, sent_at)
                     VALUES (?, ?, CURRENT_TIMESTAMP)
-                """, (telegram_id, ad_external_id))
+                    ON CONFLICT(telegram_id, ad_external_id) DO NOTHING
+                """, (tg, ad))
                 # Commit происходит автоматически при выходе из контекста
         
         await asyncio.to_thread(_execute)
         return True
     except Exception as e:
-        logger.error(f"Ошибка отметки объявления {ad_external_id} как отправленного пользователю {telegram_id}: {e}")
+        logger.error(f"Ошибка отметки объявления {ad} как отправленного пользователю {tg}: {e}")
         return False
+
+
+async def delete_sent_ads_for_user(telegram_id: int) -> int:
+    """
+    Безопасно удаляет все записи sent_ads для указанного пользователя.
+    
+    Args:
+        telegram_id: ID пользователя в Telegram
+        
+    Returns:
+        Количество оставшихся записей после удаления (0 если все удалены)
+    """
+    tg = normalize_telegram_id(telegram_id)
+    
+    try:
+        def _execute():
+            with turso_transaction() as conn:
+                # Удаляем все записи для пользователя
+                conn.execute("DELETE FROM sent_ads WHERE telegram_id = ?", (tg,))
+                # Возвращаем количество оставшихся записей
+                cursor = conn.execute(
+                    "SELECT COUNT(*) as cnt FROM sent_ads WHERE telegram_id = ?",
+                    (tg,)
+                )
+                result = cursor.fetchone()
+                return result[0] if result else 0
+        
+        return await asyncio.to_thread(_execute)
+    except Exception as e:
+        logger.error(f"Ошибка удаления sent_ads для пользователя {tg}: {e}")
+        return -1
 
 
