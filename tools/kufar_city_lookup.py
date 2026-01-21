@@ -11,8 +11,8 @@ import asyncio
 # Добавляем путь к проекту
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from scrapers.kufar import lookup_kufar_location
-from database_turso import get_kufar_city_cache, set_kufar_city_cache
+from scrapers.kufar import lookup_kufar_location_async
+from database_turso import get_kufar_city_cache, set_kufar_city_cache, ensure_tables_exist
 from constants.constants import LOG_KUFAR_LOOKUP
 
 
@@ -28,20 +28,38 @@ async def main():
     print(f"{LOG_KUFAR_LOOKUP} CLI lookup для города: {city_name}")
     print("-" * 60)
     
+    # Гарантируем создание таблиц
+    print("\n0. Инициализация БД...")
+    try:
+        await ensure_tables_exist()
+        print("✅ Таблицы проверены")
+    except Exception as e:
+        print(f"⚠️ Ошибка инициализации БД: {e}")
+        print("Продолжаем без кэша...")
+    
     # Проверяем кэш
     print("\n1. Проверка кэша...")
-    cached = await get_kufar_city_cache(city_norm)
-    if cached:
-        print(f"✅ Найдено в кэше:")
-        print(json.dumps(cached, indent=2, ensure_ascii=False))
-        print("\nКэш-статус: HIT")
-        return
+    try:
+        cached = await get_kufar_city_cache(city_norm)
+        if cached:
+            print(f"✅ Найдено в кэше:")
+            print(json.dumps(cached, indent=2, ensure_ascii=False))
+            print("\nКэш-статус: HIT")
+            return
+    except Exception as e:
+        print(f"⚠️ Ошибка чтения кэша: {e}")
     
     print("❌ Не найдено в кэше")
     print("\n2. Выполнение lookup через API...")
     
     # Выполняем lookup
-    result = lookup_kufar_location(city_name)
+    try:
+        result = await lookup_kufar_location_async(city_name)
+    except Exception as e:
+        print(f"❌ Ошибка lookup: {e}")
+        import traceback
+        traceback.print_exc()
+        sys.exit(1)
     
     if result:
         print(f"\n✅ Результат lookup:")
