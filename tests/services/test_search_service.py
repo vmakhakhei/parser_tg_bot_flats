@@ -24,7 +24,8 @@ sys.modules['config'] = mock_config
 from scrapers.base import Listing
 
 # Импортируем search_service с патчами
-with patch('bot.services.search_service.get_user_filters', mock_database.get_user_filters), \
+# Обновлено: используем get_user_filters_turso вместо get_user_filters
+with patch('bot.services.search_service.get_user_filters_turso', mock_database.get_user_filters), \
      patch('bot.services.search_service.get_active_users', mock_database.get_active_users), \
      patch('bot.services.search_service.is_listing_sent_to_user', mock_database.is_listing_sent_to_user), \
      patch('bot.services.search_service.is_duplicate_content', mock_database.is_duplicate_content), \

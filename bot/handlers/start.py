@@ -809,6 +809,8 @@ async def cb_select_city(callback: CallbackQuery, state: FSMContext):
 @router.message(SetupStates.waiting_for_city)
 async def process_setup_city_input(message: Message, state: FSMContext):
     """Обработка ввода города в пошаговой настройке (legacy, использует новый lookup)"""
+    from database_turso import get_user_filters_turso
+    
     # Перенаправляем на основной обработчик
     await process_city_input(message, state)
     
@@ -821,113 +823,6 @@ async def process_setup_city_input(message: Message, state: FSMContext):
             "Введите количество комнат (например: 2 или 2-3):",
             parse_mode=ParseMode.HTML
         )
-            "Попробуйте, например: Минск, Барановичи.",
-            reply_markup=builder.as_markup()
-        )
-        return
-    
-    elif validation_result["status"] == "ok" and validation_result.get("auto"):
-        # Один результат - автоматически выбираем
-        location = validation_result["location"]
-        
-        # Получаем текущие фильтры
-        filters = await get_user_filters_turso(user_id) or {}
-        if not filters:
-            filters = {
-                "city": None,
-                "min_rooms": 1,
-                "max_rooms": 4,
-                "min_price": 0,
-                "max_price": 100000,
-                "seller_type": "all",
-                "delivery_mode": "brief",
-            }
-        
-        # Сохраняем location dict (новый формат) или city_raw (старый формат для совместимости)
-        filters["city"] = location  # Сохраняем location dict
-        
-        # Сохраняем фильтры
-        await set_user_filters_turso(user_id, filters)
-        
-        # Верификация: читаем обратно и логируем
-        filters_after = await get_user_filters_turso(user_id)
-        logger.info(f"{LOG_FILTER_VERIFY} user={user_id} after_save={filters_after}")
-        
-        # Проверяем сохранение
-        city_saved = None
-        if filters_after:
-            city_saved_data = filters_after.get('city')
-            if isinstance(city_saved_data, dict):
-                city_saved = city_saved_data.get('name', '').lower().strip()
-            elif city_saved_data:
-                city_saved = str(city_saved_data).lower().strip()
-        
-        # Сообщаем пользователю
-        if city_saved == city_norm or (isinstance(filters_after.get('city'), dict) and filters_after.get('city', {}).get('name', '').lower().strip() == city_norm):
-            region_text = f" ({location.get('region', '')})" if location.get('region') else ""
-            await message.answer(
-                f"✅ Город установлен: {location.get('name', city_raw)}{region_text}"
-            )
-        else:
-            logger.error(
-                f"{LOG_FILTER_VERIFY} MISMATCH user={user_id} expected={city_norm!r} got={city_saved!r}"
-            )
-            await message.answer(
-                "❌ Не удалось сохранить город — смотри логи сервера.\n"
-                "Попробуйте ещё раз: /start"
-            )
-            await state.clear()
-            return
-        
-        # Запускаем quick wizard
-        try:
-            await show_filters_master(message, user_id)
-        except Exception as e:
-            logger.error(
-                "[FILTER_UI][START] Failed to show filters master after city select user=%s error=%s",
-                user_id,
-                e,
-                exc_info=True
-            )
-            await message.answer(
-                "⚠️ Не удалось открыть настройки.\n"
-                "Попробуйте ещё раз: /start"
-            )
-        await state.clear()
-        return
-    
-    elif validation_result["status"] == "multiple":
-        # Несколько вариантов - показываем кнопки
-        choices = validation_result["choices"]
-        builder = InlineKeyboardBuilder()
-        
-        for loc in choices:
-            label_parts = [loc.get("name", "")]
-            if loc.get("region"):
-                label_parts.append(loc["region"])
-            if loc.get("type"):
-                label_parts.append(loc["type"])
-            label = ", ".join(label_parts)
-            
-            builder.button(
-                text=label,
-                callback_data=f"loc_select:{user_id}:{loc.get('id', '')}"
-            )
-        builder.adjust(1)
-        
-        await message.answer(
-            "Найдено несколько вариантов. Выберите нужный:",
-            reply_markup=builder.as_markup()
-        )
-        return
-    
-    elif validation_result["status"] == "too_many":
-        # Слишком много результатов - просим уточнить
-        await message.answer(
-            "Найдено слишком много вариантов. Пожалуйста, уточните название города "
-            "(например, добавьте область: 'Барановичи, Брестская область')."
-        )
-        return
 
 
 # Импортируем остальные обработчики из старого bot.py
