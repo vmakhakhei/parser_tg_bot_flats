@@ -1033,6 +1033,12 @@ async def ensure_tables_exist():
                         if "city_json" not in cols:
                             conn.execute("ALTER TABLE user_filters ADD COLUMN city_json TEXT NULL")
                             logger.info("[migration] Добавлена колонка city_json в user_filters")
+                        if "city_slug" not in cols:
+                            conn.execute("ALTER TABLE user_filters ADD COLUMN city_slug TEXT NULL")
+                            logger.info("[migration] Добавлена колонка city_slug в user_filters")
+                        if "city_display" not in cols:
+                            conn.execute("ALTER TABLE user_filters ADD COLUMN city_display TEXT NULL")
+                            logger.info("[migration] Добавлена колонка city_display в user_filters")
                     except Exception as e:
                         logger.warning(f"[migration] Ошибка добавления колонок seller_type/delivery_mode/city_json: {e}")
                 
@@ -1081,6 +1087,35 @@ async def ensure_tables_exist():
                         ON kufar_city_cache(updated_at)
                     """)
                     logger.info("✅ Таблица kufar_city_cache создана")
+                
+                # 2.3. Таблица city_codes (для локальной карты городов)
+                cursor = conn.execute("""
+                    SELECT name FROM sqlite_master 
+                    WHERE type='table' AND name='city_codes'
+                """)
+                if not cursor.fetchone():
+                    logger.info("📋 Создание таблицы city_codes...")
+                    conn.execute("""
+                        CREATE TABLE IF NOT EXISTS city_codes (
+                            slug TEXT PRIMARY KEY,
+                            label_ru TEXT,
+                            label_by TEXT,
+                            province TEXT,
+                            country TEXT,
+                            sample_coords TEXT,
+                            sources TEXT,
+                            added_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                        )
+                    """)
+                    conn.execute("""
+                        CREATE INDEX IF NOT EXISTS idx_city_codes_label_ru 
+                        ON city_codes(label_ru)
+                    """)
+                    conn.execute("""
+                        CREATE INDEX IF NOT EXISTS idx_city_codes_province 
+                        ON city_codes(province)
+                    """)
+                    logger.info("✅ Таблица city_codes создана")
                 
                 # 3. Таблица apartments (основная таблица объявлений)
                 cursor = conn.execute("""
@@ -1251,6 +1286,106 @@ async def ensure_tables_exist():
         return False
 
 
+async def ensure_city_codes_table():
+    """Проверяет и создает таблицу city_codes если её нет"""
+    await ensure_tables_exist()  # ensure_tables_exist уже создает city_codes
+
+
+async def load_city_map_from_json(json_path: str) -> int:
+    """
+    Загружает карту городов из JSON файла в таблицу city_codes.
+    
+    Args:
+        json_path: Путь к JSON файлу с city_map
+        
+    Returns:
+        Количество импортированных записей
+    """
+    try:
+        import os
+        from pathlib import Path
+        
+        # Проверяем существование файла
+        if not os.path.exists(json_path):
+            log_error("city_map", f"Файл не найден: {json_path}")
+            return 0
+        
+        # Читаем JSON
+        with open(json_path, 'r', encoding='utf-8') as f:
+            city_map = json.load(f)
+        
+        if not isinstance(city_map, list):
+            log_error("city_map", f"Неверный формат JSON: ожидается список")
+            return 0
+        
+        def _load_to_db():
+            with turso_transaction() as conn:
+                # Убеждаемся, что таблица существует
+                cursor = conn.execute("""
+                    SELECT name FROM sqlite_master 
+                    WHERE type='table' AND name='city_codes'
+                """)
+                if not cursor.fetchone():
+                    conn.execute("""
+                        CREATE TABLE IF NOT EXISTS city_codes (
+                            slug TEXT PRIMARY KEY,
+                            label_ru TEXT,
+                            label_by TEXT,
+                            province TEXT,
+                            country TEXT,
+                            sample_coords TEXT,
+                            sources TEXT,
+                            added_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                        )
+                    """)
+                
+                # Загружаем данные
+                imported = 0
+                for city in city_map:
+                    try:
+                        slug = city.get('slug', '').strip()
+                        if not slug:
+                            continue
+                        
+                        label_ru = city.get('label_ru')
+                        label_by = city.get('label_by')
+                        province = city.get('province', '')
+                        country = city.get('country', 'belarus')
+                        sample_coords = city.get('sample_coords')
+                        sources = city.get('sources', [])
+                        
+                        # Сериализуем sources и coords в JSON строки
+                        sources_json = json.dumps(sources, ensure_ascii=False) if sources else None
+                        
+                        conn.execute("""
+                            INSERT OR REPLACE INTO city_codes 
+                            (slug, label_ru, label_by, province, country, sample_coords, sources)
+                            VALUES (?, ?, ?, ?, ?, ?, ?)
+                        """, (
+                            slug,
+                            label_ru,
+                            label_by,
+                            province,
+                            country,
+                            sample_coords,
+                            sources_json,
+                        ))
+                        imported += 1
+                    except Exception as e:
+                        log_warning("city_map", f"Ошибка импорта города {city.get('slug', 'unknown')}: {e}")
+                        continue
+                
+                return imported
+        
+        imported_count = await asyncio.to_thread(_load_to_db)
+        log_info("city_map", f"[CITYMAP] loaded {imported_count} rows from {json_path}")
+        return imported_count
+    
+    except Exception as e:
+        log_error("city_map", f"Ошибка загрузки city_map из {json_path}", e)
+        return 0
+
+
 def cached_listing_to_listing(cached_dict: Dict[str, Any]) -> Listing:
     """
     Конвертирует объявление из кэша (словарь) в объект Listing
@@ -1348,7 +1483,7 @@ async def get_user_filters_turso(telegram_id: int) -> Optional[Dict[str, Any]]:
         def _execute():
             with turso_transaction() as conn:
                 query = """
-                SELECT telegram_id, city, city_json, min_rooms, max_rooms, min_price, max_price,
+                SELECT telegram_id, city, city_json, city_slug, city_display, min_rooms, max_rooms, min_price, max_price,
                        seller_type, delivery_mode, is_active
                 FROM user_filters
                 WHERE telegram_id = ?
@@ -1372,16 +1507,46 @@ async def get_user_filters_turso(telegram_id: int) -> Optional[Dict[str, Any]]:
                 
                 logger.info(f"{LOG_FILTER_LOAD} user={telegram_id} FOUND")
                 
-                # Обрабатываем city_json: если есть - используем его, иначе city (обратная совместимость)
+                # Обрабатываем city: приоритет у city_slug/city_display, затем city_json, затем city (обратная совместимость)
+                city_slug = result.get("city_slug")
+                city_display = result.get("city_display")
                 city_data = result.get("city")
                 city_json_str = result.get("city_json")
                 
-                if city_json_str:
+                # Если есть city_slug и city_display - формируем dict
+                if city_slug and city_display:
+                    city_data = {
+                        "slug": city_slug,
+                        "name": city_display,
+                        "city_slug": city_slug,
+                        "city_display": city_display,
+                    }
+                elif city_json_str:
                     try:
                         city_data = json.loads(city_json_str)
+                        # Добавляем city_slug и city_display если они есть в БД
+                        if city_slug:
+                            city_data["city_slug"] = city_slug
+                        if city_display:
+                            city_data["city_display"] = city_display
                     except Exception:
                         # Если не удалось распарсить, используем city как строку
                         pass
+                elif city_slug:
+                    # Если есть только slug, формируем минимальный dict
+                    city_data = {
+                        "slug": city_slug,
+                        "city_slug": city_slug,
+                    }
+                    if city_display:
+                        city_data["name"] = city_display
+                        city_data["city_display"] = city_display
+                
+                # Сохраняем city_slug и city_display в result для обратной совместимости
+                if city_slug:
+                    result["city_slug"] = city_slug
+                if city_display:
+                    result["city_display"] = city_display
                 
                 # Логирование уже выполнено выше
                 
@@ -1554,11 +1719,18 @@ async def set_user_filters_turso(telegram_id: int, filters: Dict[str, Any]) -> N
     # Обрабатываем city: может быть dict (location) или str (старый формат)
     city_value = filters.get("city")
     city_json_value = None
+    city_slug_value = filters.get("city_slug")
+    city_display_value = filters.get("city_display")
     
     if isinstance(city_value, dict):
         # Новый формат - location dict
         city_json_value = json.dumps(city_value)
         city_value = city_value.get("name", "")  # Сохраняем имя для обратной совместимости
+        # Если slug не передан отдельно, пробуем извлечь из location dict
+        if not city_slug_value:
+            city_slug_value = city_value.get("slug")
+        if not city_display_value:
+            city_display_value = city_value.get("name")
     elif city_value:
         # Старый формат - строка
         city_value = str(city_value)
@@ -1585,38 +1757,83 @@ async def set_user_filters_turso(telegram_id: int, filters: Dict[str, Any]) -> N
     try:
         def _execute():
             with turso_transaction() as conn:
-                conn.execute(
-                    """
-                    INSERT INTO user_filters (
-                        telegram_id, city, city_json, min_rooms, max_rooms,
-                        min_price, max_price, seller_type,
-                        delivery_mode, is_active
+                # Проверяем наличие колонок city_slug и city_display
+                cols = {r[1] for r in conn.execute("PRAGMA table_info(user_filters)").fetchall()}
+                has_city_slug = "city_slug" in cols
+                has_city_display = "city_display" in cols
+                
+                if has_city_slug and has_city_display:
+                    # Новый формат с city_slug и city_display
+                    conn.execute(
+                        """
+                        INSERT INTO user_filters (
+                            telegram_id, city, city_json, city_slug, city_display, min_rooms, max_rooms,
+                            min_price, max_price, seller_type,
+                            delivery_mode, is_active
+                        )
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)
+                        ON CONFLICT(telegram_id) DO UPDATE SET
+                            city=excluded.city,
+                            city_json=excluded.city_json,
+                            city_slug=excluded.city_slug,
+                            city_display=excluded.city_display,
+                            min_rooms=excluded.min_rooms,
+                            max_rooms=excluded.max_rooms,
+                            min_price=excluded.min_price,
+                            max_price=excluded.max_price,
+                            seller_type=excluded.seller_type,
+                            delivery_mode=excluded.delivery_mode,
+                            is_active=excluded.is_active,
+                            updated_at=CURRENT_TIMESTAMP
+                        """,
+                        (
+                            telegram_id,
+                            city_value,
+                            city_json_value,
+                            city_slug_value,
+                            city_display_value,
+                            filters.get("min_rooms", 0),
+                            filters.get("max_rooms", 99),
+                            filters.get("min_price", 0),
+                            filters.get("max_price", 99999999),
+                            filters.get("seller_type", "all"),
+                            filters.get("delivery_mode", "brief"),
+                        ),
                     )
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1)
-                    ON CONFLICT(telegram_id) DO UPDATE SET
-                        city=excluded.city,
-                        city_json=excluded.city_json,
-                        min_rooms=excluded.min_rooms,
-                        max_rooms=excluded.max_rooms,
-                        min_price=excluded.min_price,
-                        max_price=excluded.max_price,
-                        seller_type=excluded.seller_type,
-                        delivery_mode=excluded.delivery_mode,
-                        is_active=excluded.is_active,
-                        updated_at=CURRENT_TIMESTAMP
-                    """,
-                    (
-                        telegram_id,
-                        city_value,
-                        city_json_value,
-                        filters.get("min_rooms", 0),
-                        filters.get("max_rooms", 99),
-                        filters.get("min_price", 0),
-                        filters.get("max_price", 99999999),
-                        filters.get("seller_type", "all"),
-                        filters.get("delivery_mode", "brief"),
-                    ),
-                )
+                else:
+                    # Старый формат без city_slug и city_display
+                    conn.execute(
+                        """
+                        INSERT INTO user_filters (
+                            telegram_id, city, city_json, min_rooms, max_rooms,
+                            min_price, max_price, seller_type,
+                            delivery_mode, is_active
+                        )
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1)
+                        ON CONFLICT(telegram_id) DO UPDATE SET
+                            city=excluded.city,
+                            city_json=excluded.city_json,
+                            min_rooms=excluded.min_rooms,
+                            max_rooms=excluded.max_rooms,
+                            min_price=excluded.min_price,
+                            max_price=excluded.max_price,
+                            seller_type=excluded.seller_type,
+                            delivery_mode=excluded.delivery_mode,
+                            is_active=excluded.is_active,
+                            updated_at=CURRENT_TIMESTAMP
+                        """,
+                        (
+                            telegram_id,
+                            city_value,
+                            city_json_value,
+                            filters.get("min_rooms", 0),
+                            filters.get("max_rooms", 99),
+                            filters.get("min_price", 0),
+                            filters.get("max_price", 99999999),
+                            filters.get("seller_type", "all"),
+                            filters.get("delivery_mode", "brief"),
+                        ),
+                    )
         
         await asyncio.to_thread(_execute)
     except Exception as e:

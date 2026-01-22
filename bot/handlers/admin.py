@@ -13,7 +13,9 @@ from database_turso import (
     find_stale_sent_ads,
     cleanup_stale_sent_ads,
     check_sent_ads_sync,
-    list_stale_sent_ads
+    list_stale_sent_ads,
+    load_city_map_from_json,
+    ensure_city_codes_table
 )
 
 logger = logging.getLogger(__name__)
@@ -281,4 +283,52 @@ async def cmd_admin_kufar_city_lookup(message: Message):
     
     except Exception as e:
         logger.exception(f"{LOG_KUFAR_LOOKUP} admin command failed: {e}")
+        await message.answer(f"❌ Ошибка: {e}")
+
+
+@router.message(Command("admin_refresh_city_map"))
+async def cmd_admin_refresh_city_map(message: Message):
+    """Админ-команда для обновления карты городов из JSON файла"""
+    # Проверка прав администратора
+    if not is_admin(message.from_user.id):
+        await message.answer("⛔ Команда доступна только администратору.")
+        return
+    
+    try:
+        import os
+        from pathlib import Path
+        
+        # Путь к JSON файлу
+        repo_root = Path(__file__).parent.parent.parent
+        json_path = repo_root / 'data' / 'kufar_city_map.json'
+        
+        if not os.path.exists(json_path):
+            await message.answer(
+                f"❌ Файл не найден: {json_path}\n\n"
+                "Сначала запустите:\n"
+                "`python tools/build_city_map_from_candidates.py`"
+            )
+            return
+        
+        # Убеждаемся, что таблица существует
+        await ensure_city_codes_table()
+        
+        # Загружаем данные
+        await message.answer("🔄 Загрузка карты городов...")
+        imported_count = await load_city_map_from_json(str(json_path))
+        
+        if imported_count > 0:
+            await message.answer(
+                f"✅ Карта городов обновлена!\n\n"
+                f"• Импортировано записей: {imported_count}\n"
+                f"• Источник: `{json_path}`"
+            )
+            logger.info(f"[admin] City map refreshed: {imported_count} records imported")
+        else:
+            await message.answer(
+                "⚠️ Не удалось импортировать записи. Проверьте формат JSON файла."
+            )
+    
+    except Exception as e:
+        logger.exception(f"[admin] Ошибка при обновлении city_map")
         await message.answer(f"❌ Ошибка: {e}")

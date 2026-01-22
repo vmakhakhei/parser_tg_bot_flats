@@ -1,0 +1,4346 @@
+[
+  {
+    "slug": "country-belarus~province-minsk~locality-minsk",
+    "label_ru": "Минск",
+    "label_by": null,
+    "province": "minsk",
+    "country": "belarus",
+    "sample_coords": null,
+    "sources": [
+      "live_https://re.kufar.by/"
+    ],
+    "occurrences": 1
+  },
+  {
+    "slug": "country-belarus~province-minskaja_oblast",
+    "label_ru": "Беларусь",
+    "label_by": null,
+    "province": "minskaja_oblast",
+    "country": "belarus",
+    "sample_coords": null,
+    "sources": [
+      "live_https://re.kufar.by/"
+    ],
+    "occurrences": 1
+  },
+  {
+    "slug": "country-belarus~province-brestskaja_oblast",
+    "label_ru": "Минская",
+    "label_by": null,
+    "province": "brestskaja_oblast",
+    "country": "belarus",
+    "sample_coords": null,
+    "sources": [
+      "live_https://re.kufar.by/"
+    ],
+    "occurrences": 1
+  },
+  {
+    "slug": "country-belarus~province-vitebskaja_oblast",
+    "label_ru": "Брестская",
+    "label_by": null,
+    "province": "vitebskaja_oblast",
+    "country": "belarus",
+    "sample_coords": null,
+    "sources": [
+      "live_https://re.kufar.by/"
+    ],
+    "occurrences": 1
+  },
+  {
+    "slug": "country-belarus~province-gomelskaja_oblast",
+    "label_ru": "Витебская",
+    "label_by": null,
+    "province": "gomelskaja_oblast",
+    "country": "belarus",
+    "sample_coords": null,
+    "sources": [
+      "live_https://re.kufar.by/"
+    ],
+    "occurrences": 1
+  },
+  {
+    "slug": "country-belarus~province-grodnenskaja_oblast",
+    "label_ru": "Гомельская",
+    "label_by": null,
+    "province": "grodnenskaja_oblast",
+    "country": "belarus",
+    "sample_coords": null,
+    "sources": [
+      "live_https://re.kufar.by/"
+    ],
+    "occurrences": 1
+  },
+  {
+    "slug": "country-belarus~province-mogilyovskaja_oblast",
+    "label_ru": "Гродненская",
+    "label_by": null,
+    "province": "mogilyovskaja_oblast",
+    "country": "belarus",
+    "sample_coords": null,
+    "sources": [
+      "live_https://re.kufar.by/"
+    ],
+    "occurrences": 1
+  },
+  {
+    "slug": "country-belarus~province-minskaja_oblast~area-minskij_rajon",
+    "label_ru": "Минск",
+    "label_by": null,
+    "province": "minskaja_oblast",
+    "country": "belarus",
+    "sample_coords": null,
+    "sources": [
+      "live_https://re.kufar.by/"
+    ],
+    "occurrences": 1
+  },
+  {
+    "slug": "country-belarus~province-brestskaja_oblast~locality-brest",
+    "label_ru": "Минский",
+    "label_by": null,
+    "province": "brestskaja_oblast",
+    "country": "belarus",
+    "sample_coords": null,
+    "sources": [
+      "live_https://re.kufar.by/"
+    ],
+    "occurrences": 1
+  },
+  {
+    "slug": "country-belarus~province-brestskaja_oblast~area-brestskij_rajon",
+    "label_ru": "Брест",
+    "label_by": null,
+    "province": "brestskaja_oblast",
+    "country": "belarus",
+    "sample_coords": null,
+    "sources": [
+      "live_https://re.kufar.by/"
+    ],
+    "occurrences": 1
+  },
+  {
+    "slug": "country-belarus~province-vitebskaja_oblast~area-vitebsk~locality-vitebsk",
+    "label_ru": "Брестский",
+    "label_by": null,
+    "province": "vitebskaja_oblast",
+    "country": "belarus",
+    "sample_coords": null,
+    "sources": [
+      "live_https://re.kufar.by/"
+    ],
+    "occurrences": 1
+  },
+  {
+    "slug": "country-belarus~province-vitebskaja_oblast~area-vitebskij_rajon",
+    "label_ru": "Витебск",
+    "label_by": null,
+    "province": "vitebskaja_oblast",
+    "country": "belarus",
+    "sample_coords": null,
+    "sources": [
+      "live_https://re.kufar.by/"
+    ],
+    "occurrences": 1
+  },
+  {
+    "slug": "country-belarus~province-grodnenskaja_oblast~locality-grodno",
+    "label_ru": "Витебский",
+    "label_by": null,
+    "province": "grodnenskaja_oblast",
+    "country": "belarus",
+    "sample_coords": null,
+    "sources": [
+      "live_https://re.kufar.by/"
+    ],
+    "occurrences": 1
+  },
+  {
+    "slug": "country-belarus~province-grodnenskaja_oblast~area-grodnenskij_rajon",
+    "label_ru": "Гродно",
+    "label_by": null,
+    "province": "grodnenskaja_oblast",
+    "country": "belarus",
+    "sample_coords": null,
+    "sources": [
+      "live_https://re.kufar.by/"
+    ],
+    "occurrences": 1
+  },
+  {
+    "slug": "country-belarus~province-gomelskaja_oblast~locality-gomel",
+    "label_ru": "Гродненский",
+    "label_by": null,
+    "province": "gomelskaja_oblast",
+    "country": "belarus",
+    "sample_coords": null,
+    "sources": [
+      "live_https://re.kufar.by/"
+    ],
+    "occurrences": 1
+  },
+  {
+    "slug": "country-belarus~province-gomelskaja_oblast~area-gomelskij_rajon",
+    "label_ru": "Гомель",
+    "label_by": null,
+    "province": "gomelskaja_oblast",
+    "country": "belarus",
+    "sample_coords": null,
+    "sources": [
+      "live_https://re.kufar.by/"
+    ],
+    "occurrences": 1
+  },
+  {
+    "slug": "country-belarus~province-mogilyovskaja_oblast~locality-mogilyov",
+    "label_ru": "Гомельский",
+    "label_by": null,
+    "province": "mogilyovskaja_oblast",
+    "country": "belarus",
+    "sample_coords": null,
+    "sources": [
+      "live_https://re.kufar.by/"
+    ],
+    "occurrences": 1
+  },
+  {
+    "slug": "country-belarus~province-mogilyovskaja_oblast~area-mogilyovskij_rajon",
+    "label_ru": "Могилёв",
+    "label_by": null,
+    "province": "mogilyovskaja_oblast",
+    "country": "belarus",
+    "sample_coords": null,
+    "sources": [
+      "live_https://re.kufar.by/"
+    ],
+    "occurrences": 1
+  },
+  {
+    "slug": "country-belarus~province-minskaja_oblast~area-berezinskij_rajon~locality-berezino",
+    "label_ru": "Могилевский",
+    "label_by": null,
+    "province": "minskaja_oblast",
+    "country": "belarus",
+    "sample_coords": null,
+    "sources": [
+      "live_https://re.kufar.by/"
+    ],
+    "occurrences": 1
+  },
+  {
+    "slug": "country-belarus~province-minskaja_oblast~area-borisovskij_rajon~locality-borisov",
+    "label_ru": "Березино",
+    "label_by": null,
+    "province": "minskaja_oblast",
+    "country": "belarus",
+    "sample_coords": null,
+    "sources": [
+      "live_https://re.kufar.by/"
+    ],
+    "occurrences": 1
+  },
+  {
+    "slug": "country-belarus~province-minskaja_oblast~area-minskij_rajon~area-borovljanskij_selsovet~locality-derevnja_borovljany",
+    "label_ru": "Борисов",
+    "label_by": null,
+    "province": "minskaja_oblast",
+    "country": "belarus",
+    "sample_coords": null,
+    "sources": [
+      "live_https://re.kufar.by/"
+    ],
+    "occurrences": 1
+  },
+  {
+    "slug": "country-belarus~province-minskaja_oblast~area-vilejskij_rajon~locality-vilejka",
+    "label_ru": "Боровляны",
+    "label_by": null,
+    "province": "minskaja_oblast",
+    "country": "belarus",
+    "sample_coords": null,
+    "sources": [
+      "live_https://re.kufar.by/"
+    ],
+    "occurrences": 1
+  },
+  {
+    "slug": "country-belarus~province-minskaja_oblast~area-volozhinskij_rajon~locality-volozhin",
+    "label_ru": "Вилейка",
+    "label_by": null,
+    "province": "minskaja_oblast",
+    "country": "belarus",
+    "sample_coords": null,
+    "sources": [
+      "live_https://re.kufar.by/"
+    ],
+    "occurrences": 1
+  },
+  {
+    "slug": "country-belarus~province-minskaja_oblast~area-nesvizhskij_rajon~locality-gorodskoj_posyolok_gorodeja",
+    "label_ru": "Воложин",
+    "label_by": null,
+    "province": "minskaja_oblast",
+    "country": "belarus",
+    "sample_coords": null,
+    "sources": [
+      "live_https://re.kufar.by/"
+    ],
+    "occurrences": 1
+  },
+  {
+    "slug": "country-belarus~province-minskaja_oblast~area-dzerzhinskij_rajon~locality-dzerzhinsk",
+    "label_ru": "Городея",
+    "label_by": null,
+    "province": "minskaja_oblast",
+    "country": "belarus",
+    "sample_coords": null,
+    "sources": [
+      "live_https://re.kufar.by/"
+    ],
+    "occurrences": 1
+  },
+  {
+    "slug": "country-belarus~province-minskaja_oblast~area-minskij_rajon~area-zhdanovichskij_selsovet~locality-agrogorodok_zhdanovichi",
+    "label_ru": "Дзержинск",
+    "label_by": null,
+    "province": "minskaja_oblast",
+    "country": "belarus",
+    "sample_coords": null,
+    "sources": [
+      "live_https://re.kufar.by/"
+    ],
+    "occurrences": 1
+  },
+  {
+    "slug": "country-belarus~province-minskaja_oblast~locality-zhodino",
+    "label_ru": "Ждановичи",
+    "label_by": null,
+    "province": "minskaja_oblast",
+    "country": "belarus",
+    "sample_coords": null,
+    "sources": [
+      "live_https://re.kufar.by/"
+    ],
+    "occurrences": 1
+  },
+  {
+    "slug": "country-belarus~province-minskaja_oblast~area-minskij_rajon~locality-zaslavl",
+    "label_ru": "Жодино",
+    "label_by": null,
+    "province": "minskaja_oblast",
+    "country": "belarus",
+    "sample_coords": null,
+    "sources": [
+      "live_https://re.kufar.by/"
+    ],
+    "occurrences": 1
+  },
+  {
+    "slug": "country-belarus~province-minskaja_oblast~area-soligorskij_rajon~area-dolgovskij_selsovet~locality-derevnja_zelyonyj_bor",
+    "label_ru": "Заславль",
+    "label_by": null,
+    "province": "minskaja_oblast",
+    "country": "belarus",
+    "sample_coords": null,
+    "sources": [
+      "live_https://re.kufar.by/"
+    ],
+    "occurrences": 1
+  },
+  {
+    "slug": "country-belarus~province-minskaja_oblast~area-volozhinskij_rajon~locality-gorodskoj_posyolok_ivenec",
+    "label_ru": "Зелёный Бор",
+    "label_by": null,
+    "province": "minskaja_oblast",
+    "country": "belarus",
+    "sample_coords": null,
+    "sources": [
+      "live_https://re.kufar.by/"
+    ],
+    "occurrences": 1
+  },
+  {
+    "slug": "country-belarus~province-minskaja_oblast~area-kleckij_rajon~locality-kleck",
+    "label_ru": "Ивенец",
+    "label_by": null,
+    "province": "minskaja_oblast",
+    "country": "belarus",
+    "sample_coords": null,
+    "sources": [
+      "live_https://re.kufar.by/"
+    ],
+    "occurrences": 1
+  },
+  {
+    "slug": "country-belarus~province-minskaja_oblast~area-kopylskij_rajon~locality-kopyl",
+    "label_ru": "Клецк",
+    "label_by": null,
+    "province": "minskaja_oblast",
+    "country": "belarus",
+    "sample_coords": null,
+    "sources": [
+      "live_https://re.kufar.by/"
+    ],
+    "occurrences": 1
+  },
+  {
+    "slug": "country-belarus~province-minskaja_oblast~area-krupskij_rajon~locality-krupki",
+    "label_ru": "Копыль",
+    "label_by": null,
+    "province": "minskaja_oblast",
+    "country": "belarus",
+    "sample_coords": null,
+    "sources": [
+      "live_https://re.kufar.by/"
+    ],
+    "occurrences": 1
+  },
+  {
+    "slug": "country-belarus~province-minskaja_oblast~area-logojskij_rajon~locality-logojsk",
+    "label_ru": "Крупки",
+    "label_by": null,
+    "province": "minskaja_oblast",
+    "country": "belarus",
+    "sample_coords": null,
+    "sources": [
+      "live_https://re.kufar.by/"
+    ],
+    "occurrences": 1
+  },
+  {
+    "slug": "country-belarus~province-minskaja_oblast~area-ljubanskij_rajon~locality-ljuban",
+    "label_ru": "Логойск",
+    "label_by": null,
+    "province": "minskaja_oblast",
+    "country": "belarus",
+    "sample_coords": null,
+    "sources": [
+      "live_https://re.kufar.by/"
+    ],
+    "occurrences": 1
+  },
+  {
+    "slug": "country-belarus~province-minskaja_oblast~area-puhovichskij_rajon~locality-marina_gorka",
+    "label_ru": "Любань",
+    "label_by": null,
+    "province": "minskaja_oblast",
+    "country": "belarus",
+    "sample_coords": null,
+    "sources": [
+      "live_https://re.kufar.by/"
+    ],
+    "occurrences": 1
+  },
+  {
+    "slug": "country-belarus~province-minskaja_oblast~area-minskij_rajon~locality-gorodskoj_posyolok_machulischi",
+    "label_ru": "Марьина Горка",
+    "label_by": null,
+    "province": "minskaja_oblast",
+    "country": "belarus",
+    "sample_coords": null,
+    "sources": [
+      "live_https://re.kufar.by/"
+    ],
+    "occurrences": 1
+  },
+  {
+    "slug": "country-belarus~province-minskaja_oblast~area-molodechnenskij_rajon~locality-molodechno",
+    "label_ru": "Мачулищи",
+    "label_by": null,
+    "province": "minskaja_oblast",
+    "country": "belarus",
+    "sample_coords": null,
+    "sources": [
+      "live_https://re.kufar.by/"
+    ],
+    "occurrences": 1
+  },
+  {
+    "slug": "country-belarus~province-minskaja_oblast~area-mjadelskij_rajon~locality-mjadel",
+    "label_ru": "Молодечно",
+    "label_by": null,
+    "province": "minskaja_oblast",
+    "country": "belarus",
+    "sample_coords": null,
+    "sources": [
+      "live_https://re.kufar.by/"
+    ],
+    "occurrences": 1
+  },
+  {
+    "slug": "country-belarus~province-minskaja_oblast~area-nesvizhskij_rajon~locality-nesvizh",
+    "label_ru": "Мядель",
+    "label_by": null,
+    "province": "minskaja_oblast",
+    "country": "belarus",
+    "sample_coords": null,
+    "sources": [
+      "live_https://re.kufar.by/"
+    ],
+    "occurrences": 1
+  },
+  {
+    "slug": "country-belarus~province-minskaja_oblast~area-logojskij_rajon~area-pleschenickij_selsovet~locality-gorodskoj_posyolok_pleschenicy",
+    "label_ru": "Несвиж",
+    "label_by": null,
+    "province": "minskaja_oblast",
+    "country": "belarus",
+    "sample_coords": null,
+    "sources": [
+      "live_https://re.kufar.by/"
+    ],
+    "occurrences": 1
+  },
+  {
+    "slug": "country-belarus~province-minskaja_oblast~area-molodechnenskij_rajon~locality-gorodskoj_posyolok_radoshkovichi",
+    "label_ru": "Плещеницы",
+    "label_by": null,
+    "province": "minskaja_oblast",
+    "country": "belarus",
+    "sample_coords": null,
+    "sources": [
+      "live_https://re.kufar.by/"
+    ],
+    "occurrences": 1
+  },
+  {
+    "slug": "country-belarus~province-minskaja_oblast~area-puhovichskij_rajon~area-rudenskij_selsovet~locality-gorodskoj_posyolok_rudensk",
+    "label_ru": "Радошковичи",
+    "label_by": null,
+    "province": "minskaja_oblast",
+    "country": "belarus",
+    "sample_coords": null,
+    "sources": [
+      "live_https://re.kufar.by/"
+    ],
+    "occurrences": 1
+  },
+  {
+    "slug": "country-belarus~province-minskaja_oblast~area-sluckij_rajon~locality-sluck",
+    "label_ru": "Руденск",
+    "label_by": null,
+    "province": "minskaja_oblast",
+    "country": "belarus",
+    "sample_coords": null,
+    "sources": [
+      "live_https://re.kufar.by/"
+    ],
+    "occurrences": 1
+  },
+  {
+    "slug": "country-belarus~province-minskaja_oblast~area-chervenskij_rajon~area-smilovichskij_selsovet~locality-gorodskoj_posyolok_smilovichi",
+    "label_ru": "Слуцк",
+    "label_by": null,
+    "province": "minskaja_oblast",
+    "country": "belarus",
+    "sample_coords": null,
+    "sources": [
+      "live_https://re.kufar.by/"
+    ],
+    "occurrences": 1
+  },
+  {
+    "slug": "country-belarus~province-minskaja_oblast~area-smolevichskij_rajon~locality-smolevichi",
+    "label_ru": "Смиловичи",
+    "label_by": null,
+    "province": "minskaja_oblast",
+    "country": "belarus",
+    "sample_coords": null,
+    "sources": [
+      "live_https://re.kufar.by/"
+    ],
+    "occurrences": 1
+  },
+  {
+    "slug": "country-belarus~province-minskaja_oblast~area-soligorskij_rajon~locality-soligorsk",
+    "label_ru": "Смолевичи",
+    "label_by": null,
+    "province": "minskaja_oblast",
+    "country": "belarus",
+    "sample_coords": null,
+    "sources": [
+      "live_https://re.kufar.by/"
+    ],
+    "occurrences": 1
+  },
+  {
+    "slug": "country-belarus~province-minskaja_oblast~area-soligorskij_rajon~area-starobinskij_selsovet~locality-gorodskoj_posyolok_starobin",
+    "label_ru": "Солигорск",
+    "label_by": null,
+    "province": "minskaja_oblast",
+    "country": "belarus",
+    "sample_coords": null,
+    "sources": [
+      "live_https://re.kufar.by/"
+    ],
+    "occurrences": 1
+  },
+  {
+    "slug": "country-belarus~province-minskaja_oblast~area-starodorozhskij_rajon~locality-starye_dorogi",
+    "label_ru": "Старобин",
+    "label_by": null,
+    "province": "minskaja_oblast",
+    "country": "belarus",
+    "sample_coords": null,
+    "sources": [
+      "live_https://re.kufar.by/"
+    ],
+    "occurrences": 1
+  },
+  {
+    "slug": "country-belarus~province-minskaja_oblast~area-stolbcovskij_rajon~locality-stolbcy",
+    "label_ru": "Старые Дороги",
+    "label_by": null,
+    "province": "minskaja_oblast",
+    "country": "belarus",
+    "sample_coords": null,
+    "sources": [
+      "live_https://re.kufar.by/"
+    ],
+    "occurrences": 1
+  },
+  {
+    "slug": "country-belarus~province-minskaja_oblast~area-uzdenskij_rajon~locality-uzda",
+    "label_ru": "Столбцы",
+    "label_by": null,
+    "province": "minskaja_oblast",
+    "country": "belarus",
+    "sample_coords": null,
+    "sources": [
+      "live_https://re.kufar.by/"
+    ],
+    "occurrences": 1
+  },
+  {
+    "slug": "country-belarus~province-minskaja_oblast~area-dzerzhinskij_rajon~locality-fanipol",
+    "label_ru": "Узда",
+    "label_by": null,
+    "province": "minskaja_oblast",
+    "country": "belarus",
+    "sample_coords": null,
+    "sources": [
+      "live_https://re.kufar.by/"
+    ],
+    "occurrences": 1
+  },
+  {
+    "slug": "country-belarus~province-minskaja_oblast~area-chervenskij_rajon~locality-cherven",
+    "label_ru": "Фаниполь",
+    "label_by": null,
+    "province": "minskaja_oblast",
+    "country": "belarus",
+    "sample_coords": null,
+    "sources": [
+      "live_https://re.kufar.by/"
+    ],
+    "occurrences": 1
+  },
+  {
+    "slug": "country-belarus~province-minsk~locality-minsk~coder_district-26",
+    "label_ru": "Червень",
+    "label_by": null,
+    "province": "minsk",
+    "country": "belarus",
+    "sample_coords": null,
+    "sources": [
+      "live_https://re.kufar.by/"
+    ],
+    "occurrences": 1
+  },
+  {
+    "slug": "country-belarus~province-minsk~locality-minsk~coder_district-27",
+    "label_ru": "Заводской",
+    "label_by": null,
+    "province": "minsk",
+    "country": "belarus",
+    "sample_coords": null,
+    "sources": [
+      "live_https://re.kufar.by/"
+    ],
+    "occurrences": 1
+  },
+  {
+    "slug": "country-belarus~province-minsk~locality-minsk~coder_district-29",
+    "label_ru": "Ленинский",
+    "label_by": null,
+    "province": "minsk",
+    "country": "belarus",
+    "sample_coords": null,
+    "sources": [
+      "live_https://re.kufar.by/"
+    ],
+    "occurrences": 1
+  },
+  {
+    "slug": "country-belarus~province-minsk~locality-minsk~coder_district-28",
+    "label_ru": "Московский",
+    "label_by": null,
+    "province": "minsk",
+    "country": "belarus",
+    "sample_coords": null,
+    "sources": [
+      "live_https://re.kufar.by/"
+    ],
+    "occurrences": 1
+  },
+  {
+    "slug": "country-belarus~province-minsk~locality-minsk~coder_district-25",
+    "label_ru": "Октябрьский",
+    "label_by": null,
+    "province": "minsk",
+    "country": "belarus",
+    "sample_coords": null,
+    "sources": [
+      "live_https://re.kufar.by/"
+    ],
+    "occurrences": 1
+  },
+  {
+    "slug": "country-belarus~province-minsk~locality-minsk~coder_district-24",
+    "label_ru": "Партизанский",
+    "label_by": null,
+    "province": "minsk",
+    "country": "belarus",
+    "sample_coords": null,
+    "sources": [
+      "live_https://re.kufar.by/"
+    ],
+    "occurrences": 1
+  },
+  {
+    "slug": "country-belarus~province-minsk~locality-minsk~coder_district-23",
+    "label_ru": "Первомайский",
+    "label_by": null,
+    "province": "minsk",
+    "country": "belarus",
+    "sample_coords": null,
+    "sources": [
+      "live_https://re.kufar.by/"
+    ],
+    "occurrences": 1
+  },
+  {
+    "slug": "country-belarus~province-minsk~locality-minsk~coder_district-30",
+    "label_ru": "Советский",
+    "label_by": null,
+    "province": "minsk",
+    "country": "belarus",
+    "sample_coords": null,
+    "sources": [
+      "live_https://re.kufar.by/"
+    ],
+    "occurrences": 1
+  },
+  {
+    "slug": "country-belarus~province-minsk~locality-minsk~coder_district-22",
+    "label_ru": "Фрунзенский",
+    "label_by": null,
+    "province": "minsk",
+    "country": "belarus",
+    "sample_coords": null,
+    "sources": [
+      "live_https://re.kufar.by/"
+    ],
+    "occurrences": 1
+  },
+  {
+    "slug": "country-belarus~province-brestskaja_oblast~locality-baranovichi",
+    "label_ru": "Центральный",
+    "label_by": null,
+    "province": "brestskaja_oblast",
+    "country": "belarus",
+    "sample_coords": null,
+    "sources": [
+      "live_https://re.kufar.by/"
+    ],
+    "occurrences": 1
+  },
+  {
+    "slug": "country-belarus~province-brestskaja_oblast~area-beryozovskij_rajon~locality-beloozyorsk",
+    "label_ru": "Барановичи",
+    "label_by": null,
+    "province": "brestskaja_oblast",
+    "country": "belarus",
+    "sample_coords": null,
+    "sources": [
+      "live_https://re.kufar.by/"
+    ],
+    "occurrences": 1
+  },
+  {
+    "slug": "country-belarus~province-brestskaja_oblast~area-beryozovskij_rajon~locality-beryoza",
+    "label_ru": "Белоозерск",
+    "label_by": null,
+    "province": "brestskaja_oblast",
+    "country": "belarus",
+    "sample_coords": null,
+    "sources": [
+      "live_https://re.kufar.by/"
+    ],
+    "occurrences": 1
+  },
+  {
+    "slug": "country-belarus~province-brestskaja_oblast~area-kameneckij_rajon~locality-vysokoe",
+    "label_ru": "Береза",
+    "label_by": null,
+    "province": "brestskaja_oblast",
+    "country": "belarus",
+    "sample_coords": null,
+    "sources": [
+      "live_https://re.kufar.by/"
+    ],
+    "occurrences": 1
+  },
+  {
+    "slug": "country-belarus~province-brestskaja_oblast~area-gancevichskij_rajon~locality-gancevichi",
+    "label_ru": "Высокое",
+    "label_by": null,
+    "province": "brestskaja_oblast",
+    "country": "belarus",
+    "sample_coords": null,
+    "sources": [
+      "live_https://re.kufar.by/"
+    ],
+    "occurrences": 1
+  },
+  {
+    "slug": "country-belarus~province-brestskaja_oblast~area-pinskij_rajon~area-gorodischenskij_selsovet~locality-posyolok_gorodische",
+    "label_ru": "Ганцевичи",
+    "label_by": null,
+    "province": "brestskaja_oblast",
+    "country": "belarus",
+    "sample_coords": null,
+    "sources": [
+      "live_https://re.kufar.by/"
+    ],
+    "occurrences": 1
+  },
+  {
+    "slug": "country-belarus~province-brestskaja_oblast~area-stolinskij_rajon~locality-david-gorodok",
+    "label_ru": "Городище",
+    "label_by": null,
+    "province": "brestskaja_oblast",
+    "country": "belarus",
+    "sample_coords": null,
+    "sources": [
+      "live_https://re.kufar.by/"
+    ],
+    "occurrences": 1
+  },
+  {
+    "slug": "country-belarus~province-brestskaja_oblast~area-drogichinskij_rajon~locality-drogichin",
+    "label_ru": "Давид",
+    "label_by": null,
+    "province": "brestskaja_oblast",
+    "country": "belarus",
+    "sample_coords": null,
+    "sources": [
+      "live_https://re.kufar.by/"
+    ],
+    "occurrences": 1
+  },
+  {
+    "slug": "country-belarus~province-brestskaja_oblast~area-zhabinkovskij_rajon~locality-zhabinka",
+    "label_ru": "Дрогичин",
+    "label_by": null,
+    "province": "brestskaja_oblast",
+    "country": "belarus",
+    "sample_coords": null,
+    "sources": [
+      "live_https://re.kufar.by/"
+    ],
+    "occurrences": 1
+  },
+  {
+    "slug": "country-belarus~province-brestskaja_oblast~area-ivanovskij_rajon~locality-ivanovo",
+    "label_ru": "Жабинка",
+    "label_by": null,
+    "province": "brestskaja_oblast",
+    "country": "belarus",
+    "sample_coords": null,
+    "sources": [
+      "live_https://re.kufar.by/"
+    ],
+    "occurrences": 1
+  },
+  {
+    "slug": "country-belarus~province-brestskaja_oblast~area-ivacevichskij_rajon~locality-ivacevichi",
+    "label_ru": "Иваново",
+    "label_by": null,
+    "province": "brestskaja_oblast",
+    "country": "belarus",
+    "sample_coords": null,
+    "sources": [
+      "live_https://re.kufar.by/"
+    ],
+    "occurrences": 1
+  },
+  {
+    "slug": "country-belarus~province-brestskaja_oblast~area-kameneckij_rajon~locality-kamenec",
+    "label_ru": "Ивацевичи",
+    "label_by": null,
+    "province": "brestskaja_oblast",
+    "country": "belarus",
+    "sample_coords": null,
+    "sources": [
+      "live_https://re.kufar.by/"
+    ],
+    "occurrences": 1
+  },
+  {
+    "slug": "country-belarus~province-brestskaja_oblast~area-kobrinskij_rajon~locality-kobrin",
+    "label_ru": "Каменец",
+    "label_by": null,
+    "province": "brestskaja_oblast",
+    "country": "belarus",
+    "sample_coords": null,
+    "sources": [
+      "live_https://re.kufar.by/"
+    ],
+    "occurrences": 1
+  },
+  {
+    "slug": "country-belarus~province-brestskaja_oblast~area-lunineckij_rajon~locality-luninec",
+    "label_ru": "Кобрин",
+    "label_by": null,
+    "province": "brestskaja_oblast",
+    "country": "belarus",
+    "sample_coords": null,
+    "sources": [
+      "live_https://re.kufar.by/"
+    ],
+    "occurrences": 1
+  },
+  {
+    "slug": "country-belarus~province-brestskaja_oblast~area-ljahovichskij_rajon~locality-ljahovichi",
+    "label_ru": "Лунинец",
+    "label_by": null,
+    "province": "brestskaja_oblast",
+    "country": "belarus",
+    "sample_coords": null,
+    "sources": [
+      "live_https://re.kufar.by/"
+    ],
+    "occurrences": 1
+  },
+  {
+    "slug": "country-belarus~province-brestskaja_oblast~area-maloritskij_rajon~locality-malorita",
+    "label_ru": "Ляховичи",
+    "label_by": null,
+    "province": "brestskaja_oblast",
+    "country": "belarus",
+    "sample_coords": null,
+    "sources": [
+      "live_https://re.kufar.by/"
+    ],
+    "occurrences": 1
+  },
+  {
+    "slug": "country-belarus~province-brestskaja_oblast~area-lunineckij_rajon~locality-mikashevichi",
+    "label_ru": "Малорита",
+    "label_by": null,
+    "province": "brestskaja_oblast",
+    "country": "belarus",
+    "sample_coords": null,
+    "sources": [
+      "live_https://re.kufar.by/"
+    ],
+    "occurrences": 1
+  },
+  {
+    "slug": "country-belarus~province-brestskaja_oblast~locality-pinsk",
+    "label_ru": "Микашевичи",
+    "label_by": null,
+    "province": "brestskaja_oblast",
+    "country": "belarus",
+    "sample_coords": null,
+    "sources": [
+      "live_https://re.kufar.by/"
+    ],
+    "occurrences": 1
+  },
+  {
+    "slug": "country-belarus~province-brestskaja_oblast~area-pruzhanskij_rajon~locality-pruzhany",
+    "label_ru": "Пинск",
+    "label_by": null,
+    "province": "brestskaja_oblast",
+    "country": "belarus",
+    "sample_coords": null,
+    "sources": [
+      "live_https://re.kufar.by/"
+    ],
+    "occurrences": 1
+  },
+  {
+    "slug": "country-belarus~province-brestskaja_oblast~area-pruzhanskij_rajon~area-ruzhanskij_selsovet~locality-ruzhany",
+    "label_ru": "Пружаны",
+    "label_by": null,
+    "province": "brestskaja_oblast",
+    "country": "belarus",
+    "sample_coords": null,
+    "sources": [
+      "live_https://re.kufar.by/"
+    ],
+    "occurrences": 1
+  },
+  {
+    "slug": "country-belarus~province-brestskaja_oblast~area-stolinskij_rajon~locality-stolin",
+    "label_ru": "Ружаны",
+    "label_by": null,
+    "province": "brestskaja_oblast",
+    "country": "belarus",
+    "sample_coords": null,
+    "sources": [
+      "live_https://re.kufar.by/"
+    ],
+    "occurrences": 1
+  },
+  {
+    "slug": "country-belarus~province-brestskaja_oblast~area-ivacevichskij_rajon~area-telehanskij_selsovet~locality-gorodskoj_posyolok_telehany",
+    "label_ru": "Столин",
+    "label_by": null,
+    "province": "brestskaja_oblast",
+    "country": "belarus",
+    "sample_coords": null,
+    "sources": [
+      "live_https://re.kufar.by/"
+    ],
+    "occurrences": 1
+  },
+  {
+    "slug": "country-belarus~province-vitebskaja_oblast~area-orshanskij_rajon~locality-baran",
+    "label_ru": "Телеханы",
+    "label_by": null,
+    "province": "vitebskaja_oblast",
+    "country": "belarus",
+    "sample_coords": null,
+    "sources": [
+      "live_https://re.kufar.by/"
+    ],
+    "occurrences": 1
+  },
+  {
+    "slug": "country-belarus~province-vitebskaja_oblast~area-beshenkovichskij_rajon~locality-gorodskoj_posyolok_beshenkovichi",
+    "label_ru": "Барань",
+    "label_by": null,
+    "province": "vitebskaja_oblast",
+    "country": "belarus",
+    "sample_coords": null,
+    "sources": [
+      "live_https://re.kufar.by/"
+    ],
+    "occurrences": 1
+  },
+  {
+    "slug": "country-belarus~province-vitebskaja_oblast~area-braslavskij_rajon~locality-braslav",
+    "label_ru": "Бешенковичи",
+    "label_by": null,
+    "province": "vitebskaja_oblast",
+    "country": "belarus",
+    "sample_coords": null,
+    "sources": [
+      "live_https://re.kufar.by/"
+    ],
+    "occurrences": 1
+  },
+  {
+    "slug": "country-belarus~province-vitebskaja_oblast~area-braslavskij_rajon",
+    "label_ru": "Бешенковичи",
+    "label_by": null,
+    "province": "vitebskaja_oblast",
+    "country": "belarus",
+    "sample_coords": null,
+    "sources": [
+      "live_https://re.kufar.by/"
+    ],
+    "occurrences": 1
+  },
+  {
+    "slug": "country-belarus~province-vitebskaja_oblast~area-verhnedvinskij_rajon~locality-verhnedvinsk",
+    "label_ru": "Браславский",
+    "label_by": null,
+    "province": "vitebskaja_oblast",
+    "country": "belarus",
+    "sample_coords": null,
+    "sources": [
+      "live_https://re.kufar.by/"
+    ],
+    "occurrences": 1
+  },
+  {
+    "slug": "country-belarus~province-vitebskaja_oblast~area-polockij_rajon~area-vetrinskij_selsovet~locality-gorodskoj_posyolok_vetrino",
+    "label_ru": "Верхнедвинск",
+    "label_by": null,
+    "province": "vitebskaja_oblast",
+    "country": "belarus",
+    "sample_coords": null,
+    "sources": [
+      "live_https://re.kufar.by/"
+    ],
+    "occurrences": 1
+  },
+  {
+    "slug": "country-belarus~province-vitebskaja_oblast~area-tolochinskij_rajon~area-kohanovskij_selsovet~locality-gorodskoj_posyolok_kohanovo",
+    "label_ru": "Ветрино",
+    "label_by": null,
+    "province": "vitebskaja_oblast",
+    "country": "belarus",
+    "sample_coords": null,
+    "sources": [
+      "live_https://re.kufar.by/"
+    ],
+    "occurrences": 1
+  },
+  {
+    "slug": "country-belarus~province-vitebskaja_oblast~area-glubokskij_rajon~locality-glubokoe",
+    "label_ru": "Коханово",
+    "label_by": null,
+    "province": "vitebskaja_oblast",
+    "country": "belarus",
+    "sample_coords": null,
+    "sources": [
+      "live_https://re.kufar.by/"
+    ],
+    "occurrences": 1
+  },
+  {
+    "slug": "country-belarus~province-vitebskaja_oblast~area-gorodokskij_rajon~locality-gorodok",
+    "label_ru": "Глубокое",
+    "label_by": null,
+    "province": "vitebskaja_oblast",
+    "country": "belarus",
+    "sample_coords": null,
+    "sources": [
+      "live_https://re.kufar.by/"
+    ],
+    "occurrences": 1
+  },
+  {
+    "slug": "country-belarus~province-vitebskaja_oblast~area-dokshickij_rajon~locality-dokshicy",
+    "label_ru": "Городок",
+    "label_by": null,
+    "province": "vitebskaja_oblast",
+    "country": "belarus",
+    "sample_coords": null,
+    "sources": [
+      "live_https://re.kufar.by/"
+    ],
+    "occurrences": 1
+  },
+  {
+    "slug": "country-belarus~province-vitebskaja_oblast~area-dubrovenskij_rajon~locality-dubrovno",
+    "label_ru": "Докшицы",
+    "label_by": null,
+    "province": "vitebskaja_oblast",
+    "country": "belarus",
+    "sample_coords": null,
+    "sources": [
+      "live_https://re.kufar.by/"
+    ],
+    "occurrences": 1
+  },
+  {
+    "slug": "country-belarus~province-vitebskaja_oblast~area-lepelskij_rajon~locality-lepel",
+    "label_ru": "Дубровно",
+    "label_by": null,
+    "province": "vitebskaja_oblast",
+    "country": "belarus",
+    "sample_coords": null,
+    "sources": [
+      "live_https://re.kufar.by/"
+    ],
+    "occurrences": 1
+  },
+  {
+    "slug": "country-belarus~province-vitebskaja_oblast~area-lioznenskij_rajon~locality-gorodskoj_posyolok_liozno",
+    "label_ru": "Лепель",
+    "label_by": null,
+    "province": "vitebskaja_oblast",
+    "country": "belarus",
+    "sample_coords": null,
+    "sources": [
+      "live_https://re.kufar.by/"
+    ],
+    "occurrences": 1
+  },
+  {
+    "slug": "country-belarus~province-vitebskaja_oblast~area-miorskij_rajon~locality-miory",
+    "label_ru": "Лиозно",
+    "label_by": null,
+    "province": "vitebskaja_oblast",
+    "country": "belarus",
+    "sample_coords": null,
+    "sources": [
+      "live_https://re.kufar.by/"
+    ],
+    "occurrences": 1
+  },
+  {
+    "slug": "country-belarus~province-vitebskaja_oblast~area-chashnikskij_rajon~locality-novolukoml",
+    "label_ru": "Миоры",
+    "label_by": null,
+    "province": "vitebskaja_oblast",
+    "country": "belarus",
+    "sample_coords": null,
+    "sources": [
+      "live_https://re.kufar.by/"
+    ],
+    "occurrences": 1
+  },
+  {
+    "slug": "country-belarus~province-vitebskaja_oblast~locality-novopolock",
+    "label_ru": "Новолукомль",
+    "label_by": null,
+    "province": "vitebskaja_oblast",
+    "country": "belarus",
+    "sample_coords": null,
+    "sources": [
+      "live_https://re.kufar.by/"
+    ],
+    "occurrences": 1
+  },
+  {
+    "slug": "country-belarus~province-vitebskaja_oblast~area-orshanskij_rajon~locality-orsha",
+    "label_ru": "Новополоцк",
+    "label_by": null,
+    "province": "vitebskaja_oblast",
+    "country": "belarus",
+    "sample_coords": null,
+    "sources": [
+      "live_https://re.kufar.by/"
+    ],
+    "occurrences": 1
+  },
+  {
+    "slug": "country-belarus~province-vitebskaja_oblast~area-polockij_rajon~locality-polock",
+    "label_ru": "Орша",
+    "label_by": null,
+    "province": "vitebskaja_oblast",
+    "country": "belarus",
+    "sample_coords": null,
+    "sources": [
+      "live_https://re.kufar.by/"
+    ],
+    "occurrences": 1
+  },
+  {
+    "slug": "country-belarus~province-vitebskaja_oblast~area-postavskij_rajon~locality-postavy",
+    "label_ru": "Полоцк",
+    "label_by": null,
+    "province": "vitebskaja_oblast",
+    "country": "belarus",
+    "sample_coords": null,
+    "sources": [
+      "live_https://re.kufar.by/"
+    ],
+    "occurrences": 1
+  },
+  {
+    "slug": "country-belarus~province-vitebskaja_oblast~area-rossonskij_rajon~locality-gorodskoj_posyolok_rossony",
+    "label_ru": "Поставы",
+    "label_by": null,
+    "province": "vitebskaja_oblast",
+    "country": "belarus",
+    "sample_coords": null,
+    "sources": [
+      "live_https://re.kufar.by/"
+    ],
+    "occurrences": 1
+  },
+  {
+    "slug": "country-belarus~province-vitebskaja_oblast~area-sennenskij_rajon~locality-senno",
+    "label_ru": "Россоны",
+    "label_by": null,
+    "province": "vitebskaja_oblast",
+    "country": "belarus",
+    "sample_coords": null,
+    "sources": [
+      "live_https://re.kufar.by/"
+    ],
+    "occurrences": 1
+  },
+  {
+    "slug": "country-belarus~province-vitebskaja_oblast~area-tolochinskij_rajon~locality-tolochin",
+    "label_ru": "Сенно",
+    "label_by": null,
+    "province": "vitebskaja_oblast",
+    "country": "belarus",
+    "sample_coords": null,
+    "sources": [
+      "live_https://re.kufar.by/"
+    ],
+    "occurrences": 1
+  },
+  {
+    "slug": "country-belarus~province-vitebskaja_oblast~area-ushachskij_rajon~locality-gorodskoj_posyolok_ushachi",
+    "label_ru": "Толочин",
+    "label_by": null,
+    "province": "vitebskaja_oblast",
+    "country": "belarus",
+    "sample_coords": null,
+    "sources": [
+      "live_https://re.kufar.by/"
+    ],
+    "occurrences": 1
+  },
+  {
+    "slug": "country-belarus~province-vitebskaja_oblast~area-chashnikskij_rajon~locality-chashniki",
+    "label_ru": "Ушачи",
+    "label_by": null,
+    "province": "vitebskaja_oblast",
+    "country": "belarus",
+    "sample_coords": null,
+    "sources": [
+      "live_https://re.kufar.by/"
+    ],
+    "occurrences": 1
+  },
+  {
+    "slug": "country-belarus~province-vitebskaja_oblast~area-sharkovschinskij_rajon~locality-gorodskoj_posyolok_sharkovschina",
+    "label_ru": "Чашники",
+    "label_by": null,
+    "province": "vitebskaja_oblast",
+    "country": "belarus",
+    "sample_coords": null,
+    "sources": [
+      "live_https://re.kufar.by/"
+    ],
+    "occurrences": 1
+  },
+  {
+    "slug": "country-belarus~province-vitebskaja_oblast~area-shumilinskij_rajon~locality-gorodskoj_posyolok_shumilino",
+    "label_ru": "Шарковщина",
+    "label_by": null,
+    "province": "vitebskaja_oblast",
+    "country": "belarus",
+    "sample_coords": null,
+    "sources": [
+      "live_https://re.kufar.by/"
+    ],
+    "occurrences": 1
+  },
+  {
+    "slug": "country-belarus~province-gomelskaja_oblast~area-gomelskij_rajon~area-bolshevistskij_selsovet~locality-rabochij_posyolok_bolshevik",
+    "label_ru": "Шумилино",
+    "label_by": null,
+    "province": "gomelskaja_oblast",
+    "country": "belarus",
+    "sample_coords": null,
+    "sources": [
+      "live_https://re.kufar.by/"
+    ],
+    "occurrences": 1
+  },
+  {
+    "slug": "country-belarus~province-gomelskaja_oblast~area-braginskij_rajon~locality-gorodskoj_posyolok_bragin",
+    "label_ru": "Большевик",
+    "label_by": null,
+    "province": "gomelskaja_oblast",
+    "country": "belarus",
+    "sample_coords": null,
+    "sources": [
+      "live_https://re.kufar.by/"
+    ],
+    "occurrences": 1
+  },
+  {
+    "slug": "country-belarus~province-gomelskaja_oblast~area-buda-koshelyovskij_rajon~locality-buda-koshelyovo",
+    "label_ru": "Брагин",
+    "label_by": null,
+    "province": "gomelskaja_oblast",
+    "country": "belarus",
+    "sample_coords": null,
+    "sources": [
+      "live_https://re.kufar.by/"
+    ],
+    "occurrences": 1
+  },
+  {
+    "slug": "country-belarus~province-gomelskaja_oblast~area-rechickij_rajon~locality-vasilevichi",
+    "label_ru": "Буда",
+    "label_by": null,
+    "province": "gomelskaja_oblast",
+    "country": "belarus",
+    "sample_coords": null,
+    "sources": [
+      "live_https://re.kufar.by/"
+    ],
+    "occurrences": 1
+  },
+  {
+    "slug": "country-belarus~province-gomelskaja_oblast~area-vetkovskij_rajon~locality-vetka",
+    "label_ru": "Василевичи",
+    "label_by": null,
+    "province": "gomelskaja_oblast",
+    "country": "belarus",
+    "sample_coords": null,
+    "sources": [
+      "live_https://re.kufar.by/"
+    ],
+    "occurrences": 1
+  },
+  {
+    "slug": "country-belarus~province-gomelskaja_oblast~area-dobrushskij_rajon~locality-dobrush",
+    "label_ru": "Ветка",
+    "label_by": null,
+    "province": "gomelskaja_oblast",
+    "country": "belarus",
+    "sample_coords": null,
+    "sources": [
+      "live_https://re.kufar.by/"
+    ],
+    "occurrences": 1
+  },
+  {
+    "slug": "country-belarus~province-gomelskaja_oblast~area-elskij_rajon~locality-elsk",
+    "label_ru": "Добруш",
+    "label_by": null,
+    "province": "gomelskaja_oblast",
+    "country": "belarus",
+    "sample_coords": null,
+    "sources": [
+      "live_https://re.kufar.by/"
+    ],
+    "occurrences": 1
+  },
+  {
+    "slug": "country-belarus~province-gomelskaja_oblast~area-zhitkovichskij_rajon~locality-zhitkovichi",
+    "label_ru": "Ельск",
+    "label_by": null,
+    "province": "gomelskaja_oblast",
+    "country": "belarus",
+    "sample_coords": null,
+    "sources": [
+      "live_https://re.kufar.by/"
+    ],
+    "occurrences": 1
+  },
+  {
+    "slug": "country-belarus~province-gomelskaja_oblast~area-zhlobinskij_rajon~locality-zhlobin",
+    "label_ru": "Житковичи",
+    "label_by": null,
+    "province": "gomelskaja_oblast",
+    "country": "belarus",
+    "sample_coords": null,
+    "sources": [
+      "live_https://re.kufar.by/"
+    ],
+    "occurrences": 1
+  },
+  {
+    "slug": "country-belarus~province-gomelskaja_oblast~area-kalinkovichskij_rajon~locality-kalinkovichi",
+    "label_ru": "Жлобин",
+    "label_by": null,
+    "province": "gomelskaja_oblast",
+    "country": "belarus",
+    "sample_coords": null,
+    "sources": [
+      "live_https://re.kufar.by/"
+    ],
+    "occurrences": 1
+  },
+  {
+    "slug": "country-belarus~province-gomelskaja_oblast~area-kormjanskij_rajon~locality-gorodskoj_posyolok_korma",
+    "label_ru": "Калинковичи",
+    "label_by": null,
+    "province": "gomelskaja_oblast",
+    "country": "belarus",
+    "sample_coords": null,
+    "sources": [
+      "live_https://re.kufar.by/"
+    ],
+    "occurrences": 1
+  },
+  {
+    "slug": "country-belarus~province-gomelskaja_oblast~area-gomelskij_rajon~area-eryominskij_selsovet~locality-derevnja_kostjukovka",
+    "label_ru": "Корма",
+    "label_by": null,
+    "province": "gomelskaja_oblast",
+    "country": "belarus",
+    "sample_coords": null,
+    "sources": [
+      "live_https://re.kufar.by/"
+    ],
+    "occurrences": 1
+  },
+  {
+    "slug": "country-belarus~province-gomelskaja_oblast~area-lelchickij_rajon~locality-gorodskoj_posyolok_lelchicy",
+    "label_ru": "Костюковка",
+    "label_by": null,
+    "province": "gomelskaja_oblast",
+    "country": "belarus",
+    "sample_coords": null,
+    "sources": [
+      "live_https://re.kufar.by/"
+    ],
+    "occurrences": 1
+  },
+  {
+    "slug": "country-belarus~province-gomelskaja_oblast~area-loevskij_rajon~locality-gorodskoj_posyolok_loev",
+    "label_ru": "Лельчицы",
+    "label_by": null,
+    "province": "gomelskaja_oblast",
+    "country": "belarus",
+    "sample_coords": null,
+    "sources": [
+      "live_https://re.kufar.by/"
+    ],
+    "occurrences": 1
+  },
+  {
+    "slug": "country-belarus~province-gomelskaja_oblast~area-mozyrskij_rajon~locality-mozyr",
+    "label_ru": "Лоев",
+    "label_by": null,
+    "province": "gomelskaja_oblast",
+    "country": "belarus",
+    "sample_coords": null,
+    "sources": [
+      "live_https://re.kufar.by/"
+    ],
+    "occurrences": 1
+  },
+  {
+    "slug": "country-belarus~province-gomelskaja_oblast~area-narovljanskij_rajon~locality-narovlja",
+    "label_ru": "Мозырь",
+    "label_by": null,
+    "province": "gomelskaja_oblast",
+    "country": "belarus",
+    "sample_coords": null,
+    "sources": [
+      "live_https://re.kufar.by/"
+    ],
+    "occurrences": 1
+  },
+  {
+    "slug": "country-belarus~province-gomelskaja_oblast~area-oktjabrskij_rajon",
+    "label_ru": "Наровля",
+    "label_by": null,
+    "province": "gomelskaja_oblast",
+    "country": "belarus",
+    "sample_coords": null,
+    "sources": [
+      "live_https://re.kufar.by/"
+    ],
+    "occurrences": 1
+  },
+  {
+    "slug": "country-belarus~province-gomelskaja_oblast~area-svetlogorskij_rajon~area-parichskij_selsovet~locality-gorodskoj_posyolok_parichi",
+    "label_ru": "Октябрьский",
+    "label_by": null,
+    "province": "gomelskaja_oblast",
+    "country": "belarus",
+    "sample_coords": null,
+    "sources": [
+      "live_https://re.kufar.by/"
+    ],
+    "occurrences": 1
+  },
+  {
+    "slug": "country-belarus~province-gomelskaja_oblast~area-petrikovskij_rajon~locality-petrikov",
+    "label_ru": "Паричи",
+    "label_by": null,
+    "province": "gomelskaja_oblast",
+    "country": "belarus",
+    "sample_coords": null,
+    "sources": [
+      "live_https://re.kufar.by/"
+    ],
+    "occurrences": 1
+  },
+  {
+    "slug": "country-belarus~province-gomelskaja_oblast~area-rechickij_rajon~locality-rechica",
+    "label_ru": "Петриков",
+    "label_by": null,
+    "province": "gomelskaja_oblast",
+    "country": "belarus",
+    "sample_coords": null,
+    "sources": [
+      "live_https://re.kufar.by/"
+    ],
+    "occurrences": 1
+  },
+  {
+    "slug": "country-belarus~province-gomelskaja_oblast~area-rogachyovskij_rajon~locality-rogachyov",
+    "label_ru": "Речица",
+    "label_by": null,
+    "province": "gomelskaja_oblast",
+    "country": "belarus",
+    "sample_coords": null,
+    "sources": [
+      "live_https://re.kufar.by/"
+    ],
+    "occurrences": 1
+  },
+  {
+    "slug": "country-belarus~province-gomelskaja_oblast~area-svetlogorskij_rajon~locality-svetlogorsk",
+    "label_ru": "Рогачев",
+    "label_by": null,
+    "province": "gomelskaja_oblast",
+    "country": "belarus",
+    "sample_coords": null,
+    "sources": [
+      "live_https://re.kufar.by/"
+    ],
+    "occurrences": 1
+  },
+  {
+    "slug": "country-belarus~province-gomelskaja_oblast~area-rogachyovskij_rajon~area-staroselskij_selsovet~locality-derevnja_terehovka",
+    "label_ru": "Светлогорск",
+    "label_by": null,
+    "province": "gomelskaja_oblast",
+    "country": "belarus",
+    "sample_coords": null,
+    "sources": [
+      "live_https://re.kufar.by/"
+    ],
+    "occurrences": 1
+  },
+  {
+    "slug": "country-belarus~province-gomelskaja_oblast~area-zhitkovichskij_rajon~locality-turov",
+    "label_ru": "Тереховка",
+    "label_by": null,
+    "province": "gomelskaja_oblast",
+    "country": "belarus",
+    "sample_coords": null,
+    "sources": [
+      "live_https://re.kufar.by/"
+    ],
+    "occurrences": 1
+  },
+  {
+    "slug": "country-belarus~province-gomelskaja_oblast~area-buda-koshelyovskij_rajon~area-uvarovichskij_selsovet~locality-gorodskoj_posyolok_uvarovichi",
+    "label_ru": "Туров",
+    "label_by": null,
+    "province": "gomelskaja_oblast",
+    "country": "belarus",
+    "sample_coords": null,
+    "sources": [
+      "live_https://re.kufar.by/"
+    ],
+    "occurrences": 1
+  },
+  {
+    "slug": "country-belarus~province-gomelskaja_oblast~area-hojnikskij_rajon~locality-hojniki",
+    "label_ru": "Уваровичи",
+    "label_by": null,
+    "province": "gomelskaja_oblast",
+    "country": "belarus",
+    "sample_coords": null,
+    "sources": [
+      "live_https://re.kufar.by/"
+    ],
+    "occurrences": 1
+  },
+  {
+    "slug": "country-belarus~province-gomelskaja_oblast~area-checherskij_rajon~locality-chechersk",
+    "label_ru": "Хойники",
+    "label_by": null,
+    "province": "gomelskaja_oblast",
+    "country": "belarus",
+    "sample_coords": null,
+    "sources": [
+      "live_https://re.kufar.by/"
+    ],
+    "occurrences": 1
+  },
+  {
+    "slug": "country-belarus~province-grodnenskaja_oblast~area-lidskij_rajon~locality-beryozovka",
+    "label_ru": "Чечерск",
+    "label_by": null,
+    "province": "grodnenskaja_oblast",
+    "country": "belarus",
+    "sample_coords": null,
+    "sources": [
+      "live_https://re.kufar.by/"
+    ],
+    "occurrences": 1
+  },
+  {
+    "slug": "country-belarus~province-grodnenskaja_oblast~area-schuchinskij_rajon~area-ostrinskij_selsovet~locality-derevnja_berestovica",
+    "label_ru": "Берёзовка",
+    "label_by": null,
+    "province": "grodnenskaja_oblast",
+    "country": "belarus",
+    "sample_coords": null,
+    "sources": [
+      "live_https://re.kufar.by/"
+    ],
+    "occurrences": 1
+  },
+  {
+    "slug": "country-belarus~province-grodnenskaja_oblast~area-berestovickij_rajon~locality-gorodskoj_posyolok_bolshaja_berestovica",
+    "label_ru": "Берестовице",
+    "label_by": null,
+    "province": "grodnenskaja_oblast",
+    "country": "belarus",
+    "sample_coords": null,
+    "sources": [
+      "live_https://re.kufar.by/"
+    ],
+    "occurrences": 1
+  },
+  {
+    "slug": "country-belarus~province-grodnenskaja_oblast~area-volkovysskij_rajon~locality-volkovysk",
+    "label_ru": "Большая Берестовица",
+    "label_by": null,
+    "province": "grodnenskaja_oblast",
+    "country": "belarus",
+    "sample_coords": null,
+    "sources": [
+      "live_https://re.kufar.by/"
+    ],
+    "occurrences": 1
+  },
+  {
+    "slug": "country-belarus~province-grodnenskaja_oblast~area-voronovskij_rajon~locality-gorodskoj_posyolok_voronovo",
+    "label_ru": "Волковыск",
+    "label_by": null,
+    "province": "grodnenskaja_oblast",
+    "country": "belarus",
+    "sample_coords": null,
+    "sources": [
+      "live_https://re.kufar.by/"
+    ],
+    "occurrences": 1
+  },
+  {
+    "slug": "country-belarus~province-grodnenskaja_oblast~area-djatlovskij_rajon~locality-djatlovo",
+    "label_ru": "Вороново",
+    "label_by": null,
+    "province": "grodnenskaja_oblast",
+    "country": "belarus",
+    "sample_coords": null,
+    "sources": [
+      "live_https://re.kufar.by/"
+    ],
+    "occurrences": 1
+  },
+  {
+    "slug": "country-belarus~province-grodnenskaja_oblast~area-zelvenskij_rajon~locality-gorodskoj_posyolok_zelva",
+    "label_ru": "Дятлово",
+    "label_by": null,
+    "province": "grodnenskaja_oblast",
+    "country": "belarus",
+    "sample_coords": null,
+    "sources": [
+      "live_https://re.kufar.by/"
+    ],
+    "occurrences": 1
+  },
+  {
+    "slug": "country-belarus~province-grodnenskaja_oblast~area-ivevskij_rajon~locality-ive",
+    "label_ru": "Зельва",
+    "label_by": null,
+    "province": "grodnenskaja_oblast",
+    "country": "belarus",
+    "sample_coords": null,
+    "sources": [
+      "live_https://re.kufar.by/"
+    ],
+    "occurrences": 1
+  },
+  {
+    "slug": "country-belarus~province-grodnenskaja_oblast~area-korelichskij_rajon~locality-gorodskoj_posyolok_korelichi",
+    "label_ru": "Ивье",
+    "label_by": null,
+    "province": "grodnenskaja_oblast",
+    "country": "belarus",
+    "sample_coords": null,
+    "sources": [
+      "live_https://re.kufar.by/"
+    ],
+    "occurrences": 1
+  },
+  {
+    "slug": "country-belarus~province-grodnenskaja_oblast~area-volkovysskij_rajon~area-krasnoselskij_selsovet~locality-gorodskoj_posyolok_krasnoselskij",
+    "label_ru": "Кореличи",
+    "label_by": null,
+    "province": "grodnenskaja_oblast",
+    "country": "belarus",
+    "sample_coords": null,
+    "sources": [
+      "live_https://re.kufar.by/"
+    ],
+    "occurrences": 1
+  },
+  {
+    "slug": "country-belarus~province-grodnenskaja_oblast~area-lidskij_rajon~locality-lida",
+    "label_ru": "Красносельский",
+    "label_by": null,
+    "province": "grodnenskaja_oblast",
+    "country": "belarus",
+    "sample_coords": null,
+    "sources": [
+      "live_https://re.kufar.by/"
+    ],
+    "occurrences": 1
+  },
+  {
+    "slug": "country-belarus~province-grodnenskaja_oblast~area-korelichskij_rajon~area-mirskij_selsovet~locality-gorodskoj_posyolok_mir",
+    "label_ru": "Лида",
+    "label_by": null,
+    "province": "grodnenskaja_oblast",
+    "country": "belarus",
+    "sample_coords": null,
+    "sources": [
+      "live_https://re.kufar.by/"
+    ],
+    "occurrences": 1
+  },
+  {
+    "slug": "country-belarus~province-grodnenskaja_oblast~area-mostovskij_rajon~locality-mosty",
+    "label_ru": "Мир",
+    "label_by": null,
+    "province": "grodnenskaja_oblast",
+    "country": "belarus",
+    "sample_coords": null,
+    "sources": [
+      "live_https://re.kufar.by/"
+    ],
+    "occurrences": 1
+  },
+  {
+    "slug": "country-belarus~province-grodnenskaja_oblast~area-novogrudskij_rajon~locality-novogrudok",
+    "label_ru": "Мосты",
+    "label_by": null,
+    "province": "grodnenskaja_oblast",
+    "country": "belarus",
+    "sample_coords": null,
+    "sources": [
+      "live_https://re.kufar.by/"
+    ],
+    "occurrences": 1
+  },
+  {
+    "slug": "country-belarus~province-grodnenskaja_oblast~area-ostroveckij_rajon~locality-ostrovec",
+    "label_ru": "Новогрудок",
+    "label_by": null,
+    "province": "grodnenskaja_oblast",
+    "country": "belarus",
+    "sample_coords": null,
+    "sources": [
+      "live_https://re.kufar.by/"
+    ],
+    "occurrences": 1
+  },
+  {
+    "slug": "country-belarus~province-grodnenskaja_oblast~area-oshmjanskij_rajon~locality-oshmjany",
+    "label_ru": "Островец",
+    "label_by": null,
+    "province": "grodnenskaja_oblast",
+    "country": "belarus",
+    "sample_coords": null,
+    "sources": [
+      "live_https://re.kufar.by/"
+    ],
+    "occurrences": 1
+  },
+  {
+    "slug": "country-belarus~province-grodnenskaja_oblast~area-korelichskij_rajon~area-zhuhovichskij_selsovet~locality-derevnja_radun",
+    "label_ru": "Ошмяны",
+    "label_by": null,
+    "province": "grodnenskaja_oblast",
+    "country": "belarus",
+    "sample_coords": null,
+    "sources": [
+      "live_https://re.kufar.by/"
+    ],
+    "occurrences": 1
+  },
+  {
+    "slug": "country-belarus~province-grodnenskaja_oblast~area-volkovysskij_rajon~area-rosskij_selsovet~locality-gorodskoj_posyolok_ross",
+    "label_ru": "Радунь",
+    "label_by": null,
+    "province": "grodnenskaja_oblast",
+    "country": "belarus",
+    "sample_coords": null,
+    "sources": [
+      "live_https://re.kufar.by/"
+    ],
+    "occurrences": 1
+  },
+  {
+    "slug": "country-belarus~province-grodnenskaja_oblast~area-svislochskij_rajon~locality-svisloch",
+    "label_ru": "Россь",
+    "label_by": null,
+    "province": "grodnenskaja_oblast",
+    "country": "belarus",
+    "sample_coords": null,
+    "sources": [
+      "live_https://re.kufar.by/"
+    ],
+    "occurrences": 1
+  },
+  {
+    "slug": "country-belarus~province-grodnenskaja_oblast~area-grodnenskij_rajon~locality-skidel",
+    "label_ru": "Свислочь",
+    "label_by": null,
+    "province": "grodnenskaja_oblast",
+    "country": "belarus",
+    "sample_coords": null,
+    "sources": [
+      "live_https://re.kufar.by/"
+    ],
+    "occurrences": 1
+  },
+  {
+    "slug": "country-belarus~province-grodnenskaja_oblast~area-slonimskij_rajon~locality-slonim",
+    "label_ru": "Скидель",
+    "label_by": null,
+    "province": "grodnenskaja_oblast",
+    "country": "belarus",
+    "sample_coords": null,
+    "sources": [
+      "live_https://re.kufar.by/"
+    ],
+    "occurrences": 1
+  },
+  {
+    "slug": "country-belarus~province-grodnenskaja_oblast~area-smorgonskij_rajon~locality-smorgon",
+    "label_ru": "Слоним",
+    "label_by": null,
+    "province": "grodnenskaja_oblast",
+    "country": "belarus",
+    "sample_coords": null,
+    "sources": [
+      "live_https://re.kufar.by/"
+    ],
+    "occurrences": 1
+  },
+  {
+    "slug": "country-belarus~province-grodnenskaja_oblast~area-schuchinskij_rajon~locality-schuchin",
+    "label_ru": "Сморгонь",
+    "label_by": null,
+    "province": "grodnenskaja_oblast",
+    "country": "belarus",
+    "sample_coords": null,
+    "sources": [
+      "live_https://re.kufar.by/"
+    ],
+    "occurrences": 1
+  },
+  {
+    "slug": "country-belarus~province-mogilyovskaja_oblast~area-belynichskij_rajon~locality-belynichi",
+    "label_ru": "Щучин",
+    "label_by": null,
+    "province": "mogilyovskaja_oblast",
+    "country": "belarus",
+    "sample_coords": null,
+    "sources": [
+      "live_https://re.kufar.by/"
+    ],
+    "occurrences": 1
+  },
+  {
+    "slug": "country-belarus~province-mogilyovskaja_oblast~locality-bobrujsk",
+    "label_ru": "Белыничи",
+    "label_by": null,
+    "province": "mogilyovskaja_oblast",
+    "country": "belarus",
+    "sample_coords": null,
+    "sources": [
+      "live_https://re.kufar.by/"
+    ],
+    "occurrences": 1
+  },
+  {
+    "slug": "country-belarus~province-mogilyovskaja_oblast~area-byhovskij_rajon~locality-byhov",
+    "label_ru": "Бобруйск",
+    "label_by": null,
+    "province": "mogilyovskaja_oblast",
+    "country": "belarus",
+    "sample_coords": null,
+    "sources": [
+      "live_https://re.kufar.by/"
+    ],
+    "occurrences": 1
+  },
+  {
+    "slug": "country-belarus~province-mogilyovskaja_oblast~area-glusskij_rajon~locality-gorodskoj_posyolok_glusk",
+    "label_ru": "Быхов",
+    "label_by": null,
+    "province": "mogilyovskaja_oblast",
+    "country": "belarus",
+    "sample_coords": null,
+    "sources": [
+      "live_https://re.kufar.by/"
+    ],
+    "occurrences": 1
+  },
+  {
+    "slug": "country-belarus~province-mogilyovskaja_oblast~area-goreckij_rajon~locality-gorki",
+    "label_ru": "Глуск",
+    "label_by": null,
+    "province": "mogilyovskaja_oblast",
+    "country": "belarus",
+    "sample_coords": null,
+    "sources": [
+      "live_https://re.kufar.by/"
+    ],
+    "occurrences": 1
+  },
+  {
+    "slug": "country-belarus~province-mogilyovskaja_oblast~area-dribinskij_rajon~locality-gorodskoj_posyolok_dribin",
+    "label_ru": "Горки",
+    "label_by": null,
+    "province": "mogilyovskaja_oblast",
+    "country": "belarus",
+    "sample_coords": null,
+    "sources": [
+      "live_https://re.kufar.by/"
+    ],
+    "occurrences": 1
+  },
+  {
+    "slug": "country-belarus~province-mogilyovskaja_oblast~area-osipovichskij_rajon~area-elizovskij_selsovet~locality-rabochij_posyolok_elizovo",
+    "label_ru": "Дрибин",
+    "label_by": null,
+    "province": "mogilyovskaja_oblast",
+    "country": "belarus",
+    "sample_coords": null,
+    "sources": [
+      "live_https://re.kufar.by/"
+    ],
+    "occurrences": 1
+  },
+  {
+    "slug": "country-belarus~province-mogilyovskaja_oblast~area-kirovskij_rajon~locality-kirovsk",
+    "label_ru": "Елизово",
+    "label_by": null,
+    "province": "mogilyovskaja_oblast",
+    "country": "belarus",
+    "sample_coords": null,
+    "sources": [
+      "live_https://re.kufar.by/"
+    ],
+    "occurrences": 1
+  },
+  {
+    "slug": "country-belarus~province-mogilyovskaja_oblast~area-klimovichskij_rajon~locality-klimovichi",
+    "label_ru": "Кировск",
+    "label_by": null,
+    "province": "mogilyovskaja_oblast",
+    "country": "belarus",
+    "sample_coords": null,
+    "sources": [
+      "live_https://re.kufar.by/"
+    ],
+    "occurrences": 1
+  },
+  {
+    "slug": "country-belarus~province-mogilyovskaja_oblast~area-klichevskij_rajon~locality-klichev",
+    "label_ru": "Климовичи",
+    "label_by": null,
+    "province": "mogilyovskaja_oblast",
+    "country": "belarus",
+    "sample_coords": null,
+    "sources": [
+      "live_https://re.kufar.by/"
+    ],
+    "occurrences": 1
+  },
+  {
+    "slug": "country-belarus~province-mogilyovskaja_oblast~area-kostjukovichskij_rajon~locality-kostjukovichi",
+    "label_ru": "Кличев",
+    "label_by": null,
+    "province": "mogilyovskaja_oblast",
+    "country": "belarus",
+    "sample_coords": null,
+    "sources": [
+      "live_https://re.kufar.by/"
+    ],
+    "occurrences": 1
+  },
+  {
+    "slug": "country-belarus~province-mogilyovskaja_oblast~area-krasnopolskij_rajon~locality-gorodskoj_posyolok_krasnopole",
+    "label_ru": "Костюковичи",
+    "label_by": null,
+    "province": "mogilyovskaja_oblast",
+    "country": "belarus",
+    "sample_coords": null,
+    "sources": [
+      "live_https://re.kufar.by/"
+    ],
+    "occurrences": 1
+  },
+  {
+    "slug": "country-belarus~province-mogilyovskaja_oblast~area-krichevskij_rajon~locality-krichev",
+    "label_ru": "Краснополье",
+    "label_by": null,
+    "province": "mogilyovskaja_oblast",
+    "country": "belarus",
+    "sample_coords": null,
+    "sources": [
+      "live_https://re.kufar.by/"
+    ],
+    "occurrences": 1
+  },
+  {
+    "slug": "country-belarus~province-mogilyovskaja_oblast~area-krugljanskij_rajon~locality-krugloe",
+    "label_ru": "Кричев",
+    "label_by": null,
+    "province": "mogilyovskaja_oblast",
+    "country": "belarus",
+    "sample_coords": null,
+    "sources": [
+      "live_https://re.kufar.by/"
+    ],
+    "occurrences": 1
+  },
+  {
+    "slug": "country-belarus~province-mogilyovskaja_oblast~area-mstislavskij_rajon~locality-mstislavl",
+    "label_ru": "Круглое",
+    "label_by": null,
+    "province": "mogilyovskaja_oblast",
+    "country": "belarus",
+    "sample_coords": null,
+    "sources": [
+      "live_https://re.kufar.by/"
+    ],
+    "occurrences": 1
+  },
+  {
+    "slug": "country-belarus~province-mogilyovskaja_oblast~area-osipovichskij_rajon~locality-osipovichi",
+    "label_ru": "Мстиславль",
+    "label_by": null,
+    "province": "mogilyovskaja_oblast",
+    "country": "belarus",
+    "sample_coords": null,
+    "sources": [
+      "live_https://re.kufar.by/"
+    ],
+    "occurrences": 1
+  },
+  {
+    "slug": "country-belarus~province-mogilyovskaja_oblast~area-slavgorodskij_rajon~locality-slavgorod",
+    "label_ru": "Осиповичи",
+    "label_by": null,
+    "province": "mogilyovskaja_oblast",
+    "country": "belarus",
+    "sample_coords": null,
+    "sources": [
+      "live_https://re.kufar.by/"
+    ],
+    "occurrences": 1
+  },
+  {
+    "slug": "country-belarus~province-mogilyovskaja_oblast~area-hotimskij_rajon~locality-gorodskoj_posyolok_hotimsk",
+    "label_ru": "Славгород",
+    "label_by": null,
+    "province": "mogilyovskaja_oblast",
+    "country": "belarus",
+    "sample_coords": null,
+    "sources": [
+      "live_https://re.kufar.by/"
+    ],
+    "occurrences": 1
+  },
+  {
+    "slug": "country-belarus~province-mogilyovskaja_oblast~area-chausskij_rajon~locality-chausy",
+    "label_ru": "Хотимск",
+    "label_by": null,
+    "province": "mogilyovskaja_oblast",
+    "country": "belarus",
+    "sample_coords": null,
+    "sources": [
+      "live_https://re.kufar.by/"
+    ],
+    "occurrences": 1
+  },
+  {
+    "slug": "country-belarus~province-mogilyovskaja_oblast~area-cherikovskij_rajon~locality-cherikov",
+    "label_ru": "Чаусы",
+    "label_by": null,
+    "province": "mogilyovskaja_oblast",
+    "country": "belarus",
+    "sample_coords": null,
+    "sources": [
+      "live_https://re.kufar.by/"
+    ],
+    "occurrences": 1
+  },
+  {
+    "slug": "country-belarus~province-mogilyovskaja_oblast~area-shklovskij_rajon~locality-shklov",
+    "label_ru": "Чериков",
+    "label_by": null,
+    "province": "mogilyovskaja_oblast",
+    "country": "belarus",
+    "sample_coords": null,
+    "sources": [
+      "live_https://re.kufar.by/"
+    ],
+    "occurrences": 1
+  },
+  {
+    "slug": "province-minsk~locality-minsk",
+    "label_ru": "Минск",
+    "label_by": null,
+    "province": "minsk",
+    "country": "belarus",
+    "sample_coords": null,
+    "sources": [
+      "live_https://re.kufar.by/"
+    ],
+    "occurrences": 1
+  },
+  {
+    "slug": "province-minskaja_oblast",
+    "label_ru": "Беларусь",
+    "label_by": null,
+    "province": "minskaja_oblast",
+    "country": "belarus",
+    "sample_coords": null,
+    "sources": [
+      "live_https://re.kufar.by/"
+    ],
+    "occurrences": 1
+  },
+  {
+    "slug": "province-brestskaja_oblast",
+    "label_ru": "Минская",
+    "label_by": null,
+    "province": "brestskaja_oblast",
+    "country": "belarus",
+    "sample_coords": null,
+    "sources": [
+      "live_https://re.kufar.by/"
+    ],
+    "occurrences": 1
+  },
+  {
+    "slug": "province-vitebskaja_oblast",
+    "label_ru": "Брестская",
+    "label_by": null,
+    "province": "vitebskaja_oblast",
+    "country": "belarus",
+    "sample_coords": null,
+    "sources": [
+      "live_https://re.kufar.by/"
+    ],
+    "occurrences": 1
+  },
+  {
+    "slug": "province-gomelskaja_oblast",
+    "label_ru": "Витебская",
+    "label_by": null,
+    "province": "gomelskaja_oblast",
+    "country": "belarus",
+    "sample_coords": null,
+    "sources": [
+      "live_https://re.kufar.by/"
+    ],
+    "occurrences": 1
+  },
+  {
+    "slug": "province-grodnenskaja_oblast",
+    "label_ru": "Гомельская",
+    "label_by": null,
+    "province": "grodnenskaja_oblast",
+    "country": "belarus",
+    "sample_coords": null,
+    "sources": [
+      "live_https://re.kufar.by/"
+    ],
+    "occurrences": 1
+  },
+  {
+    "slug": "province-mogilyovskaja_oblast",
+    "label_ru": "Гродненская",
+    "label_by": null,
+    "province": "mogilyovskaja_oblast",
+    "country": "belarus",
+    "sample_coords": null,
+    "sources": [
+      "live_https://re.kufar.by/"
+    ],
+    "occurrences": 1
+  },
+  {
+    "slug": "province-minskaja_oblast~area-minskij_rajon",
+    "label_ru": "Минск",
+    "label_by": null,
+    "province": "minskaja_oblast",
+    "country": "belarus",
+    "sample_coords": null,
+    "sources": [
+      "live_https://re.kufar.by/"
+    ],
+    "occurrences": 1
+  },
+  {
+    "slug": "province-brestskaja_oblast~locality-brest",
+    "label_ru": "Минский",
+    "label_by": null,
+    "province": "brestskaja_oblast",
+    "country": "belarus",
+    "sample_coords": null,
+    "sources": [
+      "live_https://re.kufar.by/"
+    ],
+    "occurrences": 1
+  },
+  {
+    "slug": "province-brestskaja_oblast~area-brestskij_rajon",
+    "label_ru": "Брест",
+    "label_by": null,
+    "province": "brestskaja_oblast",
+    "country": "belarus",
+    "sample_coords": null,
+    "sources": [
+      "live_https://re.kufar.by/"
+    ],
+    "occurrences": 1
+  },
+  {
+    "slug": "province-vitebskaja_oblast~area-vitebsk~locality-vitebsk",
+    "label_ru": "Брестский",
+    "label_by": null,
+    "province": "vitebskaja_oblast",
+    "country": "belarus",
+    "sample_coords": null,
+    "sources": [
+      "live_https://re.kufar.by/"
+    ],
+    "occurrences": 1
+  },
+  {
+    "slug": "province-vitebskaja_oblast~area-vitebskij_rajon",
+    "label_ru": "Витебск",
+    "label_by": null,
+    "province": "vitebskaja_oblast",
+    "country": "belarus",
+    "sample_coords": null,
+    "sources": [
+      "live_https://re.kufar.by/"
+    ],
+    "occurrences": 1
+  },
+  {
+    "slug": "province-grodnenskaja_oblast~locality-grodno",
+    "label_ru": "Витебский",
+    "label_by": null,
+    "province": "grodnenskaja_oblast",
+    "country": "belarus",
+    "sample_coords": null,
+    "sources": [
+      "live_https://re.kufar.by/"
+    ],
+    "occurrences": 1
+  },
+  {
+    "slug": "province-grodnenskaja_oblast~area-grodnenskij_rajon",
+    "label_ru": "Гродно",
+    "label_by": null,
+    "province": "grodnenskaja_oblast",
+    "country": "belarus",
+    "sample_coords": null,
+    "sources": [
+      "live_https://re.kufar.by/"
+    ],
+    "occurrences": 1
+  },
+  {
+    "slug": "province-gomelskaja_oblast~locality-gomel",
+    "label_ru": "Гродненский",
+    "label_by": null,
+    "province": "gomelskaja_oblast",
+    "country": "belarus",
+    "sample_coords": null,
+    "sources": [
+      "live_https://re.kufar.by/"
+    ],
+    "occurrences": 1
+  },
+  {
+    "slug": "province-gomelskaja_oblast~area-gomelskij_rajon",
+    "label_ru": "Гомель",
+    "label_by": null,
+    "province": "gomelskaja_oblast",
+    "country": "belarus",
+    "sample_coords": null,
+    "sources": [
+      "live_https://re.kufar.by/"
+    ],
+    "occurrences": 1
+  },
+  {
+    "slug": "province-mogilyovskaja_oblast~locality-mogilyov",
+    "label_ru": "Гомельский",
+    "label_by": null,
+    "province": "mogilyovskaja_oblast",
+    "country": "belarus",
+    "sample_coords": null,
+    "sources": [
+      "live_https://re.kufar.by/"
+    ],
+    "occurrences": 1
+  },
+  {
+    "slug": "province-mogilyovskaja_oblast~area-mogilyovskij_rajon",
+    "label_ru": "Могилёв",
+    "label_by": null,
+    "province": "mogilyovskaja_oblast",
+    "country": "belarus",
+    "sample_coords": null,
+    "sources": [
+      "live_https://re.kufar.by/"
+    ],
+    "occurrences": 1
+  },
+  {
+    "slug": "province-minskaja_oblast~area-berezinskij_rajon~locality-berezino",
+    "label_ru": "Могилевский",
+    "label_by": null,
+    "province": "minskaja_oblast",
+    "country": "belarus",
+    "sample_coords": null,
+    "sources": [
+      "live_https://re.kufar.by/"
+    ],
+    "occurrences": 1
+  },
+  {
+    "slug": "province-minskaja_oblast~area-borisovskij_rajon~locality-borisov",
+    "label_ru": "Березино",
+    "label_by": null,
+    "province": "minskaja_oblast",
+    "country": "belarus",
+    "sample_coords": null,
+    "sources": [
+      "live_https://re.kufar.by/"
+    ],
+    "occurrences": 1
+  },
+  {
+    "slug": "province-minskaja_oblast~area-minskij_rajon~area-borovljanskij_selsovet~locality-derevnja_borovljany",
+    "label_ru": "Борисов",
+    "label_by": null,
+    "province": "minskaja_oblast",
+    "country": "belarus",
+    "sample_coords": null,
+    "sources": [
+      "live_https://re.kufar.by/"
+    ],
+    "occurrences": 1
+  },
+  {
+    "slug": "province-minskaja_oblast~area-vilejskij_rajon~locality-vilejka",
+    "label_ru": "Боровляны",
+    "label_by": null,
+    "province": "minskaja_oblast",
+    "country": "belarus",
+    "sample_coords": null,
+    "sources": [
+      "live_https://re.kufar.by/"
+    ],
+    "occurrences": 1
+  },
+  {
+    "slug": "province-minskaja_oblast~area-volozhinskij_rajon~locality-volozhin",
+    "label_ru": "Вилейка",
+    "label_by": null,
+    "province": "minskaja_oblast",
+    "country": "belarus",
+    "sample_coords": null,
+    "sources": [
+      "live_https://re.kufar.by/"
+    ],
+    "occurrences": 1
+  },
+  {
+    "slug": "province-minskaja_oblast~area-nesvizhskij_rajon~locality-gorodskoj_posyolok_gorodeja",
+    "label_ru": "Воложин",
+    "label_by": null,
+    "province": "minskaja_oblast",
+    "country": "belarus",
+    "sample_coords": null,
+    "sources": [
+      "live_https://re.kufar.by/"
+    ],
+    "occurrences": 1
+  },
+  {
+    "slug": "province-minskaja_oblast~area-dzerzhinskij_rajon~locality-dzerzhinsk",
+    "label_ru": "Городея",
+    "label_by": null,
+    "province": "minskaja_oblast",
+    "country": "belarus",
+    "sample_coords": null,
+    "sources": [
+      "live_https://re.kufar.by/"
+    ],
+    "occurrences": 1
+  },
+  {
+    "slug": "province-minskaja_oblast~area-minskij_rajon~area-zhdanovichskij_selsovet~locality-agrogorodok_zhdanovichi",
+    "label_ru": "Дзержинск",
+    "label_by": null,
+    "province": "minskaja_oblast",
+    "country": "belarus",
+    "sample_coords": null,
+    "sources": [
+      "live_https://re.kufar.by/"
+    ],
+    "occurrences": 1
+  },
+  {
+    "slug": "province-minskaja_oblast~locality-zhodino",
+    "label_ru": "Ждановичи",
+    "label_by": null,
+    "province": "minskaja_oblast",
+    "country": "belarus",
+    "sample_coords": null,
+    "sources": [
+      "live_https://re.kufar.by/"
+    ],
+    "occurrences": 1
+  },
+  {
+    "slug": "province-minskaja_oblast~area-minskij_rajon~locality-zaslavl",
+    "label_ru": "Жодино",
+    "label_by": null,
+    "province": "minskaja_oblast",
+    "country": "belarus",
+    "sample_coords": null,
+    "sources": [
+      "live_https://re.kufar.by/"
+    ],
+    "occurrences": 1
+  },
+  {
+    "slug": "province-minskaja_oblast~area-soligorskij_rajon~area-dolgovskij_selsovet~locality-derevnja_zelyonyj_bor",
+    "label_ru": "Заславль",
+    "label_by": null,
+    "province": "minskaja_oblast",
+    "country": "belarus",
+    "sample_coords": null,
+    "sources": [
+      "live_https://re.kufar.by/"
+    ],
+    "occurrences": 1
+  },
+  {
+    "slug": "province-minskaja_oblast~area-volozhinskij_rajon~locality-gorodskoj_posyolok_ivenec",
+    "label_ru": "Зелёный Бор",
+    "label_by": null,
+    "province": "minskaja_oblast",
+    "country": "belarus",
+    "sample_coords": null,
+    "sources": [
+      "live_https://re.kufar.by/"
+    ],
+    "occurrences": 1
+  },
+  {
+    "slug": "province-minskaja_oblast~area-kleckij_rajon~locality-kleck",
+    "label_ru": "Ивенец",
+    "label_by": null,
+    "province": "minskaja_oblast",
+    "country": "belarus",
+    "sample_coords": null,
+    "sources": [
+      "live_https://re.kufar.by/"
+    ],
+    "occurrences": 1
+  },
+  {
+    "slug": "province-minskaja_oblast~area-kopylskij_rajon~locality-kopyl",
+    "label_ru": "Клецк",
+    "label_by": null,
+    "province": "minskaja_oblast",
+    "country": "belarus",
+    "sample_coords": null,
+    "sources": [
+      "live_https://re.kufar.by/"
+    ],
+    "occurrences": 1
+  },
+  {
+    "slug": "province-minskaja_oblast~area-krupskij_rajon~locality-krupki",
+    "label_ru": "Копыль",
+    "label_by": null,
+    "province": "minskaja_oblast",
+    "country": "belarus",
+    "sample_coords": null,
+    "sources": [
+      "live_https://re.kufar.by/"
+    ],
+    "occurrences": 1
+  },
+  {
+    "slug": "province-minskaja_oblast~area-logojskij_rajon~locality-logojsk",
+    "label_ru": "Крупки",
+    "label_by": null,
+    "province": "minskaja_oblast",
+    "country": "belarus",
+    "sample_coords": null,
+    "sources": [
+      "live_https://re.kufar.by/"
+    ],
+    "occurrences": 1
+  },
+  {
+    "slug": "province-minskaja_oblast~area-ljubanskij_rajon~locality-ljuban",
+    "label_ru": "Логойск",
+    "label_by": null,
+    "province": "minskaja_oblast",
+    "country": "belarus",
+    "sample_coords": null,
+    "sources": [
+      "live_https://re.kufar.by/"
+    ],
+    "occurrences": 1
+  },
+  {
+    "slug": "province-minskaja_oblast~area-puhovichskij_rajon~locality-marina_gorka",
+    "label_ru": "Любань",
+    "label_by": null,
+    "province": "minskaja_oblast",
+    "country": "belarus",
+    "sample_coords": null,
+    "sources": [
+      "live_https://re.kufar.by/"
+    ],
+    "occurrences": 1
+  },
+  {
+    "slug": "province-minskaja_oblast~area-minskij_rajon~locality-gorodskoj_posyolok_machulischi",
+    "label_ru": "Марьина Горка",
+    "label_by": null,
+    "province": "minskaja_oblast",
+    "country": "belarus",
+    "sample_coords": null,
+    "sources": [
+      "live_https://re.kufar.by/"
+    ],
+    "occurrences": 1
+  },
+  {
+    "slug": "province-minskaja_oblast~area-molodechnenskij_rajon~locality-molodechno",
+    "label_ru": "Мачулищи",
+    "label_by": null,
+    "province": "minskaja_oblast",
+    "country": "belarus",
+    "sample_coords": null,
+    "sources": [
+      "live_https://re.kufar.by/"
+    ],
+    "occurrences": 1
+  },
+  {
+    "slug": "province-minskaja_oblast~area-mjadelskij_rajon~locality-mjadel",
+    "label_ru": "Молодечно",
+    "label_by": null,
+    "province": "minskaja_oblast",
+    "country": "belarus",
+    "sample_coords": null,
+    "sources": [
+      "live_https://re.kufar.by/"
+    ],
+    "occurrences": 1
+  },
+  {
+    "slug": "province-minskaja_oblast~area-nesvizhskij_rajon~locality-nesvizh",
+    "label_ru": "Мядель",
+    "label_by": null,
+    "province": "minskaja_oblast",
+    "country": "belarus",
+    "sample_coords": null,
+    "sources": [
+      "live_https://re.kufar.by/"
+    ],
+    "occurrences": 1
+  },
+  {
+    "slug": "province-minskaja_oblast~area-logojskij_rajon~area-pleschenickij_selsovet~locality-gorodskoj_posyolok_pleschenicy",
+    "label_ru": "Несвиж",
+    "label_by": null,
+    "province": "minskaja_oblast",
+    "country": "belarus",
+    "sample_coords": null,
+    "sources": [
+      "live_https://re.kufar.by/"
+    ],
+    "occurrences": 1
+  },
+  {
+    "slug": "province-minskaja_oblast~area-molodechnenskij_rajon~locality-gorodskoj_posyolok_radoshkovichi",
+    "label_ru": "Плещеницах",
+    "label_by": null,
+    "province": "minskaja_oblast",
+    "country": "belarus",
+    "sample_coords": null,
+    "sources": [
+      "live_https://re.kufar.by/"
+    ],
+    "occurrences": 1
+  },
+  {
+    "slug": "province-minskaja_oblast~area-puhovichskij_rajon~area-rudenskij_selsovet~locality-gorodskoj_posyolok_rudensk",
+    "label_ru": "Радошковичи",
+    "label_by": null,
+    "province": "minskaja_oblast",
+    "country": "belarus",
+    "sample_coords": null,
+    "sources": [
+      "live_https://re.kufar.by/"
+    ],
+    "occurrences": 1
+  },
+  {
+    "slug": "province-minskaja_oblast~area-sluckij_rajon~locality-sluck",
+    "label_ru": "Руденск",
+    "label_by": null,
+    "province": "minskaja_oblast",
+    "country": "belarus",
+    "sample_coords": null,
+    "sources": [
+      "live_https://re.kufar.by/"
+    ],
+    "occurrences": 1
+  },
+  {
+    "slug": "province-minskaja_oblast~area-chervenskij_rajon~area-smilovichskij_selsovet~locality-gorodskoj_posyolok_smilovichi",
+    "label_ru": "Слуцк",
+    "label_by": null,
+    "province": "minskaja_oblast",
+    "country": "belarus",
+    "sample_coords": null,
+    "sources": [
+      "live_https://re.kufar.by/"
+    ],
+    "occurrences": 1
+  },
+  {
+    "slug": "province-minskaja_oblast~area-smolevichskij_rajon~locality-smolevichi",
+    "label_ru": "Смиловичи",
+    "label_by": null,
+    "province": "minskaja_oblast",
+    "country": "belarus",
+    "sample_coords": null,
+    "sources": [
+      "live_https://re.kufar.by/"
+    ],
+    "occurrences": 1
+  },
+  {
+    "slug": "province-minskaja_oblast~area-soligorskij_rajon~locality-soligorsk",
+    "label_ru": "Смолевичи",
+    "label_by": null,
+    "province": "minskaja_oblast",
+    "country": "belarus",
+    "sample_coords": null,
+    "sources": [
+      "live_https://re.kufar.by/"
+    ],
+    "occurrences": 1
+  },
+  {
+    "slug": "province-minskaja_oblast~area-soligorskij_rajon~area-starobinskij_selsovet~locality-gorodskoj_posyolok_starobin",
+    "label_ru": "Солигорск",
+    "label_by": null,
+    "province": "minskaja_oblast",
+    "country": "belarus",
+    "sample_coords": null,
+    "sources": [
+      "live_https://re.kufar.by/"
+    ],
+    "occurrences": 1
+  },
+  {
+    "slug": "province-minskaja_oblast~area-starodorozhskij_rajon~locality-starye_dorogi",
+    "label_ru": "Старобин",
+    "label_by": null,
+    "province": "minskaja_oblast",
+    "country": "belarus",
+    "sample_coords": null,
+    "sources": [
+      "live_https://re.kufar.by/"
+    ],
+    "occurrences": 1
+  },
+  {
+    "slug": "province-minskaja_oblast~area-stolbcovskij_rajon~locality-stolbcy",
+    "label_ru": "Старые Дороги",
+    "label_by": null,
+    "province": "minskaja_oblast",
+    "country": "belarus",
+    "sample_coords": null,
+    "sources": [
+      "live_https://re.kufar.by/"
+    ],
+    "occurrences": 1
+  },
+  {
+    "slug": "province-minskaja_oblast~area-uzdenskij_rajon~locality-uzda",
+    "label_ru": "Столбцы",
+    "label_by": null,
+    "province": "minskaja_oblast",
+    "country": "belarus",
+    "sample_coords": null,
+    "sources": [
+      "live_https://re.kufar.by/"
+    ],
+    "occurrences": 1
+  },
+  {
+    "slug": "province-minskaja_oblast~area-dzerzhinskij_rajon~locality-fanipol",
+    "label_ru": "Узда",
+    "label_by": null,
+    "province": "minskaja_oblast",
+    "country": "belarus",
+    "sample_coords": null,
+    "sources": [
+      "live_https://re.kufar.by/"
+    ],
+    "occurrences": 1
+  },
+  {
+    "slug": "province-minskaja_oblast~area-chervenskij_rajon~locality-cherven",
+    "label_ru": "Фаниполь",
+    "label_by": null,
+    "province": "minskaja_oblast",
+    "country": "belarus",
+    "sample_coords": null,
+    "sources": [
+      "live_https://re.kufar.by/"
+    ],
+    "occurrences": 1
+  },
+  {
+    "slug": "province-minsk~locality-minsk~coder_district-26",
+    "label_ru": "Червень",
+    "label_by": null,
+    "province": "minsk",
+    "country": "belarus",
+    "sample_coords": null,
+    "sources": [
+      "live_https://re.kufar.by/"
+    ],
+    "occurrences": 1
+  },
+  {
+    "slug": "province-minsk~locality-minsk~coder_district-27",
+    "label_ru": "Заводской",
+    "label_by": null,
+    "province": "minsk",
+    "country": "belarus",
+    "sample_coords": null,
+    "sources": [
+      "live_https://re.kufar.by/"
+    ],
+    "occurrences": 1
+  },
+  {
+    "slug": "province-minsk~locality-minsk~coder_district-29",
+    "label_ru": "Ленинский",
+    "label_by": null,
+    "province": "minsk",
+    "country": "belarus",
+    "sample_coords": null,
+    "sources": [
+      "live_https://re.kufar.by/"
+    ],
+    "occurrences": 1
+  },
+  {
+    "slug": "province-minsk~locality-minsk~coder_district-28",
+    "label_ru": "Московский",
+    "label_by": null,
+    "province": "minsk",
+    "country": "belarus",
+    "sample_coords": null,
+    "sources": [
+      "live_https://re.kufar.by/"
+    ],
+    "occurrences": 1
+  },
+  {
+    "slug": "province-minsk~locality-minsk~coder_district-25",
+    "label_ru": "Октябрьский",
+    "label_by": null,
+    "province": "minsk",
+    "country": "belarus",
+    "sample_coords": null,
+    "sources": [
+      "live_https://re.kufar.by/"
+    ],
+    "occurrences": 1
+  },
+  {
+    "slug": "province-minsk~locality-minsk~coder_district-24",
+    "label_ru": "Партизанский",
+    "label_by": null,
+    "province": "minsk",
+    "country": "belarus",
+    "sample_coords": null,
+    "sources": [
+      "live_https://re.kufar.by/"
+    ],
+    "occurrences": 1
+  },
+  {
+    "slug": "province-minsk~locality-minsk~coder_district-23",
+    "label_ru": "Первомайский",
+    "label_by": null,
+    "province": "minsk",
+    "country": "belarus",
+    "sample_coords": null,
+    "sources": [
+      "live_https://re.kufar.by/"
+    ],
+    "occurrences": 1
+  },
+  {
+    "slug": "province-minsk~locality-minsk~coder_district-30",
+    "label_ru": "Советский",
+    "label_by": null,
+    "province": "minsk",
+    "country": "belarus",
+    "sample_coords": null,
+    "sources": [
+      "live_https://re.kufar.by/"
+    ],
+    "occurrences": 1
+  },
+  {
+    "slug": "province-minsk~locality-minsk~coder_district-22",
+    "label_ru": "Фрунзенский",
+    "label_by": null,
+    "province": "minsk",
+    "country": "belarus",
+    "sample_coords": null,
+    "sources": [
+      "live_https://re.kufar.by/"
+    ],
+    "occurrences": 1
+  },
+  {
+    "slug": "province-brestskaja_oblast~locality-baranovichi",
+    "label_ru": "Центральный",
+    "label_by": null,
+    "province": "brestskaja_oblast",
+    "country": "belarus",
+    "sample_coords": null,
+    "sources": [
+      "live_https://re.kufar.by/"
+    ],
+    "occurrences": 1
+  },
+  {
+    "slug": "province-brestskaja_oblast~area-beryozovskij_rajon~locality-beloozyorsk",
+    "label_ru": "Барановичи",
+    "label_by": null,
+    "province": "brestskaja_oblast",
+    "country": "belarus",
+    "sample_coords": null,
+    "sources": [
+      "live_https://re.kufar.by/"
+    ],
+    "occurrences": 1
+  },
+  {
+    "slug": "province-brestskaja_oblast~area-beryozovskij_rajon~locality-beryoza",
+    "label_ru": "Белоозерск",
+    "label_by": null,
+    "province": "brestskaja_oblast",
+    "country": "belarus",
+    "sample_coords": null,
+    "sources": [
+      "live_https://re.kufar.by/"
+    ],
+    "occurrences": 1
+  },
+  {
+    "slug": "province-brestskaja_oblast~area-kameneckij_rajon~locality-vysokoe",
+    "label_ru": "Береза",
+    "label_by": null,
+    "province": "brestskaja_oblast",
+    "country": "belarus",
+    "sample_coords": null,
+    "sources": [
+      "live_https://re.kufar.by/"
+    ],
+    "occurrences": 1
+  },
+  {
+    "slug": "province-brestskaja_oblast~area-gancevichskij_rajon~locality-gancevichi",
+    "label_ru": "Высокое",
+    "label_by": null,
+    "province": "brestskaja_oblast",
+    "country": "belarus",
+    "sample_coords": null,
+    "sources": [
+      "live_https://re.kufar.by/"
+    ],
+    "occurrences": 1
+  },
+  {
+    "slug": "province-brestskaja_oblast~area-pinskij_rajon~area-gorodischenskij_selsovet~locality-posyolok_gorodische",
+    "label_ru": "Ганцевичи",
+    "label_by": null,
+    "province": "brestskaja_oblast",
+    "country": "belarus",
+    "sample_coords": null,
+    "sources": [
+      "live_https://re.kufar.by/"
+    ],
+    "occurrences": 1
+  },
+  {
+    "slug": "province-brestskaja_oblast~area-stolinskij_rajon~locality-david-gorodok",
+    "label_ru": "Городище",
+    "label_by": null,
+    "province": "brestskaja_oblast",
+    "country": "belarus",
+    "sample_coords": null,
+    "sources": [
+      "live_https://re.kufar.by/"
+    ],
+    "occurrences": 1
+  },
+  {
+    "slug": "province-brestskaja_oblast~area-drogichinskij_rajon~locality-drogichin",
+    "label_ru": "Давид",
+    "label_by": null,
+    "province": "brestskaja_oblast",
+    "country": "belarus",
+    "sample_coords": null,
+    "sources": [
+      "live_https://re.kufar.by/"
+    ],
+    "occurrences": 1
+  },
+  {
+    "slug": "province-brestskaja_oblast~area-zhabinkovskij_rajon~locality-zhabinka",
+    "label_ru": "Дрогичин",
+    "label_by": null,
+    "province": "brestskaja_oblast",
+    "country": "belarus",
+    "sample_coords": null,
+    "sources": [
+      "live_https://re.kufar.by/"
+    ],
+    "occurrences": 1
+  },
+  {
+    "slug": "province-brestskaja_oblast~area-ivanovskij_rajon~locality-ivanovo",
+    "label_ru": "Жабинка",
+    "label_by": null,
+    "province": "brestskaja_oblast",
+    "country": "belarus",
+    "sample_coords": null,
+    "sources": [
+      "live_https://re.kufar.by/"
+    ],
+    "occurrences": 1
+  },
+  {
+    "slug": "province-brestskaja_oblast~area-ivacevichskij_rajon~locality-ivacevichi",
+    "label_ru": "Иваново",
+    "label_by": null,
+    "province": "brestskaja_oblast",
+    "country": "belarus",
+    "sample_coords": null,
+    "sources": [
+      "live_https://re.kufar.by/"
+    ],
+    "occurrences": 1
+  },
+  {
+    "slug": "province-brestskaja_oblast~area-kameneckij_rajon~locality-kamenec",
+    "label_ru": "Ивацевичи",
+    "label_by": null,
+    "province": "brestskaja_oblast",
+    "country": "belarus",
+    "sample_coords": null,
+    "sources": [
+      "live_https://re.kufar.by/"
+    ],
+    "occurrences": 1
+  },
+  {
+    "slug": "province-brestskaja_oblast~area-kobrinskij_rajon~locality-kobrin",
+    "label_ru": "Каменец",
+    "label_by": null,
+    "province": "brestskaja_oblast",
+    "country": "belarus",
+    "sample_coords": null,
+    "sources": [
+      "live_https://re.kufar.by/"
+    ],
+    "occurrences": 1
+  },
+  {
+    "slug": "province-brestskaja_oblast~area-lunineckij_rajon~locality-luninec",
+    "label_ru": "Кобрин",
+    "label_by": null,
+    "province": "brestskaja_oblast",
+    "country": "belarus",
+    "sample_coords": null,
+    "sources": [
+      "live_https://re.kufar.by/"
+    ],
+    "occurrences": 1
+  },
+  {
+    "slug": "province-brestskaja_oblast~area-ljahovichskij_rajon~locality-ljahovichi",
+    "label_ru": "Лунинец",
+    "label_by": null,
+    "province": "brestskaja_oblast",
+    "country": "belarus",
+    "sample_coords": null,
+    "sources": [
+      "live_https://re.kufar.by/"
+    ],
+    "occurrences": 1
+  },
+  {
+    "slug": "province-brestskaja_oblast~area-maloritskij_rajon~locality-malorita",
+    "label_ru": "Ляховичи",
+    "label_by": null,
+    "province": "brestskaja_oblast",
+    "country": "belarus",
+    "sample_coords": null,
+    "sources": [
+      "live_https://re.kufar.by/"
+    ],
+    "occurrences": 1
+  },
+  {
+    "slug": "province-brestskaja_oblast~area-lunineckij_rajon~locality-mikashevichi",
+    "label_ru": "Малорита",
+    "label_by": null,
+    "province": "brestskaja_oblast",
+    "country": "belarus",
+    "sample_coords": null,
+    "sources": [
+      "live_https://re.kufar.by/"
+    ],
+    "occurrences": 1
+  },
+  {
+    "slug": "province-brestskaja_oblast~locality-pinsk",
+    "label_ru": "Микашевичи",
+    "label_by": null,
+    "province": "brestskaja_oblast",
+    "country": "belarus",
+    "sample_coords": null,
+    "sources": [
+      "live_https://re.kufar.by/"
+    ],
+    "occurrences": 1
+  },
+  {
+    "slug": "province-brestskaja_oblast~area-pruzhanskij_rajon~locality-pruzhany",
+    "label_ru": "Пинск",
+    "label_by": null,
+    "province": "brestskaja_oblast",
+    "country": "belarus",
+    "sample_coords": null,
+    "sources": [
+      "live_https://re.kufar.by/"
+    ],
+    "occurrences": 1
+  },
+  {
+    "slug": "province-brestskaja_oblast~area-pruzhanskij_rajon~area-ruzhanskij_selsovet~locality-ruzhany",
+    "label_ru": "Пружаны",
+    "label_by": null,
+    "province": "brestskaja_oblast",
+    "country": "belarus",
+    "sample_coords": null,
+    "sources": [
+      "live_https://re.kufar.by/"
+    ],
+    "occurrences": 1
+  },
+  {
+    "slug": "province-brestskaja_oblast~area-stolinskij_rajon~locality-stolin",
+    "label_ru": "Ружаны",
+    "label_by": null,
+    "province": "brestskaja_oblast",
+    "country": "belarus",
+    "sample_coords": null,
+    "sources": [
+      "live_https://re.kufar.by/"
+    ],
+    "occurrences": 1
+  },
+  {
+    "slug": "province-brestskaja_oblast~area-ivacevichskij_rajon~area-telehanskij_selsovet~locality-gorodskoj_posyolok_telehany",
+    "label_ru": "Столин",
+    "label_by": null,
+    "province": "brestskaja_oblast",
+    "country": "belarus",
+    "sample_coords": null,
+    "sources": [
+      "live_https://re.kufar.by/"
+    ],
+    "occurrences": 1
+  },
+  {
+    "slug": "province-vitebskaja_oblast~area-orshanskij_rajon~locality-baran",
+    "label_ru": "Телеханы",
+    "label_by": null,
+    "province": "vitebskaja_oblast",
+    "country": "belarus",
+    "sample_coords": null,
+    "sources": [
+      "live_https://re.kufar.by/"
+    ],
+    "occurrences": 1
+  },
+  {
+    "slug": "province-vitebskaja_oblast~area-beshenkovichskij_rajon~locality-gorodskoj_posyolok_beshenkovichi",
+    "label_ru": "Барань",
+    "label_by": null,
+    "province": "vitebskaja_oblast",
+    "country": "belarus",
+    "sample_coords": null,
+    "sources": [
+      "live_https://re.kufar.by/"
+    ],
+    "occurrences": 1
+  },
+  {
+    "slug": "province-vitebskaja_oblast~area-braslavskij_rajon~locality-braslav",
+    "label_ru": "Бешенковичи",
+    "label_by": null,
+    "province": "vitebskaja_oblast",
+    "country": "belarus",
+    "sample_coords": null,
+    "sources": [
+      "live_https://re.kufar.by/"
+    ],
+    "occurrences": 1
+  },
+  {
+    "slug": "province-vitebskaja_oblast~area-braslavskij_rajon",
+    "label_ru": "Бешенковичи",
+    "label_by": null,
+    "province": "vitebskaja_oblast",
+    "country": "belarus",
+    "sample_coords": null,
+    "sources": [
+      "live_https://re.kufar.by/"
+    ],
+    "occurrences": 1
+  },
+  {
+    "slug": "province-vitebskaja_oblast~area-verhnedvinskij_rajon~locality-verhnedvinsk",
+    "label_ru": "Браславский",
+    "label_by": null,
+    "province": "vitebskaja_oblast",
+    "country": "belarus",
+    "sample_coords": null,
+    "sources": [
+      "live_https://re.kufar.by/"
+    ],
+    "occurrences": 1
+  },
+  {
+    "slug": "province-vitebskaja_oblast~area-polockij_rajon~area-vetrinskij_selsovet~locality-gorodskoj_posyolok_vetrino",
+    "label_ru": "Верхнедвинск",
+    "label_by": null,
+    "province": "vitebskaja_oblast",
+    "country": "belarus",
+    "sample_coords": null,
+    "sources": [
+      "live_https://re.kufar.by/"
+    ],
+    "occurrences": 1
+  },
+  {
+    "slug": "province-vitebskaja_oblast~area-tolochinskij_rajon~area-kohanovskij_selsovet~locality-gorodskoj_posyolok_kohanovo",
+    "label_ru": "Ветрино",
+    "label_by": null,
+    "province": "vitebskaja_oblast",
+    "country": "belarus",
+    "sample_coords": null,
+    "sources": [
+      "live_https://re.kufar.by/"
+    ],
+    "occurrences": 1
+  },
+  {
+    "slug": "province-vitebskaja_oblast~area-glubokskij_rajon~locality-glubokoe",
+    "label_ru": "Коханово",
+    "label_by": null,
+    "province": "vitebskaja_oblast",
+    "country": "belarus",
+    "sample_coords": null,
+    "sources": [
+      "live_https://re.kufar.by/"
+    ],
+    "occurrences": 1
+  },
+  {
+    "slug": "province-vitebskaja_oblast~area-gorodokskij_rajon~locality-gorodok",
+    "label_ru": "Глубокое",
+    "label_by": null,
+    "province": "vitebskaja_oblast",
+    "country": "belarus",
+    "sample_coords": null,
+    "sources": [
+      "live_https://re.kufar.by/"
+    ],
+    "occurrences": 1
+  },
+  {
+    "slug": "province-vitebskaja_oblast~area-dokshickij_rajon~locality-dokshicy",
+    "label_ru": "Городок",
+    "label_by": null,
+    "province": "vitebskaja_oblast",
+    "country": "belarus",
+    "sample_coords": null,
+    "sources": [
+      "live_https://re.kufar.by/"
+    ],
+    "occurrences": 1
+  },
+  {
+    "slug": "province-vitebskaja_oblast~area-dubrovenskij_rajon~locality-dubrovno",
+    "label_ru": "Докшицы",
+    "label_by": null,
+    "province": "vitebskaja_oblast",
+    "country": "belarus",
+    "sample_coords": null,
+    "sources": [
+      "live_https://re.kufar.by/"
+    ],
+    "occurrences": 1
+  },
+  {
+    "slug": "province-vitebskaja_oblast~area-lepelskij_rajon~locality-lepel",
+    "label_ru": "Дубровно",
+    "label_by": null,
+    "province": "vitebskaja_oblast",
+    "country": "belarus",
+    "sample_coords": null,
+    "sources": [
+      "live_https://re.kufar.by/"
+    ],
+    "occurrences": 1
+  },
+  {
+    "slug": "province-vitebskaja_oblast~area-lioznenskij_rajon~locality-gorodskoj_posyolok_liozno",
+    "label_ru": "Лепель",
+    "label_by": null,
+    "province": "vitebskaja_oblast",
+    "country": "belarus",
+    "sample_coords": null,
+    "sources": [
+      "live_https://re.kufar.by/"
+    ],
+    "occurrences": 1
+  },
+  {
+    "slug": "province-vitebskaja_oblast~area-miorskij_rajon~locality-miory",
+    "label_ru": "Лиозно",
+    "label_by": null,
+    "province": "vitebskaja_oblast",
+    "country": "belarus",
+    "sample_coords": null,
+    "sources": [
+      "live_https://re.kufar.by/"
+    ],
+    "occurrences": 1
+  },
+  {
+    "slug": "province-vitebskaja_oblast~area-chashnikskij_rajon~locality-novolukoml",
+    "label_ru": "Миоры",
+    "label_by": null,
+    "province": "vitebskaja_oblast",
+    "country": "belarus",
+    "sample_coords": null,
+    "sources": [
+      "live_https://re.kufar.by/"
+    ],
+    "occurrences": 1
+  },
+  {
+    "slug": "province-vitebskaja_oblast~locality-novopolock",
+    "label_ru": "Новолукомль",
+    "label_by": null,
+    "province": "vitebskaja_oblast",
+    "country": "belarus",
+    "sample_coords": null,
+    "sources": [
+      "live_https://re.kufar.by/"
+    ],
+    "occurrences": 1
+  },
+  {
+    "slug": "province-vitebskaja_oblast~area-orshanskij_rajon~locality-orsha",
+    "label_ru": "Новополоцк",
+    "label_by": null,
+    "province": "vitebskaja_oblast",
+    "country": "belarus",
+    "sample_coords": null,
+    "sources": [
+      "live_https://re.kufar.by/"
+    ],
+    "occurrences": 1
+  },
+  {
+    "slug": "province-vitebskaja_oblast~area-polockij_rajon~locality-polock",
+    "label_ru": "Орша",
+    "label_by": null,
+    "province": "vitebskaja_oblast",
+    "country": "belarus",
+    "sample_coords": null,
+    "sources": [
+      "live_https://re.kufar.by/"
+    ],
+    "occurrences": 1
+  },
+  {
+    "slug": "province-vitebskaja_oblast~area-postavskij_rajon~locality-postavy",
+    "label_ru": "Полоцк",
+    "label_by": null,
+    "province": "vitebskaja_oblast",
+    "country": "belarus",
+    "sample_coords": null,
+    "sources": [
+      "live_https://re.kufar.by/"
+    ],
+    "occurrences": 1
+  },
+  {
+    "slug": "province-vitebskaja_oblast~area-rossonskij_rajon~locality-gorodskoj_posyolok_rossony",
+    "label_ru": "Поставы",
+    "label_by": null,
+    "province": "vitebskaja_oblast",
+    "country": "belarus",
+    "sample_coords": null,
+    "sources": [
+      "live_https://re.kufar.by/"
+    ],
+    "occurrences": 1
+  },
+  {
+    "slug": "province-vitebskaja_oblast~area-sennenskij_rajon~locality-senno",
+    "label_ru": "Россоны",
+    "label_by": null,
+    "province": "vitebskaja_oblast",
+    "country": "belarus",
+    "sample_coords": null,
+    "sources": [
+      "live_https://re.kufar.by/"
+    ],
+    "occurrences": 1
+  },
+  {
+    "slug": "province-vitebskaja_oblast~area-tolochinskij_rajon~locality-tolochin",
+    "label_ru": "Сенно",
+    "label_by": null,
+    "province": "vitebskaja_oblast",
+    "country": "belarus",
+    "sample_coords": null,
+    "sources": [
+      "live_https://re.kufar.by/"
+    ],
+    "occurrences": 1
+  },
+  {
+    "slug": "province-vitebskaja_oblast~area-ushachskij_rajon~locality-gorodskoj_posyolok_ushachi",
+    "label_ru": "Толочин",
+    "label_by": null,
+    "province": "vitebskaja_oblast",
+    "country": "belarus",
+    "sample_coords": null,
+    "sources": [
+      "live_https://re.kufar.by/"
+    ],
+    "occurrences": 1
+  },
+  {
+    "slug": "province-vitebskaja_oblast~area-chashnikskij_rajon~locality-chashniki",
+    "label_ru": "Ушачи",
+    "label_by": null,
+    "province": "vitebskaja_oblast",
+    "country": "belarus",
+    "sample_coords": null,
+    "sources": [
+      "live_https://re.kufar.by/"
+    ],
+    "occurrences": 1
+  },
+  {
+    "slug": "province-vitebskaja_oblast~area-sharkovschinskij_rajon~locality-gorodskoj_posyolok_sharkovschina",
+    "label_ru": "Чашники",
+    "label_by": null,
+    "province": "vitebskaja_oblast",
+    "country": "belarus",
+    "sample_coords": null,
+    "sources": [
+      "live_https://re.kufar.by/"
+    ],
+    "occurrences": 1
+  },
+  {
+    "slug": "province-vitebskaja_oblast~area-shumilinskij_rajon~locality-gorodskoj_posyolok_shumilino",
+    "label_ru": "Шарковщина",
+    "label_by": null,
+    "province": "vitebskaja_oblast",
+    "country": "belarus",
+    "sample_coords": null,
+    "sources": [
+      "live_https://re.kufar.by/"
+    ],
+    "occurrences": 1
+  },
+  {
+    "slug": "province-gomelskaja_oblast~area-gomelskij_rajon~area-bolshevistskij_selsovet~locality-rabochij_posyolok_bolshevik",
+    "label_ru": "Шумилино",
+    "label_by": null,
+    "province": "gomelskaja_oblast",
+    "country": "belarus",
+    "sample_coords": null,
+    "sources": [
+      "live_https://re.kufar.by/"
+    ],
+    "occurrences": 1
+  },
+  {
+    "slug": "province-gomelskaja_oblast~area-braginskij_rajon~locality-gorodskoj_posyolok_bragin",
+    "label_ru": "Большевик",
+    "label_by": null,
+    "province": "gomelskaja_oblast",
+    "country": "belarus",
+    "sample_coords": null,
+    "sources": [
+      "live_https://re.kufar.by/"
+    ],
+    "occurrences": 1
+  },
+  {
+    "slug": "province-gomelskaja_oblast~area-buda-koshelyovskij_rajon~locality-buda-koshelyovo",
+    "label_ru": "Брагин",
+    "label_by": null,
+    "province": "gomelskaja_oblast",
+    "country": "belarus",
+    "sample_coords": null,
+    "sources": [
+      "live_https://re.kufar.by/"
+    ],
+    "occurrences": 1
+  },
+  {
+    "slug": "province-gomelskaja_oblast~area-rechickij_rajon~locality-vasilevichi",
+    "label_ru": "Буда",
+    "label_by": null,
+    "province": "gomelskaja_oblast",
+    "country": "belarus",
+    "sample_coords": null,
+    "sources": [
+      "live_https://re.kufar.by/"
+    ],
+    "occurrences": 1
+  },
+  {
+    "slug": "province-gomelskaja_oblast~area-vetkovskij_rajon~locality-vetka",
+    "label_ru": "Василевичи",
+    "label_by": null,
+    "province": "gomelskaja_oblast",
+    "country": "belarus",
+    "sample_coords": null,
+    "sources": [
+      "live_https://re.kufar.by/"
+    ],
+    "occurrences": 1
+  },
+  {
+    "slug": "province-gomelskaja_oblast~area-dobrushskij_rajon~locality-dobrush",
+    "label_ru": "Ветка",
+    "label_by": null,
+    "province": "gomelskaja_oblast",
+    "country": "belarus",
+    "sample_coords": null,
+    "sources": [
+      "live_https://re.kufar.by/"
+    ],
+    "occurrences": 1
+  },
+  {
+    "slug": "province-gomelskaja_oblast~area-elskij_rajon~locality-elsk",
+    "label_ru": "Добруш",
+    "label_by": null,
+    "province": "gomelskaja_oblast",
+    "country": "belarus",
+    "sample_coords": null,
+    "sources": [
+      "live_https://re.kufar.by/"
+    ],
+    "occurrences": 1
+  },
+  {
+    "slug": "province-gomelskaja_oblast~area-zhitkovichskij_rajon~locality-zhitkovichi",
+    "label_ru": "Ельск",
+    "label_by": null,
+    "province": "gomelskaja_oblast",
+    "country": "belarus",
+    "sample_coords": null,
+    "sources": [
+      "live_https://re.kufar.by/"
+    ],
+    "occurrences": 1
+  },
+  {
+    "slug": "province-gomelskaja_oblast~area-zhlobinskij_rajon~locality-zhlobin",
+    "label_ru": "Житковичи",
+    "label_by": null,
+    "province": "gomelskaja_oblast",
+    "country": "belarus",
+    "sample_coords": null,
+    "sources": [
+      "live_https://re.kufar.by/"
+    ],
+    "occurrences": 1
+  },
+  {
+    "slug": "province-gomelskaja_oblast~area-kalinkovichskij_rajon~locality-kalinkovichi",
+    "label_ru": "Жлобин",
+    "label_by": null,
+    "province": "gomelskaja_oblast",
+    "country": "belarus",
+    "sample_coords": null,
+    "sources": [
+      "live_https://re.kufar.by/"
+    ],
+    "occurrences": 1
+  },
+  {
+    "slug": "province-gomelskaja_oblast~area-kormjanskij_rajon~locality-gorodskoj_posyolok_korma",
+    "label_ru": "Калинковичи",
+    "label_by": null,
+    "province": "gomelskaja_oblast",
+    "country": "belarus",
+    "sample_coords": null,
+    "sources": [
+      "live_https://re.kufar.by/"
+    ],
+    "occurrences": 1
+  },
+  {
+    "slug": "province-gomelskaja_oblast~area-gomelskij_rajon~area-eryominskij_selsovet~locality-derevnja_kostjukovka",
+    "label_ru": "Корма",
+    "label_by": null,
+    "province": "gomelskaja_oblast",
+    "country": "belarus",
+    "sample_coords": null,
+    "sources": [
+      "live_https://re.kufar.by/"
+    ],
+    "occurrences": 1
+  },
+  {
+    "slug": "province-gomelskaja_oblast~area-lelchickij_rajon~locality-gorodskoj_posyolok_lelchicy",
+    "label_ru": "Костюковка",
+    "label_by": null,
+    "province": "gomelskaja_oblast",
+    "country": "belarus",
+    "sample_coords": null,
+    "sources": [
+      "live_https://re.kufar.by/"
+    ],
+    "occurrences": 1
+  },
+  {
+    "slug": "province-gomelskaja_oblast~area-loevskij_rajon~locality-gorodskoj_posyolok_loev",
+    "label_ru": "Лельчицы",
+    "label_by": null,
+    "province": "gomelskaja_oblast",
+    "country": "belarus",
+    "sample_coords": null,
+    "sources": [
+      "live_https://re.kufar.by/"
+    ],
+    "occurrences": 1
+  },
+  {
+    "slug": "province-gomelskaja_oblast~area-mozyrskij_rajon~locality-mozyr",
+    "label_ru": "Лоев",
+    "label_by": null,
+    "province": "gomelskaja_oblast",
+    "country": "belarus",
+    "sample_coords": null,
+    "sources": [
+      "live_https://re.kufar.by/"
+    ],
+    "occurrences": 1
+  },
+  {
+    "slug": "province-gomelskaja_oblast~area-narovljanskij_rajon~locality-narovlja",
+    "label_ru": "Мозырь",
+    "label_by": null,
+    "province": "gomelskaja_oblast",
+    "country": "belarus",
+    "sample_coords": null,
+    "sources": [
+      "live_https://re.kufar.by/"
+    ],
+    "occurrences": 1
+  },
+  {
+    "slug": "province-gomelskaja_oblast~area-oktjabrskij_rajon",
+    "label_ru": "Наровля",
+    "label_by": null,
+    "province": "gomelskaja_oblast",
+    "country": "belarus",
+    "sample_coords": null,
+    "sources": [
+      "live_https://re.kufar.by/"
+    ],
+    "occurrences": 1
+  },
+  {
+    "slug": "province-gomelskaja_oblast~area-svetlogorskij_rajon~area-parichskij_selsovet~locality-gorodskoj_posyolok_parichi",
+    "label_ru": "Октябрьский",
+    "label_by": null,
+    "province": "gomelskaja_oblast",
+    "country": "belarus",
+    "sample_coords": null,
+    "sources": [
+      "live_https://re.kufar.by/"
+    ],
+    "occurrences": 1
+  },
+  {
+    "slug": "province-gomelskaja_oblast~area-petrikovskij_rajon~locality-petrikov",
+    "label_ru": "Паричи",
+    "label_by": null,
+    "province": "gomelskaja_oblast",
+    "country": "belarus",
+    "sample_coords": null,
+    "sources": [
+      "live_https://re.kufar.by/"
+    ],
+    "occurrences": 1
+  },
+  {
+    "slug": "province-gomelskaja_oblast~area-rechickij_rajon~locality-rechica",
+    "label_ru": "Петриков",
+    "label_by": null,
+    "province": "gomelskaja_oblast",
+    "country": "belarus",
+    "sample_coords": null,
+    "sources": [
+      "live_https://re.kufar.by/"
+    ],
+    "occurrences": 1
+  },
+  {
+    "slug": "province-gomelskaja_oblast~area-rogachyovskij_rajon~locality-rogachyov",
+    "label_ru": "Речица",
+    "label_by": null,
+    "province": "gomelskaja_oblast",
+    "country": "belarus",
+    "sample_coords": null,
+    "sources": [
+      "live_https://re.kufar.by/"
+    ],
+    "occurrences": 1
+  },
+  {
+    "slug": "province-gomelskaja_oblast~area-svetlogorskij_rajon~locality-svetlogorsk",
+    "label_ru": "Рогачев",
+    "label_by": null,
+    "province": "gomelskaja_oblast",
+    "country": "belarus",
+    "sample_coords": null,
+    "sources": [
+      "live_https://re.kufar.by/"
+    ],
+    "occurrences": 1
+  },
+  {
+    "slug": "province-gomelskaja_oblast~area-rogachyovskij_rajon~area-staroselskij_selsovet~locality-derevnja_terehovka",
+    "label_ru": "Светлогорск",
+    "label_by": null,
+    "province": "gomelskaja_oblast",
+    "country": "belarus",
+    "sample_coords": null,
+    "sources": [
+      "live_https://re.kufar.by/"
+    ],
+    "occurrences": 1
+  },
+  {
+    "slug": "province-gomelskaja_oblast~area-zhitkovichskij_rajon~locality-turov",
+    "label_ru": "Тереховка",
+    "label_by": null,
+    "province": "gomelskaja_oblast",
+    "country": "belarus",
+    "sample_coords": null,
+    "sources": [
+      "live_https://re.kufar.by/"
+    ],
+    "occurrences": 1
+  },
+  {
+    "slug": "province-gomelskaja_oblast~area-buda-koshelyovskij_rajon~area-uvarovichskij_selsovet~locality-gorodskoj_posyolok_uvarovichi",
+    "label_ru": "Туров",
+    "label_by": null,
+    "province": "gomelskaja_oblast",
+    "country": "belarus",
+    "sample_coords": null,
+    "sources": [
+      "live_https://re.kufar.by/"
+    ],
+    "occurrences": 1
+  },
+  {
+    "slug": "province-gomelskaja_oblast~area-hojnikskij_rajon~locality-hojniki",
+    "label_ru": "Уваровичи",
+    "label_by": null,
+    "province": "gomelskaja_oblast",
+    "country": "belarus",
+    "sample_coords": null,
+    "sources": [
+      "live_https://re.kufar.by/"
+    ],
+    "occurrences": 1
+  },
+  {
+    "slug": "province-gomelskaja_oblast~area-checherskij_rajon~locality-chechersk",
+    "label_ru": "Хойники",
+    "label_by": null,
+    "province": "gomelskaja_oblast",
+    "country": "belarus",
+    "sample_coords": null,
+    "sources": [
+      "live_https://re.kufar.by/"
+    ],
+    "occurrences": 1
+  },
+  {
+    "slug": "province-grodnenskaja_oblast~area-lidskij_rajon~locality-beryozovka",
+    "label_ru": "Чечерск",
+    "label_by": null,
+    "province": "grodnenskaja_oblast",
+    "country": "belarus",
+    "sample_coords": null,
+    "sources": [
+      "live_https://re.kufar.by/"
+    ],
+    "occurrences": 1
+  },
+  {
+    "slug": "province-grodnenskaja_oblast~area-schuchinskij_rajon~area-ostrinskij_selsovet~locality-derevnja_berestovica",
+    "label_ru": "Берёзовка",
+    "label_by": null,
+    "province": "grodnenskaja_oblast",
+    "country": "belarus",
+    "sample_coords": null,
+    "sources": [
+      "live_https://re.kufar.by/"
+    ],
+    "occurrences": 1
+  },
+  {
+    "slug": "province-grodnenskaja_oblast~area-berestovickij_rajon~locality-gorodskoj_posyolok_bolshaja_berestovica",
+    "label_ru": "Берастав",
+    "label_by": null,
+    "province": "grodnenskaja_oblast",
+    "country": "belarus",
+    "sample_coords": null,
+    "sources": [
+      "live_https://re.kufar.by/"
+    ],
+    "occurrences": 1
+  },
+  {
+    "slug": "province-grodnenskaja_oblast~area-volkovysskij_rajon~locality-volkovysk",
+    "label_ru": "Большой Берестовице",
+    "label_by": null,
+    "province": "grodnenskaja_oblast",
+    "country": "belarus",
+    "sample_coords": null,
+    "sources": [
+      "live_https://re.kufar.by/"
+    ],
+    "occurrences": 1
+  },
+  {
+    "slug": "province-grodnenskaja_oblast~area-voronovskij_rajon~locality-gorodskoj_posyolok_voronovo",
+    "label_ru": "Волковыск",
+    "label_by": null,
+    "province": "grodnenskaja_oblast",
+    "country": "belarus",
+    "sample_coords": null,
+    "sources": [
+      "live_https://re.kufar.by/"
+    ],
+    "occurrences": 1
+  },
+  {
+    "slug": "province-grodnenskaja_oblast~area-djatlovskij_rajon~locality-djatlovo",
+    "label_ru": "Вороново",
+    "label_by": null,
+    "province": "grodnenskaja_oblast",
+    "country": "belarus",
+    "sample_coords": null,
+    "sources": [
+      "live_https://re.kufar.by/"
+    ],
+    "occurrences": 1
+  },
+  {
+    "slug": "province-grodnenskaja_oblast~area-zelvenskij_rajon~locality-gorodskoj_posyolok_zelva",
+    "label_ru": "Дятлово",
+    "label_by": null,
+    "province": "grodnenskaja_oblast",
+    "country": "belarus",
+    "sample_coords": null,
+    "sources": [
+      "live_https://re.kufar.by/"
+    ],
+    "occurrences": 1
+  },
+  {
+    "slug": "province-grodnenskaja_oblast~area-ivevskij_rajon~locality-ive",
+    "label_ru": "Зельва",
+    "label_by": null,
+    "province": "grodnenskaja_oblast",
+    "country": "belarus",
+    "sample_coords": null,
+    "sources": [
+      "live_https://re.kufar.by/"
+    ],
+    "occurrences": 1
+  },
+  {
+    "slug": "province-grodnenskaja_oblast~area-korelichskij_rajon~locality-gorodskoj_posyolok_korelichi",
+    "label_ru": "Ивье",
+    "label_by": null,
+    "province": "grodnenskaja_oblast",
+    "country": "belarus",
+    "sample_coords": null,
+    "sources": [
+      "live_https://re.kufar.by/"
+    ],
+    "occurrences": 1
+  },
+  {
+    "slug": "province-grodnenskaja_oblast~area-volkovysskij_rajon~area-krasnoselskij_selsovet~locality-gorodskoj_posyolok_krasnoselskij",
+    "label_ru": "Кореличи",
+    "label_by": null,
+    "province": "grodnenskaja_oblast",
+    "country": "belarus",
+    "sample_coords": null,
+    "sources": [
+      "live_https://re.kufar.by/"
+    ],
+    "occurrences": 1
+  },
+  {
+    "slug": "province-grodnenskaja_oblast~area-lidskij_rajon~locality-lida",
+    "label_ru": "Красносельский",
+    "label_by": null,
+    "province": "grodnenskaja_oblast",
+    "country": "belarus",
+    "sample_coords": null,
+    "sources": [
+      "live_https://re.kufar.by/"
+    ],
+    "occurrences": 1
+  },
+  {
+    "slug": "province-grodnenskaja_oblast~area-korelichskij_rajon~area-mirskij_selsovet~locality-gorodskoj_posyolok_mir",
+    "label_ru": "Лида",
+    "label_by": null,
+    "province": "grodnenskaja_oblast",
+    "country": "belarus",
+    "sample_coords": null,
+    "sources": [
+      "live_https://re.kufar.by/"
+    ],
+    "occurrences": 1
+  },
+  {
+    "slug": "province-grodnenskaja_oblast~area-mostovskij_rajon~locality-mosty",
+    "label_ru": "Мир",
+    "label_by": null,
+    "province": "grodnenskaja_oblast",
+    "country": "belarus",
+    "sample_coords": null,
+    "sources": [
+      "live_https://re.kufar.by/"
+    ],
+    "occurrences": 1
+  },
+  {
+    "slug": "province-grodnenskaja_oblast~area-novogrudskij_rajon~locality-novogrudok",
+    "label_ru": "Мосты",
+    "label_by": null,
+    "province": "grodnenskaja_oblast",
+    "country": "belarus",
+    "sample_coords": null,
+    "sources": [
+      "live_https://re.kufar.by/"
+    ],
+    "occurrences": 1
+  },
+  {
+    "slug": "province-grodnenskaja_oblast~area-ostroveckij_rajon~locality-ostrovec",
+    "label_ru": "Новогрудок",
+    "label_by": null,
+    "province": "grodnenskaja_oblast",
+    "country": "belarus",
+    "sample_coords": null,
+    "sources": [
+      "live_https://re.kufar.by/"
+    ],
+    "occurrences": 1
+  },
+  {
+    "slug": "province-grodnenskaja_oblast~area-oshmjanskij_rajon~locality-oshmjany",
+    "label_ru": "Островец",
+    "label_by": null,
+    "province": "grodnenskaja_oblast",
+    "country": "belarus",
+    "sample_coords": null,
+    "sources": [
+      "live_https://re.kufar.by/"
+    ],
+    "occurrences": 1
+  },
+  {
+    "slug": "province-grodnenskaja_oblast~area-korelichskij_rajon~area-zhuhovichskij_selsovet~locality-derevnja_radun",
+    "label_ru": "Ошмяны",
+    "label_by": null,
+    "province": "grodnenskaja_oblast",
+    "country": "belarus",
+    "sample_coords": null,
+    "sources": [
+      "live_https://re.kufar.by/"
+    ],
+    "occurrences": 1
+  },
+  {
+    "slug": "province-grodnenskaja_oblast~area-volkovysskij_rajon~area-rosskij_selsovet~locality-gorodskoj_posyolok_ross",
+    "label_ru": "Радунь",
+    "label_by": null,
+    "province": "grodnenskaja_oblast",
+    "country": "belarus",
+    "sample_coords": null,
+    "sources": [
+      "live_https://re.kufar.by/"
+    ],
+    "occurrences": 1
+  },
+  {
+    "slug": "province-grodnenskaja_oblast~area-svislochskij_rajon~locality-svisloch",
+    "label_ru": "Россь",
+    "label_by": null,
+    "province": "grodnenskaja_oblast",
+    "country": "belarus",
+    "sample_coords": null,
+    "sources": [
+      "live_https://re.kufar.by/"
+    ],
+    "occurrences": 1
+  },
+  {
+    "slug": "province-grodnenskaja_oblast~area-grodnenskij_rajon~locality-skidel",
+    "label_ru": "Свислочь",
+    "label_by": null,
+    "province": "grodnenskaja_oblast",
+    "country": "belarus",
+    "sample_coords": null,
+    "sources": [
+      "live_https://re.kufar.by/"
+    ],
+    "occurrences": 1
+  },
+  {
+    "slug": "province-grodnenskaja_oblast~area-slonimskij_rajon~locality-slonim",
+    "label_ru": "Скидель",
+    "label_by": null,
+    "province": "grodnenskaja_oblast",
+    "country": "belarus",
+    "sample_coords": null,
+    "sources": [
+      "live_https://re.kufar.by/"
+    ],
+    "occurrences": 1
+  },
+  {
+    "slug": "province-grodnenskaja_oblast~area-smorgonskij_rajon~locality-smorgon",
+    "label_ru": "Слоним",
+    "label_by": null,
+    "province": "grodnenskaja_oblast",
+    "country": "belarus",
+    "sample_coords": null,
+    "sources": [
+      "live_https://re.kufar.by/"
+    ],
+    "occurrences": 1
+  },
+  {
+    "slug": "province-grodnenskaja_oblast~area-schuchinskij_rajon~locality-schuchin",
+    "label_ru": "Сморгонь",
+    "label_by": null,
+    "province": "grodnenskaja_oblast",
+    "country": "belarus",
+    "sample_coords": null,
+    "sources": [
+      "live_https://re.kufar.by/"
+    ],
+    "occurrences": 1
+  },
+  {
+    "slug": "province-mogilyovskaja_oblast~area-belynichskij_rajon~locality-belynichi",
+    "label_ru": "Щучин",
+    "label_by": null,
+    "province": "mogilyovskaja_oblast",
+    "country": "belarus",
+    "sample_coords": null,
+    "sources": [
+      "live_https://re.kufar.by/"
+    ],
+    "occurrences": 1
+  },
+  {
+    "slug": "province-mogilyovskaja_oblast~locality-bobrujsk",
+    "label_ru": "Белыничи",
+    "label_by": null,
+    "province": "mogilyovskaja_oblast",
+    "country": "belarus",
+    "sample_coords": null,
+    "sources": [
+      "live_https://re.kufar.by/"
+    ],
+    "occurrences": 1
+  },
+  {
+    "slug": "province-mogilyovskaja_oblast~area-byhovskij_rajon~locality-byhov",
+    "label_ru": "Бобруйск",
+    "label_by": null,
+    "province": "mogilyovskaja_oblast",
+    "country": "belarus",
+    "sample_coords": null,
+    "sources": [
+      "live_https://re.kufar.by/"
+    ],
+    "occurrences": 1
+  },
+  {
+    "slug": "province-mogilyovskaja_oblast~area-glusskij_rajon~locality-gorodskoj_posyolok_glusk",
+    "label_ru": "Быхов",
+    "label_by": null,
+    "province": "mogilyovskaja_oblast",
+    "country": "belarus",
+    "sample_coords": null,
+    "sources": [
+      "live_https://re.kufar.by/"
+    ],
+    "occurrences": 1
+  },
+  {
+    "slug": "province-mogilyovskaja_oblast~area-goreckij_rajon~locality-gorki",
+    "label_ru": "Глуск",
+    "label_by": null,
+    "province": "mogilyovskaja_oblast",
+    "country": "belarus",
+    "sample_coords": null,
+    "sources": [
+      "live_https://re.kufar.by/"
+    ],
+    "occurrences": 1
+  },
+  {
+    "slug": "province-mogilyovskaja_oblast~area-dribinskij_rajon~locality-gorodskoj_posyolok_dribin",
+    "label_ru": "Горки",
+    "label_by": null,
+    "province": "mogilyovskaja_oblast",
+    "country": "belarus",
+    "sample_coords": null,
+    "sources": [
+      "live_https://re.kufar.by/"
+    ],
+    "occurrences": 1
+  },
+  {
+    "slug": "province-mogilyovskaja_oblast~area-osipovichskij_rajon~area-elizovskij_selsovet~locality-rabochij_posyolok_elizovo",
+    "label_ru": "Дрибин",
+    "label_by": null,
+    "province": "mogilyovskaja_oblast",
+    "country": "belarus",
+    "sample_coords": null,
+    "sources": [
+      "live_https://re.kufar.by/"
+    ],
+    "occurrences": 1
+  },
+  {
+    "slug": "province-mogilyovskaja_oblast~area-kirovskij_rajon~locality-kirovsk",
+    "label_ru": "Елизово",
+    "label_by": null,
+    "province": "mogilyovskaja_oblast",
+    "country": "belarus",
+    "sample_coords": null,
+    "sources": [
+      "live_https://re.kufar.by/"
+    ],
+    "occurrences": 1
+  },
+  {
+    "slug": "province-mogilyovskaja_oblast~area-klimovichskij_rajon~locality-klimovichi",
+    "label_ru": "Кировск",
+    "label_by": null,
+    "province": "mogilyovskaja_oblast",
+    "country": "belarus",
+    "sample_coords": null,
+    "sources": [
+      "live_https://re.kufar.by/"
+    ],
+    "occurrences": 1
+  },
+  {
+    "slug": "province-mogilyovskaja_oblast~area-klichevskij_rajon~locality-klichev",
+    "label_ru": "Климовичи",
+    "label_by": null,
+    "province": "mogilyovskaja_oblast",
+    "country": "belarus",
+    "sample_coords": null,
+    "sources": [
+      "live_https://re.kufar.by/"
+    ],
+    "occurrences": 1
+  },
+  {
+    "slug": "province-mogilyovskaja_oblast~area-kostjukovichskij_rajon~locality-kostjukovichi",
+    "label_ru": "Кличев",
+    "label_by": null,
+    "province": "mogilyovskaja_oblast",
+    "country": "belarus",
+    "sample_coords": null,
+    "sources": [
+      "live_https://re.kufar.by/"
+    ],
+    "occurrences": 1
+  },
+  {
+    "slug": "province-mogilyovskaja_oblast~area-krasnopolskij_rajon~locality-gorodskoj_posyolok_krasnopole",
+    "label_ru": "Костюковичи",
+    "label_by": null,
+    "province": "mogilyovskaja_oblast",
+    "country": "belarus",
+    "sample_coords": null,
+    "sources": [
+      "live_https://re.kufar.by/"
+    ],
+    "occurrences": 1
+  },
+  {
+    "slug": "province-mogilyovskaja_oblast~area-krichevskij_rajon~locality-krichev",
+    "label_ru": "Краснополье",
+    "label_by": null,
+    "province": "mogilyovskaja_oblast",
+    "country": "belarus",
+    "sample_coords": null,
+    "sources": [
+      "live_https://re.kufar.by/"
+    ],
+    "occurrences": 1
+  },
+  {
+    "slug": "province-mogilyovskaja_oblast~area-krugljanskij_rajon~locality-krugloe",
+    "label_ru": "Кричев",
+    "label_by": null,
+    "province": "mogilyovskaja_oblast",
+    "country": "belarus",
+    "sample_coords": null,
+    "sources": [
+      "live_https://re.kufar.by/"
+    ],
+    "occurrences": 1
+  },
+  {
+    "slug": "province-mogilyovskaja_oblast~area-mstislavskij_rajon~locality-mstislavl",
+    "label_ru": "Круглое",
+    "label_by": null,
+    "province": "mogilyovskaja_oblast",
+    "country": "belarus",
+    "sample_coords": null,
+    "sources": [
+      "live_https://re.kufar.by/"
+    ],
+    "occurrences": 1
+  },
+  {
+    "slug": "province-mogilyovskaja_oblast~area-osipovichskij_rajon~locality-osipovichi",
+    "label_ru": "Мстиславль",
+    "label_by": null,
+    "province": "mogilyovskaja_oblast",
+    "country": "belarus",
+    "sample_coords": null,
+    "sources": [
+      "live_https://re.kufar.by/"
+    ],
+    "occurrences": 1
+  },
+  {
+    "slug": "province-mogilyovskaja_oblast~area-slavgorodskij_rajon~locality-slavgorod",
+    "label_ru": "Осиповичи",
+    "label_by": null,
+    "province": "mogilyovskaja_oblast",
+    "country": "belarus",
+    "sample_coords": null,
+    "sources": [
+      "live_https://re.kufar.by/"
+    ],
+    "occurrences": 1
+  },
+  {
+    "slug": "province-mogilyovskaja_oblast~area-hotimskij_rajon~locality-gorodskoj_posyolok_hotimsk",
+    "label_ru": "Славгород",
+    "label_by": null,
+    "province": "mogilyovskaja_oblast",
+    "country": "belarus",
+    "sample_coords": null,
+    "sources": [
+      "live_https://re.kufar.by/"
+    ],
+    "occurrences": 1
+  },
+  {
+    "slug": "province-mogilyovskaja_oblast~area-chausskij_rajon~locality-chausy",
+    "label_ru": "Хотимск",
+    "label_by": null,
+    "province": "mogilyovskaja_oblast",
+    "country": "belarus",
+    "sample_coords": null,
+    "sources": [
+      "live_https://re.kufar.by/"
+    ],
+    "occurrences": 1
+  },
+  {
+    "slug": "province-mogilyovskaja_oblast~area-cherikovskij_rajon~locality-cherikov",
+    "label_ru": "Чаусы",
+    "label_by": null,
+    "province": "mogilyovskaja_oblast",
+    "country": "belarus",
+    "sample_coords": null,
+    "sources": [
+      "live_https://re.kufar.by/"
+    ],
+    "occurrences": 1
+  },
+  {
+    "slug": "province-mogilyovskaja_oblast~area-shklovskij_rajon~locality-shklov",
+    "label_ru": "Чериков",
+    "label_by": null,
+    "province": "mogilyovskaja_oblast",
+    "country": "belarus",
+    "sample_coords": null,
+    "sources": [
+      "live_https://re.kufar.by/"
+    ],
+    "occurrences": 1
+  }
+]

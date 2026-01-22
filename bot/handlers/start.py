@@ -244,6 +244,52 @@ async def show_city_selection_menu(message: Message, state: FSMContext):
     await state.set_state(SetupStates.waiting_for_city)
 
 
+@router.callback_query(F.data == "setup_city_manual")
+async def cb_setup_city_manual(callback: CallbackQuery, state: FSMContext):
+    """Обработчик кнопки 'Ввести вручную' для города"""
+    await callback.answer()
+    await callback.message.answer(
+        "✏️ Введите название города (например: Барановичи, Полоцк, Орша):"
+    )
+    await state.set_state(CityStates.waiting_for_city)
+
+
+@router.callback_query(F.data.startswith("setup_city_"))
+async def cb_setup_city(callback: CallbackQuery, state: FSMContext):
+    """Обработчик выбора города из предустановленного списка"""
+    from database_turso import get_user_filters_turso, set_user_filters_turso
+    from bot.handlers.filters_quick import show_filters_master
+    from bot.utils.city_lookup import find_city_slug_by_text
+    
+    city_name = callback.data.replace("setup_city_", "")
+    
+    # Ищем через lookup
+    results = await find_city_slug_by_text(city_name, limit=1)
+    
+    if results:
+        city_result = results[0]
+        slug = city_result['slug']
+        label_ru = city_result['label_ru']
+        
+        # Сохраняем
+        user_id = callback.from_user.id
+        filters = await get_user_filters_turso(user_id) or {}
+        filters["city"] = label_ru.lower()
+        filters["city_slug"] = slug
+        filters["city_display"] = label_ru
+        await set_user_filters_turso(user_id, filters)
+        
+        await callback.answer(f"✅ Выбран: {label_ru}")
+        await state.set_state(SetupStates.waiting_for_rooms)
+        await callback.message.answer(
+            "🚪 <b>Шаг 2 из 4: Количество комнат</b>\n\n"
+            "Введите количество комнат (например: 2 или 2-3):",
+            parse_mode=ParseMode.HTML
+        )
+    else:
+        await callback.answer("Город не найден в базе", show_alert=True)
+
+
 @router.callback_query(F.data == "check_now")
 async def cb_check_now(callback: CallbackQuery):
     """Обработчик кнопки 'Проверить сейчас'"""
@@ -597,11 +643,11 @@ async def cb_mode_set(callback: CallbackQuery):
 
 @router.message(CityStates.waiting_for_city)
 async def process_city_input(message: Message, state: FSMContext):
-    """Обработка ввода города с валидацией через location service и верификацией сохранения"""
+    """Обработка ввода города с использованием локальной карты городов"""
     import logging
     from database_turso import ensure_user_filters, get_user_filters_turso, set_user_filters_turso
     from bot.handlers.filters_quick import show_filters_master
-    from services.location_service import validate_city_input
+    from bot.utils.city_lookup import find_city_slug_by_text
     from aiogram.utils.keyboard import InlineKeyboardBuilder
     from constants.constants import LOG_FILTER_SAVE, LOG_FILTER_VERIFY
     
@@ -609,23 +655,172 @@ async def process_city_input(message: Message, state: FSMContext):
     user_id = message.from_user.id
     user_input = message.text.strip()
     city_raw = user_input
-    city_norm = city_raw.lower().strip()
     
     # Гарантируем наличие фильтров
     await ensure_user_filters(telegram_id=user_id)
     
     # Лог до сохранения
-    logger.info(f"{LOG_FILTER_SAVE} user={user_id} saving city_raw={city_raw!r} city_norm={city_norm!r}")
+    logger.info(f"{LOG_FILTER_SAVE} user={user_id} saving city_raw={city_raw!r}")
     
-    # Валидируем ввод через location service
-    validation_result = await validate_city_input(user_input)
+    # Ищем город через локальную карту
+    results = await find_city_slug_by_text(user_input, limit=6)
     
-    if validation_result["status"] == "not_found":
+    if not results:
         # Город не найден
         builder = InlineKeyboardBuilder()
         builder.button(text="Попробовать ещё", callback_data="setup_filters")
         await message.answer(
-            "Город не найден. Проверьте написание или уточните название.\n"
+            "❌ Город не найден. Проверьте написание или уточните название.\n"
+            "Попробуйте ввести название города ещё раз.",
+            reply_markup=builder.as_markup()
+        )
+        return
+    
+    if len(results) == 1:
+        # Один результат - автоматически выбираем
+        city_result = results[0]
+        slug = city_result['slug']
+        label_ru = city_result['label_ru']
+        
+        # Получаем текущие фильтры
+        filters = await get_user_filters_turso(user_id)
+        if not filters:
+            filters = {
+                "city": None,
+                "min_rooms": 1,
+                "max_rooms": 4,
+                "min_price": 0,
+                "max_price": 100000,
+                "seller_type": "all",
+                "delivery_mode": "brief",
+            }
+        
+        # Сохраняем slug и label
+        filters["city"] = label_ru.lower()  # Для совместимости
+        filters["city_slug"] = slug  # Новое поле для slug
+        filters["city_display"] = label_ru  # Отображаемое имя
+        
+        # Сохраняем фильтры
+        await set_user_filters_turso(user_id, filters)
+        
+        logger.info(f"{LOG_FILTER_SAVE} user={user_id} city={label_ru} slug={slug} auto_selected=True")
+        
+        await message.answer(f"✅ Выбран город: <b>{label_ru}</b>", parse_mode=ParseMode.HTML)
+        await state.clear()
+        
+        # Показываем quick master
+        try:
+            await show_filters_master(message, user_id)
+        except Exception as e:
+            logger.error(f"[FILTER_UI] Failed to show filters master: {e}", exc_info=True)
+            await message.answer("Фильтры сохранены. Используйте /start для просмотра.")
+        return
+    
+    # Несколько результатов - показываем выбор
+    builder = InlineKeyboardBuilder()
+    for city_result in results[:6]:  # Максимум 6 вариантов
+        slug = city_result['slug']
+        label_ru = city_result['label_ru']
+        score = city_result.get('score', 0)
+        province = city_result.get('province', '')
+        
+        # Формируем текст кнопки
+        button_text = label_ru
+        if province:
+            # Показываем провинцию если есть
+            province_display = province.replace('_', ' ').title()
+            button_text = f"{label_ru} ({province_display})"
+        
+        builder.button(
+            text=button_text,
+            callback_data=f"select_city|{slug}"
+        )
+    
+    builder.button(text="❌ Отмена", callback_data="setup_filters")
+    builder.adjust(1)
+    
+    await message.answer(
+        f"🔍 Найдено {len(results)} вариантов. Выберите нужный город:",
+        reply_markup=builder.as_markup(),
+        parse_mode=ParseMode.HTML
+    )
+
+
+@router.callback_query(F.data.startswith("select_city|"))
+async def cb_select_city(callback: CallbackQuery, state: FSMContext):
+    """Обработчик выбора города из списка"""
+    import logging
+    from database_turso import get_user_filters_turso, set_user_filters_turso
+    from bot.handlers.filters_quick import show_filters_master
+    from bot.utils.city_lookup import get_city_by_slug
+    
+    logger = logging.getLogger(__name__)
+    user_id = callback.from_user.id
+    
+    try:
+        slug = callback.data.split("|")[1]
+        
+        # Получаем информацию о городе
+        city_info = await get_city_by_slug(slug)
+        if not city_info:
+            await callback.answer("Город не найден", show_alert=True)
+            return
+        
+        label_ru = city_info['label_ru']
+        
+        # Получаем текущие фильтры
+        filters = await get_user_filters_turso(user_id)
+        if not filters:
+            filters = {
+                "city": None,
+                "min_rooms": 1,
+                "max_rooms": 4,
+                "min_price": 0,
+                "max_price": 100000,
+                "seller_type": "all",
+                "delivery_mode": "brief",
+            }
+        
+        # Сохраняем slug и label
+        filters["city"] = label_ru.lower()  # Для совместимости
+        filters["city_slug"] = slug  # Новое поле для slug
+        filters["city_display"] = label_ru  # Отображаемое имя
+        
+        # Сохраняем фильтры
+        await set_user_filters_turso(user_id, filters)
+        
+        logger.info(f"[CITY_SELECT] user={user_id} city={label_ru} slug={slug}")
+        
+        await callback.answer(f"✅ Выбран город: {label_ru}")
+        await state.clear()
+        
+        # Показываем quick master
+        try:
+            await show_filters_master(callback.message, user_id)
+        except Exception as e:
+            logger.error(f"[FILTER_UI] Failed to show filters master: {e}", exc_info=True)
+            await callback.message.answer("Фильтры сохранены. Используйте /start для просмотра.")
+    
+    except Exception as e:
+        logger.error(f"Ошибка обработки выбора города: {e}", exc_info=True)
+        await callback.answer("Произошла ошибка", show_alert=True)
+
+
+@router.message(SetupStates.waiting_for_city)
+async def process_setup_city_input(message: Message, state: FSMContext):
+    """Обработка ввода города в пошаговой настройке (legacy, использует новый lookup)"""
+    # Перенаправляем на основной обработчик
+    await process_city_input(message, state)
+    
+    # Если город был выбран, переходим к следующему шагу
+    filters = await get_user_filters_turso(message.from_user.id)
+    if filters and filters.get("city"):
+        await state.set_state(SetupStates.waiting_for_rooms)
+        await message.answer(
+            "🚪 <b>Шаг 2 из 4: Количество комнат</b>\n\n"
+            "Введите количество комнат (например: 2 или 2-3):",
+            parse_mode=ParseMode.HTML
+        )
             "Попробуйте, например: Минск, Барановичи.",
             reply_markup=builder.as_markup()
         )

@@ -1,7 +1,7 @@
 # ✅ Статус деплоя
 
 ## Дата деплоя
-2026-01-22 00:20:00 (обновлено)
+2026-01-22 00:35:00 (обновлено)
 
 ## Результат
 ✅ **Деплой успешно завершен**
@@ -9,12 +9,40 @@
 ### Детали
 - **Ветка:** `main`
 - **Репозиторий:** `https://github.com/vmakhakhei/parser_tg_bot_flats.git`
-- **Последний коммит:** `af823a8` - fix(ui): fix keyboard.append() in summary message
+- **Последний коммит:** `3660a52` - fix: improve CLI script error handling and async usage
 - **Метод:** Push из ветки `2026-01-18-5h17` в `main`
 
 ## Что было задеплоено
 
 ### Основные изменения
+- ✅ **Диагностическое логирование для фильтров города и Kufar API** (коммиты `0233858`, `5d90899`, `51f806d`, `3660a52`)
+  - **Константы логов:** Добавлены в `constants/constants.py`:
+    - `LOG_FILTER_SAVE`, `LOG_FILTER_LOAD`, `LOG_FILTER_VERIFY`
+    - `LOG_USER_SEARCH`, `LOG_KUFAR_REQ`, `LOG_KUFAR_RESP`, `LOG_KUFAR_LOOKUP`
+  - **Верификация сохранения города:**
+    - Обновлен `process_city_input` в `bot/handlers/start.py`
+    - Добавлено логирование до и после сохранения (`LOG_FILTER_SAVE`, `LOG_FILTER_VERIFY`)
+    - Проверка сохранения с сообщением об ошибке при несоответствии
+  - **Логирование в pipeline поиска:**
+    - Добавлен `LOG_USER_SEARCH` в начале обработки каждого пользователя
+    - Проверка наличия city с логированием и skip при отсутствии
+  - **Логирование запросов к Kufar:**
+    - `LOG_KUFAR_REQ` - логирование параметров запроса перед отправкой
+    - `LOG_KUFAR_RESP` - логирование статуса и количества результатов после ответа
+    - Передача `user_id` в `fetch_listings` для контекста в логах
+  - **Lookup города для Kufar:**
+    - Создана функция `lookup_kufar_location_async()` для поиска параметров города через Kufar API
+    - Таблица `kufar_city_cache` для кэширования результатов lookup
+    - Функции `get_kufar_city_cache()` и `set_kufar_city_cache()` в `database_turso.py`
+    - Пробует два endpoint: autocomplete и locations API
+  - **Админ-команда:** `/admin_kufar_city_lookup <город>` для тестирования lookup
+  - **CLI скрипт:** `tools/kufar_city_lookup.py` для локального тестирования
+  - **Unit тесты:** `tests/test_filters_save.py` для проверки сохранения/загрузки фильтров
+  - **Результат:**
+    - Полное логирование всех операций с фильтрами и запросами к Kufar
+    - Верификация сохранения города с проверкой после записи
+    - Диагностические инструменты для отладки проблем с городами
+    - Кэширование lookup результатов для оптимизации
 - ✅ **Исправление падений UI из-за некорректного InlineKeyboardMarkup** (коммиты `3f0aeff`, `3974496`, `ca8a4cc`, `af823a8`)
   - **Проблема:** ValidationError InlineKeyboardMarkup из-за использования `row_width` и методов `.add()`
   - **Решение:**

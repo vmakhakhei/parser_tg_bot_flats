@@ -133,36 +133,75 @@ class KufarScraper(BaseScraper):
         Преобразует город в формат gtsy для Kufar API.
         
         Args:
-            city: Может быть строкой (старый формат) или dict (location из location_service)
+            city: Может быть строкой (старый формат), dict (location из location_service) 
+                  или dict с полями city_slug/city_display (из user_filters)
         
         Returns:
             gtsy параметр для API
         """
         from config import KUFAR_USE_SLUG_FOR_SEARCH
         
-        # Если передан location dict (новый формат)
+        # Если передан dict с city_slug (новый формат из user_filters)
         if isinstance(city, dict):
+            # Проверяем наличие city_slug (из локальной карты городов)
+            city_slug = city.get("city_slug")
+            if city_slug and KUFAR_USE_SLUG_FOR_SEARCH:
+                log_info("kufar", f"[LOC_PARSER] Используется city_slug из filters: {city_slug}")
+                return city_slug
+            
+            # Проверяем slug из location dict (старый формат location_service)
             slug = city.get("slug", "")
             if slug and KUFAR_USE_SLUG_FOR_SEARCH:
-                # Используем slug напрямую
                 log_info("kufar", f"[LOC_PARSER] Используется slug из location: {slug}")
                 return slug
             
-            # Если slug нет, используем координаты или fallback на имя
-            lat = city.get("lat")
-            lng = city.get("lng")
-            if lat and lng:
-                # Можно использовать координаты с радиусом (если API поддерживает)
-                # Пока используем fallback на имя
-                city_name = city.get("name", "")
-            else:
-                city_name = city.get("name", "")
+            # Если slug нет, пробуем найти через city_lookup по имени
+            city_name = city.get("city_display") or city.get("name", "")
+            if city_name:
+                # Пробуем найти slug через локальную карту городов
+                try:
+                    import asyncio
+                    from bot.utils.city_lookup import find_city_slug_by_text
+                    
+                    # Синхронный вызов async функции
+                    try:
+                        loop = asyncio.get_event_loop()
+                    except RuntimeError:
+                        loop = asyncio.new_event_loop()
+                        asyncio.set_event_loop(loop)
+                    
+                    results = loop.run_until_complete(find_city_slug_by_text(city_name, limit=1))
+                    if results:
+                        found_slug = results[0]['slug']
+                        log_info("kufar", f"[LOC_LOOKUP] Найден slug для {city_name}: {found_slug}")
+                        return found_slug
+                except Exception as e:
+                    log_warning("kufar", f"[LOC_LOOKUP] Ошибка поиска slug для {city_name}: {e}")
             
             # Fallback на старую логику по имени
             city_lower = city_name.lower().strip() if city_name else ""
         else:
             # Старый формат - строка
             city_lower = str(city).lower().strip()
+            
+            # Пробуем найти slug через локальную карту городов
+            try:
+                import asyncio
+                from bot.utils.city_lookup import find_city_slug_by_text
+                
+                try:
+                    loop = asyncio.get_event_loop()
+                except RuntimeError:
+                    loop = asyncio.new_event_loop()
+                    asyncio.set_event_loop(loop)
+                
+                results = loop.run_until_complete(find_city_slug_by_text(city_lower, limit=1))
+                if results:
+                    found_slug = results[0]['slug']
+                    log_info("kufar", f"[LOC_LOOKUP] Найден slug для {city_lower}: {found_slug}")
+                    return found_slug
+            except Exception as e:
+                log_warning("kufar", f"[LOC_LOOKUP] Ошибка поиска slug для {city_lower}: {e}")
         
         # Маппинг городов на формат Kufar API (gtsy) - fallback
         city_mapping = {
