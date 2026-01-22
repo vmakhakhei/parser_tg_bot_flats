@@ -5,7 +5,7 @@
 from typing import Optional
 from aiogram import Router, F
 from aiogram.types import Message, CallbackQuery
-from aiogram.filters import CommandStart, Command
+from aiogram.filters import CommandStart, Command, Text
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.enums import ParseMode
@@ -945,8 +945,8 @@ async def process_setup_city_input(message: Message, state: FSMContext):
 
 # Generic handler для текстовых сообщений (проверяет awaiting_city)
 # Должен быть зарегистрирован ПОСЛЕ всех специфичных handlers
-# Используем фильтр для проверки, что это не команда
-@router.message(~Command())
+# Используем Text() фильтр для обработки только текстовых сообщений (не команд)
+@router.message(Text())
 async def handle_text_message(message: Message, state: FSMContext):
     """
     Generic handler для текстовых сообщений.
