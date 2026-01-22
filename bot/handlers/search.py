@@ -105,9 +105,13 @@ async def cmd_filters(message: Message):
     # Принудительно размещаем по 1 кнопке в ряду
     builder.adjust(1)
 
+    # Используем helper для нормализации города
+    from bot.handlers.start import normalize_city_for_ui
+    city_name = normalize_city_for_ui(user_filters)
+    
     await message.answer(
         f"⚙️ <b>Ваши фильтры</b>\n\n"
-        f"📍 <b>Город:</b> {user_filters.get('city', 'барановичи').title()}\n"
+        f"📍 <b>Город:</b> {city_name}\n"
         f"🚪 <b>Комнат:</b> от {user_filters.get('min_rooms', 1)} до {user_filters.get('max_rooms', 4)}\n"
         f"💰 <b>Цена:</b> ${user_filters.get('min_price', 0):,} - ${user_filters.get('max_price', 100000):,}\n"
         f"🤖 <b>Режим:</b> {'ИИ-режим' if user_filters.get('ai_mode') else 'Обычный режим'}\n\n"

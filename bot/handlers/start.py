@@ -100,6 +100,51 @@ def validate_city(city: str) -> tuple[bool, Optional[str]]:
     return False, None
 
 
+def normalize_city_for_ui(filters: dict) -> str:
+    """
+    Единый helper для нормализации города для UI.
+    
+    Обрабатывает разные форматы:
+    - city_display (строка) → возвращает строку
+    - city как dict → извлекает display/name
+    - city как строка → возвращает строку
+    - нет города → "Не выбран"
+    
+    Args:
+        filters: Словарь фильтров пользователя
+        
+    Returns:
+        Строка с названием города для отображения
+    """
+    import logging
+    logger = logging.getLogger(__name__)
+    
+    # Приоритет 1: city_display (явное поле для отображения)
+    city_display = filters.get("city_display")
+    if city_display:
+        logger.debug(f"[CITY_UI_RENDER] city_display={city_display}")
+        return str(city_display)
+    
+    # Приоритет 2: city как dict (location object)
+    city_data = filters.get("city")
+    if isinstance(city_data, dict):
+        display = city_data.get("display") or city_data.get("name") or city_data.get("label_ru")
+        if display:
+            logger.debug(f"[CITY_UI_RENDER] city_display={display} (from dict)")
+            return str(display)
+        logger.debug(f"[CITY_UI_RENDER] city_display=Не выбран (dict without display)")
+        return "Не выбран"
+    
+    # Приоритет 3: city как строка
+    if city_data and isinstance(city_data, str):
+        logger.debug(f"[CITY_UI_RENDER] city_display={city_data}")
+        return city_data
+    
+    # Нет города
+    logger.debug(f"[CITY_UI_RENDER] city_display=Не выбран (no city)")
+    return "Не выбран"
+
+
 @router.message(CommandStart())
 async def cmd_start(message: Message, state: FSMContext):
     """Обработчик команды /start - пошаговая настройка фильтров"""
@@ -148,7 +193,14 @@ async def cmd_start(message: Message, state: FSMContext):
     # Получаем фильтры из Turso
     user_filters = await get_user_filters_turso(user_id)
     
-    if not user_filters or not user_filters.get("city"):
+    # Проверяем наличие города (может быть dict или строка)
+    city_data = user_filters.get("city") if user_filters else None
+    has_city = city_data and (
+        (isinstance(city_data, str) and city_data.strip()) or 
+        (isinstance(city_data, dict) and (city_data.get("name") or city_data.get("display") or city_data.get("label_ru")))
+    )
+    
+    if not user_filters or not has_city:
         # Первый запуск или город не установлен - запрашиваем город
         await message.answer(
             "ℹ️ Чтобы начать поиск, нужно один раз настроить фильтры.\nЭто займет меньше минуты 👇",
@@ -181,8 +233,7 @@ async def cmd_start(message: Message, state: FSMContext):
         price_from = fmt_price(min_price)
         price_to = fmt_price(max_price)
         
-        city_name = user_filters.get("city", "барановичи") or "Не выбран"
-        city_name = city_name.title() if city_name else "Не выбран"
+        city_name = normalize_city_for_ui(user_filters)
         
         # Формируем текст фильтров
         min_rooms = user_filters.get('min_rooms', 1)
@@ -334,7 +385,13 @@ async def cb_setup_filters(callback: CallbackQuery, state: FSMContext):
     from database_turso import get_user_filters_turso
     filters = await get_user_filters_turso(user_id)
     
-    if not filters or not filters.get("city"):
+    city_data = filters.get("city") if filters else None
+    has_city = city_data and (
+        (isinstance(city_data, str) and city_data.strip()) or 
+        (isinstance(city_data, dict) and (city_data.get("name") or city_data.get("display") or city_data.get("label_ru")))
+    )
+    
+    if not filters or not has_city:
         # Нет города - запрашиваем
         await callback.message.answer(
             "✏️ Введите город (например: Барановичи)",
@@ -934,7 +991,12 @@ async def process_setup_city_input(message: Message, state: FSMContext):
     
     # Если город был выбран, переходим к следующему шагу
     filters = await get_user_filters_turso(message.from_user.id)
-    if filters and filters.get("city"):
+    city_data = filters.get("city") if filters else None
+    has_city = city_data and (
+        (isinstance(city_data, str) and city_data.strip()) or 
+        (isinstance(city_data, dict) and (city_data.get("name") or city_data.get("display") or city_data.get("label_ru")))
+    )
+    if filters and has_city:
         await state.set_state(SetupStates.waiting_for_rooms)
         await message.answer(
             "🚪 <b>Шаг 2 из 4: Количество комнат</b>\n\n"
@@ -958,12 +1020,14 @@ async def handle_text_message(message: Message, state: FSMContext):
     user_id = message.from_user.id
     filters = await get_user_filters_turso(user_id)
     
-    if filters and filters.get("awaiting_city"):
+    # Обрабатываем ТОЛЬКО если awaiting_city == 1
+    if filters and filters.get("awaiting_city") == 1:
         # Пользователь ожидает ввода города - обрабатываем как город
         await process_city_input_no_fsm(message, state)
         return
     
-    # Если не ожидает города - пропускаем (другие handlers обработают)
+    # Если не ожидает города - просто возвращаемся без ошибок
+    # Другие handlers обработают это сообщение
 
 
 # Импортируем остальные обработчики из старого bot.py
