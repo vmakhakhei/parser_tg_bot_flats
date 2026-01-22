@@ -1,16 +1,16 @@
 # ✅ Статус деплоя
 
 ## Дата деплоя
-2026-01-22 00:35:00 (обновлено)
+2026-01-22 10:46:00 (обновлено)
 
 ## Результат
-✅ **Деплой успешно завершен**
+⏸️ **Изменения закоммичены, деплой не выполнен**
 
 ### Детали
-- **Ветка:** `main`
+- **Ветка:** `2026-01-18-5h17` → `main` (готово к merge)
 - **Репозиторий:** `https://github.com/vmakhakhei/parser_tg_bot_flats.git`
-- **Последний коммит:** `3660a52` - fix: improve CLI script error handling and async usage
-- **Метод:** Push из ветки `2026-01-18-5h17` в `main`
+- **Последний коммит:** `feat: integrate city_map lookup with fuzzy search`
+- **Метод:** Коммит в текущей ветке, готов к merge в main
 
 ## Что было задеплоено
 
@@ -654,6 +654,50 @@
     - Debug-run с очищенными sent_ads отправляет объявления пользователю
     - Больше не будет ложных пропусков "всё уже отправлено"
     - Логи `[sent_check]` показывают нормализованные ID и состояние проверки
+- ✅ **Интеграция локальной карты городов (city_map) с fuzzy search** (текущий коммит)
+  - **Добавлена таблица `city_codes`** в `database_turso.py`:
+    - Поля: `slug TEXT PRIMARY KEY`, `label_ru TEXT`, `label_by TEXT`, `province TEXT`, `country TEXT`, `sample_coords TEXT`, `sources TEXT`, `added_at TIMESTAMP`
+    - Функции: `ensure_city_codes_table()`, `load_city_map_from_json()`
+  - **Создан модуль `bot/utils/city_lookup.py`**:
+    - `normalize_query()` - нормализация запроса (удаление префиксов 'г.', 'город', пробелов)
+    - `find_city_slug_by_text()` - поиск с exact/prefix/fuzzy match (rapidfuzz + fallback на difflib)
+    - `get_city_by_slug()` - получение города по slug
+    - Поддержка threshold для fuzzy search (по умолчанию 80)
+  - **Интеграция в `bot/handlers/start.py`**:
+    - Обновлен `process_city_input()` - использует `find_city_slug_by_text()` вместо `validate_city_input()`
+    - Показывает inline кнопки для выбора города (до 6 вариантов) при множественных результатах
+    - Автоматически выбирает город если найден один результат
+    - Добавлены обработчики: `cb_select_city()`, `cb_setup_city_manual()`, `cb_setup_city()`
+    - Сохранение в filters: `city` (для совместимости), `city_slug`, `city_display`
+  - **Миграция `user_filters`**:
+    - Добавлены колонки `city_slug` и `city_display` (автоматическая миграция)
+    - Обновлены функции: `set_user_filters_turso()`, `get_user_filters_turso()` для поддержки новых полей
+  - **Обновлен `scrapers/kufar.py`**:
+    - Функция `_get_city_gtsy()` использует `city_slug` из filters с приоритетом
+    - Fallback на lookup через `find_city_slug_by_text()` по имени города
+    - Сохранена обратная совместимость со старым маппингом
+  - **Админ-команда `/admin_refresh_city_map`**:
+    - Загружает `data/kufar_city_map.json` в таблицу `city_codes`
+    - Выводит количество импортированных записей
+    - Только для администраторов
+  - **Новые файлы**:
+    - `data/kufar_city_map.json` - каноническая карта городов (362 записи)
+    - `tools/build_city_map_from_candidates.py` - скрипт для построения city_map
+    - `tools/test_city_lookup.py` - тестовый скрипт (все 10 тестов пройдены)
+    - `bot/utils/city_lookup.py` - модуль lookup
+  - **Зависимости**:
+    - Добавлен `rapidfuzz>=3.0.0` в `requirements.txt`
+    - Fallback на `difflib` если rapidfuzz недоступен
+  - **Логирование**:
+    - `[CITYMAP] loaded N rows` - загрузка city_map
+    - `[CITYLOOKUP] query="...", results=N` - результаты поиска
+    - `[CITY_SELECT] user=... city=... slug=...` - выбор города пользователем
+  - **Результат**:
+    - Надежный lookup городов без зависимости от внешних API
+    - Поддержка fuzzy search для опечаток и частичных совпадений
+    - Обратная совместимость со старой логикой поиска
+    - Автоматическая миграция схемы БД
+    - Все тесты пройдены успешно (10/10)
 
 ### Статистика
 - **Файлов изменено:** 134+ (текущий деплой: 4 файла)
@@ -664,12 +708,21 @@
 
 ## Следующие шаги
 
-### 1. Проверка на платформе деплоя
+### 1. Merge в main ветку
+Изменения закоммичены в ветке `2026-01-18-5h17`, готовы к merge в `main`:
+```bash
+git checkout main
+git merge 2026-01-18-5h17
+git push origin main
+```
+
+### 2. Проверка на платформе деплоя
 Если у вас настроен автоматический деплой (Railway, Render, Fly.io):
-- ✅ **Изменения смержены в `main`** - платформа автоматически подхватит изменения
+- ⏸️ **Изменения НЕ смержены в `main`** - требуется ручной merge
+- После merge платформа автоматически подхватит изменения
 - Проверьте логи деплоя на платформе
 - Убедитесь, что бот запустился успешно
-- **Статус:** Все изменения находятся в ветке `main` и готовы к деплою
+- **Статус:** Изменения готовы к merge, деплой не выполнен
 
 ### 2. Проверка работы бота
 - Отправьте команду `/start` боту в Telegram
