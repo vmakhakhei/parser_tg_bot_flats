@@ -1564,6 +1564,9 @@ async def get_user_filters_turso(telegram_id: int) -> Optional[Dict[str, Any]]:
                     "delivery_mode": result.get("delivery_mode"),
                     "is_active": result.get("is_active"),
                     "awaiting_city": bool(result.get("awaiting_city", 0)),
+                    # ВАЖНО: Возвращаем city_slug и city_display напрямую из БД
+                    "city_slug": result.get("city_slug"),
+                    "city_display": result.get("city_display"),
                 }
         
         result = await asyncio.to_thread(_execute)
@@ -1767,11 +1770,12 @@ async def set_user_filters_turso(telegram_id: int, filters: Dict[str, Any]) -> N
                 has_city_display = "city_display" in cols
                 has_awaiting_city = "awaiting_city" in cols
                 
-                # Получаем awaiting_city из filters или сбрасываем в 0 если город сохранен
+                # Получаем awaiting_city из filters
+                # ВАЖНО: Не сбрасываем автоматически - это должно делаться явно в коде
                 awaiting_city_value = filters.get("awaiting_city", 0)
-                # Если город сохраняется, автоматически сбрасываем awaiting_city
-                if city_value or city_slug_value:
-                    awaiting_city_value = 0
+                # Преобразуем bool в int для БД
+                if isinstance(awaiting_city_value, bool):
+                    awaiting_city_value = 1 if awaiting_city_value else 0
                 
                 if has_city_slug and has_city_display:
                     # Новый формат с city_slug и city_display
