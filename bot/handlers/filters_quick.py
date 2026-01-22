@@ -378,7 +378,10 @@ async def filters_callback_handler(callback: CallbackQuery):
                 "Или используйте /start для выбора из списка."
             )
             await callback.answer()
-            # Сохраняем состояние ожидания города в callback data для обработки в start.py
+            # Устанавливаем флаг awaiting_city для обработки текстового ввода
+            filters["awaiting_city"] = 1
+            await set_user_filters_turso(telegram_id, filters)
+            logger.info(f"[CITY_INPUT] user={telegram_id} awaiting_city=True")
             return
         
         elif action == "done":

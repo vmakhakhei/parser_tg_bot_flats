@@ -1039,6 +1039,9 @@ async def ensure_tables_exist():
                         if "city_display" not in cols:
                             conn.execute("ALTER TABLE user_filters ADD COLUMN city_display TEXT NULL")
                             logger.info("[migration] Добавлена колонка city_display в user_filters")
+                        if "awaiting_city" not in cols:
+                            conn.execute("ALTER TABLE user_filters ADD COLUMN awaiting_city INTEGER DEFAULT 0")
+                            logger.info("[migration] Добавлена колонка awaiting_city в user_filters")
                     except Exception as e:
                         logger.warning(f"[migration] Ошибка добавления колонок seller_type/delivery_mode/city_json: {e}")
                 
@@ -1484,7 +1487,7 @@ async def get_user_filters_turso(telegram_id: int) -> Optional[Dict[str, Any]]:
             with turso_transaction() as conn:
                 query = """
                 SELECT telegram_id, city, city_json, city_slug, city_display, min_rooms, max_rooms, min_price, max_price,
-                       seller_type, delivery_mode, is_active
+                       seller_type, delivery_mode, is_active, awaiting_city
                 FROM user_filters
                 WHERE telegram_id = ?
                 LIMIT 1
@@ -1560,6 +1563,7 @@ async def get_user_filters_turso(telegram_id: int) -> Optional[Dict[str, Any]]:
                     "seller_type": result.get("seller_type"),
                     "delivery_mode": result.get("delivery_mode"),
                     "is_active": result.get("is_active"),
+                    "awaiting_city": bool(result.get("awaiting_city", 0)),
                 }
         
         result = await asyncio.to_thread(_execute)
@@ -1761,39 +1765,88 @@ async def set_user_filters_turso(telegram_id: int, filters: Dict[str, Any]) -> N
                 cols = {r[1] for r in conn.execute("PRAGMA table_info(user_filters)").fetchall()}
                 has_city_slug = "city_slug" in cols
                 has_city_display = "city_display" in cols
+                has_awaiting_city = "awaiting_city" in cols
+                
+                # Получаем awaiting_city из filters или сбрасываем в 0 если город сохранен
+                awaiting_city_value = filters.get("awaiting_city", 0)
+                # Если город сохраняется, автоматически сбрасываем awaiting_city
+                if city_value or city_slug_value:
+                    awaiting_city_value = 0
                 
                 if has_city_slug and has_city_display:
                     # Новый формат с city_slug и city_display
-                    conn.execute(
-                        """
-                        INSERT INTO user_filters (
-                            telegram_id, city, city_json, city_slug, city_display, min_rooms, max_rooms,
-                            min_price, max_price, seller_type,
-                            delivery_mode, is_active
+                    if has_awaiting_city:
+                        # С awaiting_city
+                        conn.execute(
+                            """
+                            INSERT INTO user_filters (
+                                telegram_id, city, city_json, city_slug, city_display, min_rooms, max_rooms,
+                                min_price, max_price, seller_type,
+                                delivery_mode, is_active, awaiting_city
+                            )
+                            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?)
+                            ON CONFLICT(telegram_id) DO UPDATE SET
+                                city=excluded.city,
+                                city_json=excluded.city_json,
+                                city_slug=excluded.city_slug,
+                                city_display=excluded.city_display,
+                                min_rooms=excluded.min_rooms,
+                                max_rooms=excluded.max_rooms,
+                                min_price=excluded.min_price,
+                                max_price=excluded.max_price,
+                                seller_type=excluded.seller_type,
+                                delivery_mode=excluded.delivery_mode,
+                                is_active=excluded.is_active,
+                                awaiting_city=excluded.awaiting_city,
+                                updated_at=CURRENT_TIMESTAMP
+                            """,
+                            (
+                                telegram_id,
+                                city_value,
+                                city_json_value,
+                                city_slug_value,
+                                city_display_value,
+                                filters.get("min_rooms", 0),
+                                filters.get("max_rooms", 99),
+                                filters.get("min_price", 0),
+                                filters.get("max_price", 100000),
+                                filters.get("seller_type", "all"),
+                                filters.get("delivery_mode", "brief"),
+                                awaiting_city_value,
+                            ),
                         )
-                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)
-                        ON CONFLICT(telegram_id) DO UPDATE SET
-                            city=excluded.city,
-                            city_json=excluded.city_json,
-                            city_slug=excluded.city_slug,
-                            city_display=excluded.city_display,
-                            min_rooms=excluded.min_rooms,
-                            max_rooms=excluded.max_rooms,
-                            min_price=excluded.min_price,
-                            max_price=excluded.max_price,
-                            seller_type=excluded.seller_type,
-                            delivery_mode=excluded.delivery_mode,
-                            is_active=excluded.is_active,
-                            updated_at=CURRENT_TIMESTAMP
-                        """,
-                        (
-                            telegram_id,
-                            city_value,
-                            city_json_value,
-                            city_slug_value,
-                            city_display_value,
-                            filters.get("min_rooms", 0),
-                            filters.get("max_rooms", 99),
+                    else:
+                        # Без awaiting_city (старая схема)
+                        conn.execute(
+                            """
+                            INSERT INTO user_filters (
+                                telegram_id, city, city_json, city_slug, city_display, min_rooms, max_rooms,
+                                min_price, max_price, seller_type,
+                                delivery_mode, is_active
+                            )
+                            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)
+                            ON CONFLICT(telegram_id) DO UPDATE SET
+                                city=excluded.city,
+                                city_json=excluded.city_json,
+                                city_slug=excluded.city_slug,
+                                city_display=excluded.city_display,
+                                min_rooms=excluded.min_rooms,
+                                max_rooms=excluded.max_rooms,
+                                min_price=excluded.min_price,
+                                max_price=excluded.max_price,
+                                seller_type=excluded.seller_type,
+                                delivery_mode=excluded.delivery_mode,
+                                is_active=excluded.is_active,
+                                updated_at=CURRENT_TIMESTAMP
+                            """,
+                            (
+                                telegram_id,
+                                city_value,
+                                city_json_value,
+                                city_slug_value,
+                                city_display_value,
+                                filters.get("min_rooms", 0),
+                                filters.get("max_rooms", 99),
                             filters.get("min_price", 0),
                             filters.get("max_price", 99999999),
                             filters.get("seller_type", "all"),
