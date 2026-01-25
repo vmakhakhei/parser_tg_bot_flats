@@ -1147,7 +1147,9 @@ async def send_summary_message(bot: Bot, user_id: int, apartments: List[Listing]
             )
             
             # Создаем callback_data с hash адреса и offset=0 для первой страницы
-            house_hash = str(hash(address))
+            # Используем MD5 для детерминированного хеша
+            import hashlib
+            house_hash = hashlib.md5(address.encode()).hexdigest()[:16]
             
             # Новые кнопки для каждого дома
             house_buttons = [
@@ -1204,11 +1206,13 @@ async def get_listings_for_house_hash(house_hash: str) -> List[Listing]:
         )
         
         # Фильтруем по hash адреса
+        import hashlib
+        from bot.services.search_service import apartment_dict_to_listing
         listings = []
         for a in all_apartments:
             listing = apartment_dict_to_listing(a)
             if listing and listing.address:
-                if str(hash(listing.address)) == house_hash:
+                if hashlib.md5(listing.address.encode()).hexdigest()[:16] == house_hash:
                     listings.append(listing)
         
         return listings
@@ -1259,7 +1263,8 @@ async def send_grouped_listings_with_pagination(
         keyboard_rows: List[List[InlineKeyboardButton]] = []
         
         if offset + MAX_LISTINGS_PER_GROUP_PREVIEW < len(listings):
-            house_hash = str(hash(address))
+            import hashlib
+            house_hash = hashlib.md5(address.encode()).hexdigest()[:16]
             next_offset = offset + MAX_LISTINGS_PER_GROUP_PREVIEW
             callback_data = f"show_house|{house_hash}|{next_offset}"
             

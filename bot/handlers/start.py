@@ -780,6 +780,7 @@ async def process_city_input_no_fsm(message: Message, state: FSMContext):
     
     # Несколько результатов - показываем выбор
     builder = InlineKeyboardBuilder()
+    from bot.utils.callback_codec import encode_callback_payload
     for city_result in results[:6]:  # Максимум 6 вариантов
         slug = city_result['slug']
         label_ru = city_result['label_ru']
@@ -793,9 +794,11 @@ async def process_city_input_no_fsm(message: Message, state: FSMContext):
             province_display = province.replace('_', ' ').title()
             button_text = f"{label_ru} ({province_display})"
         
+        # Кодируем длинный slug через short_links
+        short_code = await encode_callback_payload(slug)
         builder.button(
             text=button_text,
-            callback_data=f"select_city|{slug}"
+            callback_data=f"select_city|{short_code}"
         )
     
     builder.button(text="❌ Отмена", callback_data="setup_filters")
@@ -890,6 +893,7 @@ async def process_city_input(message: Message, state: FSMContext):
     
     # Несколько результатов - показываем выбор
     builder = InlineKeyboardBuilder()
+    from bot.utils.callback_codec import encode_callback_payload
     for city_result in results[:6]:  # Максимум 6 вариантов
         slug = city_result['slug']
         label_ru = city_result['label_ru']
@@ -903,9 +907,11 @@ async def process_city_input(message: Message, state: FSMContext):
             province_display = province.replace('_', ' ').title()
             button_text = f"{label_ru} ({province_display})"
         
+        # Кодируем длинный slug через short_links
+        short_code = await encode_callback_payload(slug)
         builder.button(
             text=button_text,
-            callback_data=f"select_city|{slug}"
+            callback_data=f"select_city|{short_code}"
         )
     
     builder.button(text="❌ Отмена", callback_data="setup_filters")
@@ -925,12 +931,20 @@ async def cb_select_city(callback: CallbackQuery, state: FSMContext):
     from database_turso import get_user_filters_turso, set_user_filters_turso
     from bot.handlers.filters_quick import show_filters_master
     from bot.utils.city_lookup import get_city_by_slug
+    from bot.utils.callback_codec import decode_callback_payload
     
     logger = logging.getLogger(__name__)
     user_id = callback.from_user.id
     
     try:
-        slug = callback.data.split("|")[1]
+        code = callback.data.split("|")[1]
+        
+        # Декодируем slug из короткого кода
+        slug = await decode_callback_payload(code)
+
+        if not slug:
+            # Fallback: пробуем использовать сам код как slug (для старых сообщений)
+            slug = code
         
         # Получаем информацию о городе
         city_info = await get_city_by_slug(slug)
