@@ -1276,6 +1276,22 @@ async def ensure_tables_exist():
                     # Проверяем схему и мигрируем при необходимости
                     migrate_sent_ads_schema(conn)
                 
+                # 7. Таблица short_links (для сокращения callback_data)
+                cursor = conn.execute("""
+                    SELECT name FROM sqlite_master
+                    WHERE type='table' AND name='short_links'
+                """)
+                if not cursor.fetchone():
+                    logger.info("📋 Создание таблицы short_links...")
+                    conn.execute("""
+                        CREATE TABLE IF NOT EXISTS short_links (
+                            code TEXT PRIMARY KEY,
+                            payload TEXT NOT NULL,
+                            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                        )
+                    """)
+                    logger.info("✅ Таблица short_links создана")
+
                 # Проверяем, что все миграции прошли успешно (fail-fast)
                 assert_no_legacy_user_id_columns(conn)
                 
@@ -1732,12 +1748,12 @@ async def set_user_filters_turso(telegram_id: int, filters: Dict[str, Any]) -> N
     if isinstance(city_value, dict):
         # Новый формат - location dict
         city_json_value = json.dumps(city_value)
-        city_value = city_value.get("name", "")  # Сохраняем имя для обратной совместимости
         # Если slug не передан отдельно, пробуем извлечь из location dict
         if not city_slug_value:
             city_slug_value = city_value.get("slug")
         if not city_display_value:
             city_display_value = city_value.get("name")
+        city_value = city_value.get("name", "")  # Сохраняем имя для обратной совместимости
     elif city_value:
         # Старый формат - строка
         city_value = str(city_value)
@@ -2748,6 +2764,51 @@ async def mark_ad_sent_to_user_turso(telegram_id: int, ad_external_id: str) -> b
     except Exception as e:
         logger.error(f"Ошибка отметки объявления {ad} как отправленного пользователю {tg}: {e}")
         return False
+
+
+async def save_short_link(code: str, payload: str) -> bool:
+    """
+    Сохраняет соответствие короткого кода и полного payload.
+    """
+    try:
+        def _execute():
+            with turso_transaction() as conn:
+                conn.execute("""
+                    INSERT OR IGNORE INTO short_links (code, payload)
+                    VALUES (?, ?)
+                """, (code, payload))
+
+        await asyncio.to_thread(_execute)
+        return True
+    except Exception as e:
+        logger.error(f"Ошибка сохранения short_link {code}: {e}")
+        return False
+
+
+async def get_payload_from_code(code: str) -> Optional[str]:
+    """
+    Получает полный payload по короткому коду.
+    """
+    conn = get_turso_connection()
+    if not conn:
+        return None
+
+    try:
+        def _execute():
+            cursor = conn.execute(
+                "SELECT payload FROM short_links WHERE code = ?",
+                (code,)
+            )
+            row = cursor.fetchone()
+            return row[0] if row else None
+
+        return await asyncio.to_thread(_execute)
+    except Exception as e:
+        logger.error(f"Ошибка получения payload для кода {code}: {e}")
+        return None
+    finally:
+        if conn:
+            conn.close()
 
 
 async def delete_sent_ads_for_user(telegram_id: int) -> int:
