@@ -100,7 +100,7 @@ async def cmd_filters(message: Message):
 
     # Создаем inline кнопки
     builder = InlineKeyboardBuilder()
-    builder.button(text="⚙️ Настроить фильтры", callback_data="setup_filters")
+    builder.button(text="⚙️ Настройки", callback_data="setup_filters")
 
     # Принудительно размещаем по 1 кнопке в ряду
     builder.adjust(1)

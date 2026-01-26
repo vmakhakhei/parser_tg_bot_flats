@@ -110,7 +110,7 @@ def build_filters_keyboard(telegram_id: int) -> InlineKeyboardMarkup:
         ("🚪 Комнаты", f"filters:{telegram_id}:rooms:select"),
         ("💰 Цена", f"filters:{telegram_id}:price:select"),
         ("👤 Продавец", f"filters:{telegram_id}:seller:select"),
-        ("📦 Режим доставки", f"filters:{telegram_id}:mode:select"),
+        ("📦 Режим", f"filters:{telegram_id}:mode:select"),
         ("✅ Готово", f"filters:{telegram_id}:done"),
     ]
     
@@ -205,14 +205,17 @@ async def show_filters_master(callback_or_message, telegram_id: int):
         filters
     )
     
-    text = "⚙️ Настройка поиска квартир\n\n" + format_filters_summary(filters)
+    from bot.utils.ui_helpers import get_contextual_hint
+    hint = get_contextual_hint("filters_master")
+    
+    text = "⚙️ <b>Настройка поиска квартир</b>\n\n" + format_filters_summary(filters) + f"\n\n{hint}"
     keyboard = build_filters_keyboard(telegram_id)
     
     try:
         if isinstance(callback_or_message, CallbackQuery):
-            await callback_or_message.message.edit_text(text, reply_markup=keyboard)
+            await callback_or_message.message.edit_text(text, reply_markup=keyboard, parse_mode="HTML")
         else:
-            await callback_or_message.answer(text, reply_markup=keyboard)
+            await callback_or_message.answer(text, reply_markup=keyboard, parse_mode="HTML")
     except Exception as e:
         logger.error(
             "[FILTER_UI][SEND] Failed to send filters keyboard user=%s error=%s",
@@ -242,11 +245,14 @@ async def show_filters_master(callback_or_message, telegram_id: int):
 @router.callback_query(F.data.startswith("filters:"))
 async def filters_callback_handler(callback: CallbackQuery):
     """Обработчик callback для быстрой настройки фильтров"""
+    # Отвечаем сразу, чтобы предотвратить повторные запросы
+    await callback.answer()
+    
     try:
         # Формат: filters:telegram_id:action:value
         parts = callback.data.split(":", 3)
         if len(parts) < 3:
-            await callback.answer("Ошибка обработки запроса")
+            # Уже ответили в начале функции
             return
         
         _, telegram_id_str, action = parts[:3]
@@ -256,7 +262,7 @@ async def filters_callback_handler(callback: CallbackQuery):
         
         # Проверяем, что callback от правильного пользователя
         if callback.from_user.id != telegram_id:
-            await callback.answer("⛔ Это не ваши фильтры")
+            # Уже ответили в начале функции
             return
         
         # Гарантируем наличие фильтров
@@ -264,7 +270,7 @@ async def filters_callback_handler(callback: CallbackQuery):
         filters = await get_user_filters_turso(telegram_id)
         
         if not filters:
-            await callback.answer("Ошибка загрузки фильтров")
+            # Уже ответили в начале функции
             return
         
         # Обрабатываем действие
@@ -292,8 +298,8 @@ async def filters_callback_handler(callback: CallbackQuery):
         
         elif action == "back":
             # Возврат к главному меню
+            # Уже ответили в начале функции
             await show_filters_master(callback, telegram_id)
-            await callback.answer()
             return
         
         elif action == "rooms" and value == "select":
@@ -310,8 +316,9 @@ async def filters_callback_handler(callback: CallbackQuery):
                     e,
                     exc_info=True
                 )
+                # Отправляем alert только при ошибке (это не повторный запрос)
                 await callback.answer("Ошибка отображения меню", show_alert=True)
-            await callback.answer()
+            # Уже ответили в начале функции
             return
         
         elif action == "price" and value == "select":
@@ -328,8 +335,9 @@ async def filters_callback_handler(callback: CallbackQuery):
                     e,
                     exc_info=True
                 )
+                # Отправляем alert только при ошибке (это не повторный запрос)
                 await callback.answer("Ошибка отображения меню", show_alert=True)
-            await callback.answer()
+            # Уже ответили в начале функции
             return
         
         elif action == "seller" and value == "select":
@@ -346,8 +354,9 @@ async def filters_callback_handler(callback: CallbackQuery):
                     e,
                     exc_info=True
                 )
+                # Отправляем alert только при ошибке (это не повторный запрос)
                 await callback.answer("Ошибка отображения меню", show_alert=True)
-            await callback.answer()
+            # Уже ответили в начале функции
             return
         
         elif action == "mode" and value == "select":
@@ -364,17 +373,19 @@ async def filters_callback_handler(callback: CallbackQuery):
                     e,
                     exc_info=True
                 )
+                # Отправляем alert только при ошибке (это не повторный запрос)
                 await callback.answer("Ошибка отображения меню", show_alert=True)
-            await callback.answer()
+            # Уже ответили в начале функции
             return
         
         elif action == "city" and value == "select":
             # Запрашиваем город текстом
+            # Уже ответили в начале функции
+            from bot.utils.ui_helpers import get_contextual_hint
+            hint = get_contextual_hint("city_selection")
             await callback.message.edit_text(
-                "📍 Введите название города (например: Барановичи):\n\n"
-                "Или используйте /start для выбора из списка."
+                f"📍 Введите название города (например: Барановичи):\n\n{hint}"
             )
-            await callback.answer()
             # Устанавливаем флаг awaiting_city для обработки текстового ввода
             filters["awaiting_city"] = 1
             await set_user_filters_turso(telegram_id, filters)
@@ -387,16 +398,17 @@ async def filters_callback_handler(callback: CallbackQuery):
             await callback.message.edit_text(
                 "✅ Фильтры сохранены. Я начну искать подходящие квартиры."
             )
-            await callback.answer("Сохранено")
+            # Уже ответили в начале функции
             return
         
         # Мгновенное сохранение при каждом действии
         await set_user_filters_turso(telegram_id, filters)
         
         # Перерисовываем экран
+        # Уже ответили в начале функции
         await show_filters_master(callback, telegram_id)
-        await callback.answer()
         
     except Exception as e:
         logger.exception(f"[FILTER_QUICK] Error handling callback {callback.data}: {e}")
-        await callback.answer("Произошла ошибка")
+        # Отправляем alert только при ошибке (это не повторный запрос)
+        await callback.answer("Произошла ошибка", show_alert=True)

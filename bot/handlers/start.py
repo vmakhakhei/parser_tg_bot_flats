@@ -213,13 +213,13 @@ async def cmd_start(message: Message, state: FSMContext):
         # Устанавливаем состояние для ввода города
         await state.set_state(CityStates.waiting_for_city)
     else:
-        # Фильтры уже установлены - показываем приветствие и текущие фильтры
+        # Фильтры уже установлены - показываем упрощенное приветствие
         status = "✅ Активен" if user_filters.get("is_active") else "❌ Отключен"
 
         builder = InlineKeyboardBuilder()
-        builder.button(text="⚙️ Изменить фильтры", callback_data="setup_filters")
-        builder.button(text="📊 Как я выбираю лучшие квартиры", callback_data="explain_scoring")
-        builder.button(text="🔍 Проверить сейчас", callback_data="check_now")
+        builder.button(text="🔍 Поиск", callback_data="check_now")
+        builder.button(text="⚙️ Настройки", callback_data="setup_filters")
+        builder.button(text="Ещё", callback_data="show_more_menu")
 
         # Принудительно размещаем по 1 кнопке в ряду
         builder.adjust(1)
@@ -235,65 +235,101 @@ async def cmd_start(message: Message, state: FSMContext):
         
         city_name = normalize_city_for_ui(user_filters)
         
-        # Формируем текст фильтров
+        # Формируем текст фильтров (только ключевые)
         min_rooms = user_filters.get('min_rooms', 1)
         max_rooms = user_filters.get('max_rooms', 4)
         rooms_text = f"{min_rooms}–{max_rooms}" if min_rooms != max_rooms else str(min_rooms)
         
-        seller_type = user_filters.get('seller_type', 'all')
-        seller_text = {
-            'all': 'все',
-            'owner': 'только собственники',
-            'owners': 'только собственники',
-            'company': 'только агентства'
-        }.get(seller_type, 'все')
-        
-        delivery_mode = user_filters.get('delivery_mode', 'brief')
-        mode_text = 'кратко' if delivery_mode == 'brief' else 'подробно'
+        # Контекстная подсказка
+        from bot.utils.ui_helpers import get_contextual_hint
+        hint = get_contextual_hint("main_menu")
         
         await message.answer(
             "👋 Привет! Я KeyFlat — умный бот для поиска квартир.\n\n"
-            "Я:\n"
-            "• автоматически отслеживаю новые объявления\n"
-            "• группирую варианты по домам\n"
-            "• показываю сначала лучшие предложения\n"
-            "• не спамлю десятками сообщений\n\n"
-            "📍 Сейчас я ищу квартиры по этим параметрам:\n\n"
-            f"📍 Город: {city_name}\n"
-            f"🚪 Комнаты: {rooms_text}\n"
-            f"💰 Цена: {price_from} – {price_to}\n"
-            f"👤 Продавец: {seller_text}\n"
-            f"📦 Режим: {mode_text}\n\n"
-            f"📡 Статус: {status}\n\n"
-            "⚙️ Вы можете изменить фильтры или просто подождать — я пришлю новые варианты сам.",
+            f"📍 <b>Город:</b> {city_name}\n"
+            f"🚪 <b>Комнаты:</b> {rooms_text}\n"
+            f"💰 <b>Цена:</b> {price_from} – {price_to}\n"
+            f"📡 <b>Статус:</b> {status}\n\n"
+            f"{hint}",
             parse_mode=ParseMode.HTML,
             reply_markup=builder.as_markup(),
         )
 
 
-async def show_city_selection_menu(message: Message, state: FSMContext):
-    """Показывает меню выбора города для пошаговой настройки"""
-    builder = InlineKeyboardBuilder()
-
-    # Все кнопки на отдельных строках для лучшей читаемости
-    builder.button(text="Минск", callback_data="setup_city_минск")
-    builder.button(text="Брест", callback_data="setup_city_брест")
-    builder.button(text="Гродно", callback_data="setup_city_гродно")
-    builder.button(text="Витебск", callback_data="setup_city_витебск")
-    builder.button(text="Гомель", callback_data="setup_city_гомель")
-    builder.button(text="Могилёв", callback_data="setup_city_могилёв")
-    builder.button(text="✏️ Ввести вручную", callback_data="setup_city_manual")
-
-    # Принудительно размещаем по 1 кнопке в ряду
-    builder.adjust(1)
-
+async def show_city_selection_menu(message: Message, state: FSMContext, page: int = 0):
+    """Показывает меню выбора города для пошаговой настройки с пагинацией"""
+    import logging
+    logger = logging.getLogger(__name__)
+    
+    from bot.utils.ui_helpers import build_paginated_keyboard, get_contextual_hint
+    
+    # Подготавливаем список городов для пагинации
+    cities_items = [(display_name, normalized_name) for display_name, normalized_name in BELARUS_CITIES]
+    
+    per_page = 5
+    start = page * per_page
+    end = start + per_page
+    
+    # Если городов меньше или равно per_page, показываем все без пагинации
+    if len(cities_items) <= per_page:
+        builder = InlineKeyboardBuilder()
+        for display_name, normalized_name in cities_items:
+            builder.button(
+                text=display_name,
+                callback_data=f"setup_city_{normalized_name}"
+            )
+        builder.button(text="✏️ Ввести вручную", callback_data="setup_city_manual")
+        builder.adjust(1)
+        keyboard = builder.as_markup()
+    else:
+        # Используем пагинацию
+        page_cities = cities_items[start:end]
+        
+        builder = InlineKeyboardBuilder()
+        for display_name, normalized_name in page_cities:
+            builder.button(
+                text=display_name,
+                callback_data=f"setup_city_{normalized_name}"
+            )
+        
+        # Навигация
+        nav_row = []
+        if page > 0:
+            nav_row.append(("◀️ Назад", f"city_page:{page-1}"))
+        if end < len(cities_items):
+            nav_row.append(("▶️ Далее", f"city_page:{page+1}"))
+        
+        if nav_row:
+            builder.row(*[builder.button(text=t, callback_data=c) for t, c in nav_row])
+        
+        builder.button(text="✏️ Ввести вручную", callback_data="setup_city_manual")
+        builder.adjust(1)
+        keyboard = builder.as_markup()
+    
+    logger.debug(f"[CITY_KEYBOARD] Created city selection keyboard page={page} rows={len(keyboard.inline_keyboard)}")
+    
+    hint = get_contextual_hint("city_selection")
+    
     await message.answer(
         "📍 <b>Шаг 1 из 4: Выберите город</b>\n\n"
-        "Выберите город из списка или введите название вручную.",
+        f"{hint}",
         parse_mode=ParseMode.HTML,
-        reply_markup=builder.as_markup(),
+        reply_markup=keyboard,
     )
     await state.set_state(SetupStates.waiting_for_city)
+
+
+@router.callback_query(F.data.startswith("city_page:"))
+async def cb_city_page(callback: CallbackQuery, state: FSMContext):
+    """Обработчик навигации по страницам выбора города"""
+    await callback.answer()
+    
+    try:
+        page = int(callback.data.split(":")[1])
+        await callback.message.delete()
+        await show_city_selection_menu(callback.message, state, page=page)
+    except (ValueError, IndexError):
+        await callback.answer("Ошибка навигации", show_alert=True)
 
 
 @router.callback_query(F.data == "setup_city_manual")
@@ -309,6 +345,9 @@ async def cb_setup_city_manual(callback: CallbackQuery, state: FSMContext):
 @router.callback_query(F.data.startswith("setup_city_"))
 async def cb_setup_city(callback: CallbackQuery, state: FSMContext):
     """Обработчик выбора города из предустановленного списка"""
+    # Отвечаем сразу, чтобы предотвратить повторные запросы
+    await callback.answer()
+    
     from database_turso import get_user_filters_turso, set_user_filters_turso
     from bot.handlers.filters_quick import show_filters_master
     from bot.utils.city_lookup import find_city_slug_by_text
@@ -331,14 +370,16 @@ async def cb_setup_city(callback: CallbackQuery, state: FSMContext):
         filters["city_display"] = label_ru
         await set_user_filters_turso(user_id, filters)
         
-        await callback.answer(f"✅ Выбран: {label_ru}")
-        await state.set_state(SetupStates.waiting_for_rooms)
+        # Уже ответили в начале функции
         await callback.message.answer(
+            f"✅ Выбран: {label_ru}\n\n"
             "🚪 <b>Шаг 2 из 4: Количество комнат</b>\n\n"
             "Введите количество комнат (например: 2 или 2-3):",
             parse_mode=ParseMode.HTML
         )
+        await state.set_state(SetupStates.waiting_for_rooms)
     else:
+        # Если город не найден, отправляем alert (это не повторный запрос)
         await callback.answer("Город не найден в базе", show_alert=True)
 
 
@@ -411,6 +452,7 @@ async def cb_setup_filters(callback: CallbackQuery, state: FSMContext):
                 e,
                 exc_info=True
             )
+            # Отправляем alert только при ошибке (это не повторный запрос)
             await callback.answer("Ошибка открытия настроек", show_alert=True)
 
 
@@ -418,6 +460,168 @@ async def cb_setup_filters(callback: CallbackQuery, state: FSMContext):
 async def cb_show_stats(callback: CallbackQuery):
     """Показывает статистику пользователя"""
     await callback.answer("Статистика пока не реализована")
+    # Возвращаемся в меню "Ещё"
+    from bot.utils.ui_helpers import build_more_menu_keyboard, get_contextual_hint
+    await callback.message.edit_text(
+        "📊 <b>Статистика</b>\n\n"
+        "Функция статистики находится в разработке.\n\n"
+        f"{get_contextual_hint('more_menu')}",
+        parse_mode=ParseMode.HTML,
+        reply_markup=build_more_menu_keyboard(callback.from_user.id)
+    )
+
+
+@router.callback_query(F.data == "show_more_menu")
+async def cb_show_more_menu(callback: CallbackQuery):
+    """Показывает меню 'Ещё' с дополнительными функциями"""
+    await callback.answer()
+    from bot.utils.ui_helpers import build_more_menu_keyboard, get_contextual_hint
+    
+    await callback.message.edit_text(
+        "📋 <b>Дополнительные функции</b>\n\n"
+        f"{get_contextual_hint('more_menu')}",
+        parse_mode=ParseMode.HTML,
+        reply_markup=build_more_menu_keyboard(callback.from_user.id)
+    )
+
+
+@router.callback_query(F.data == "back_to_main")
+async def cb_back_to_main(callback: CallbackQuery):
+    """Возвращает пользователя в главное меню"""
+    await callback.answer()
+    
+    from database_turso import get_user_filters_turso
+    from bot.utils.ui_helpers import get_contextual_hint
+    
+    user_id = callback.from_user.id
+    user_filters = await get_user_filters_turso(user_id) or {}
+    
+    status = "✅ Активен" if user_filters.get("is_active") else "❌ Отключен"
+    
+    builder = InlineKeyboardBuilder()
+    builder.button(text="🔍 Поиск", callback_data="check_now")
+    builder.button(text="⚙️ Настройки", callback_data="setup_filters")
+    builder.button(text="Ещё", callback_data="show_more_menu")
+    builder.adjust(1)
+    
+    def fmt_price(v):
+        return f"${int(v):,}".replace(",", " ") if v is not None else "—"
+    
+    min_price = user_filters.get('min_price')
+    max_price = user_filters.get('max_price')
+    price_from = fmt_price(min_price)
+    price_to = fmt_price(max_price)
+    
+    city_name = normalize_city_for_ui(user_filters)
+    
+    min_rooms = user_filters.get('min_rooms', 1)
+    max_rooms = user_filters.get('max_rooms', 4)
+    rooms_text = f"{min_rooms}–{max_rooms}" if min_rooms != max_rooms else str(min_rooms)
+    
+    hint = get_contextual_hint("main_menu")
+    
+    await callback.message.edit_text(
+        "👋 Привет! Я KeyFlat — умный бот для поиска квартир.\n\n"
+        f"📍 <b>Город:</b> {city_name}\n"
+        f"🚪 <b>Комнаты:</b> {rooms_text}\n"
+        f"💰 <b>Цена:</b> {price_from} – {price_to}\n"
+        f"📡 <b>Статус:</b> {status}\n\n"
+        f"{hint}",
+        parse_mode=ParseMode.HTML,
+        reply_markup=builder.as_markup(),
+    )
+
+
+@router.callback_query(F.data == "show_sources")
+async def cb_show_sources(callback: CallbackQuery):
+    """Показывает список источников объявлений"""
+    await callback.answer()
+    
+    from config import DEFAULT_SOURCES
+    from bot.utils.ui_helpers import build_more_menu_keyboard, get_contextual_hint
+    
+    sources = [
+        ("Kufar.by", "kufar", "крупнейшая доска объявлений Беларуси"),
+        ("Etagi.com", "etagi", "агентство недвижимости"),
+        ("Realt.by", "realt", "портал недвижимости (SPA - не поддерживается)"),
+        ("Domovita.by", "domovita", "недвижимость (нет данных для Барановичей)"),
+        ("Onliner.by", "onliner", "популярный портал (не поддерживается)"),
+        ("GoHome.by", "gohome", "недвижимость (сервер недоступен)"),
+    ]
+    
+    lines = ["📡 <b>Источники объявлений:</b>", ""]
+    
+    for name, key, desc in sources:
+        if key in DEFAULT_SOURCES:
+            lines.append(f"✅ <b>{name}</b> — {desc}")
+        else:
+            lines.append(f"❌ <s>{name}</s> — {desc}")
+    
+    lines.append("")
+    lines.append(f"📊 <b>Активных источников:</b> {len(DEFAULT_SOURCES)}")
+    lines.append("🔄 Проверка каждые 12 часов")
+    lines.append("")
+    lines.append(get_contextual_hint("more_menu"))
+    
+    await callback.message.edit_text(
+        "\n".join(lines),
+        parse_mode=ParseMode.HTML,
+        reply_markup=build_more_menu_keyboard(callback.from_user.id)
+    )
+
+
+@router.callback_query(F.data == "reset_filters_confirm")
+async def cb_reset_filters_confirm(callback: CallbackQuery):
+    """Показывает подтверждение сброса фильтров"""
+    await callback.answer()
+    
+    from bot.utils.ui_helpers import build_confirmation_keyboard
+    
+    await callback.message.edit_text(
+        "⚠️ <b>Сброс фильтров</b>\n\n"
+        "Вы уверены, что хотите сбросить все фильтры?\n"
+        "Это действие нельзя отменить. Вам придется настроить фильтры заново.",
+        parse_mode=ParseMode.HTML,
+        reply_markup=build_confirmation_keyboard(
+            action="reset_filters",
+            confirm_callback="reset_filters",
+            cancel_callback="show_more_menu"
+        )
+    )
+
+
+@router.callback_query(F.data == "reset_filters")
+async def cb_reset_filters(callback: CallbackQuery, state: FSMContext):
+    """Сбрасывает фильтры и начинает настройку заново"""
+    await callback.answer("Сбрасываю фильтры...")
+    
+    user_id = callback.from_user.id
+    
+    # Сбрасываем фильтры в Turso
+    from database_turso import set_user_filters_turso
+    await set_user_filters_turso(user_id, {
+        "city": None,
+        "min_rooms": 1,
+        "max_rooms": 4,
+        "min_price": 0,
+        "max_price": 100000,
+        "seller_type": "all",
+        "delivery_mode": "brief",
+        "is_active": True,
+    })
+    
+    # Очищаем состояние FSM
+    await state.clear()
+    
+    # Начинаем настройку заново
+    await callback.message.edit_text(
+        "🔄 <b>Фильтры сброшены</b>\n\n"
+        "Начинаем настройку заново...",
+        parse_mode=ParseMode.HTML
+    )
+    
+    # Показываем меню выбора города
+    await show_city_selection_menu(callback.message, state)
 
 
 @router.callback_query(F.data == "explain_scoring")
@@ -439,6 +643,9 @@ async def cb_explain_scoring(callback: CallbackQuery):
 @router.callback_query(F.data.startswith("explain_house|"))
 async def cb_explain_house(callback: CallbackQuery):
     """Объясняет, почему этот дом в подборке"""
+    # Отвечаем сразу, чтобы предотвратить повторные запросы
+    await callback.answer()
+    
     from bot.services.notification_service import get_listings_for_house_hash
     from utils.scoring import calc_price_per_m2, calc_market_median_ppm
     from statistics import median
@@ -448,6 +655,7 @@ async def cb_explain_house(callback: CallbackQuery):
         listings = await get_listings_for_house_hash(house_hash)
         
         if not listings:
+            # Отправляем alert только если дом не найден (это не повторный запрос)
             await callback.answer("Дом не найден", show_alert=True)
             return
         
@@ -519,6 +727,9 @@ async def cb_hide_house(callback: CallbackQuery):
 @router.callback_query(F.data.startswith("loc_select:"))
 async def cb_loc_select(callback: CallbackQuery):
     """Обработчик выбора локации из списка"""
+    # Отвечаем сразу, чтобы предотвратить повторные запросы
+    await callback.answer()
+    
     from database_turso import get_user_filters_turso, set_user_filters_turso
     from services.location_service import get_location_by_id
     from bot.handlers.filters_quick import show_filters_master
@@ -530,7 +741,8 @@ async def cb_loc_select(callback: CallbackQuery):
         
         # Проверяем, что callback от правильного пользователя
         if callback.from_user.id != user_id:
-            await callback.answer("⛔ Это не ваш выбор")
+            # Отправляем alert только если это не правильный пользователь (это не повторный запрос)
+            await callback.answer("⛔ Это не ваш выбор", show_alert=True)
             return
         
         # Получаем локацию по ID
@@ -543,6 +755,7 @@ async def cb_loc_select(callback: CallbackQuery):
             if results:
                 location = results[0]
             else:
+                # Отправляем alert только если локация не найдена (это не повторный запрос)
                 await callback.answer("Локация не найдена", show_alert=True)
                 return
         
@@ -572,10 +785,7 @@ async def cb_loc_select(callback: CallbackQuery):
             f"[LOC_USER_SELECT] user={user_id} chosen={location.get('id')} name={location.get('name')}"
         )
         
-        # Сообщаем пользователю
-        region_text = f" ({location.get('region', '')})" if location.get('region') else ""
-        await callback.answer(f"Выбран город: {location.get('name', '')}{region_text}")
-        
+        # Уже ответили в начале функции
         # Обновляем сообщение или показываем quick wizard
         try:
             await show_filters_master(callback.message, user_id)
@@ -588,18 +798,23 @@ async def cb_loc_select(callback: CallbackQuery):
                 e,
                 exc_info=True
             )
+            # Отправляем alert только при ошибке (это не повторный запрос)
             await callback.answer("Ошибка открытия настроек", show_alert=True)
         
     except Exception as e:
         import logging
         logger = logging.getLogger(__name__)
         logger.error(f"Ошибка обработки выбора локации: {e}")
+        # Отправляем alert только при ошибке (это не повторный запрос)
         await callback.answer("Произошла ошибка", show_alert=True)
 
 
 @router.callback_query(F.data.startswith("show_house|"))
 async def cb_show_house(callback: CallbackQuery):
     """Обработчик кнопки 'Показать варианты' для конкретного дома с поддержкой пагинации"""
+    # Отвечаем сразу, чтобы предотвратить повторные запросы
+    await callback.answer()
+    
     from bot.services.notification_service import get_listings_for_house_hash, send_grouped_listings_with_pagination
     
     user_id = callback.from_user.id
@@ -614,10 +829,12 @@ async def cb_show_house(callback: CallbackQuery):
         listings = await get_listings_for_house_hash(house_hash)
         
         if not listings:
+            # Отправляем alert только если нет вариантов (это не повторный запрос)
             await callback.answer("Нет доступных вариантов", show_alert=True)
             return
         
         # Отправляем объявления с пагинацией
+        # Уже ответили в начале функции
         await send_grouped_listings_with_pagination(
             callback.bot,
             user_id,
@@ -625,14 +842,14 @@ async def cb_show_house(callback: CallbackQuery):
             offset
         )
         
-        await callback.answer()
-        
     except ValueError:
+        # Отправляем alert только при ошибке (это не повторный запрос)
         await callback.answer("Ошибка формата запроса", show_alert=True)
     except Exception as e:
         import logging
         logger = logging.getLogger(__name__)
         logger.error(f"Ошибка обработки show_house для пользователя {user_id}: {e}")
+        # Отправляем alert только при ошибке (это не повторный запрос)
         await callback.answer("Произошла ошибка при загрузке вариантов", show_alert=True)
 
 
@@ -690,8 +907,8 @@ async def cb_mode_set(callback: CallbackQuery):
     # Сохраняем режим в in-memory хранилище
     USER_DELIVERY_MODES[user_id] = mode
     
+    # Уже ответили в начале функции
     mode_text = "кратко" if mode == DELIVERY_MODE_BRIEF else "подробно"
-    await callback.answer(f"Режим установлен: {mode_text}")
     await callback.message.edit_text(
         f"✅ Режим уведомлений установлен: <b>{mode_text}</b>\n\n"
         f"{'📋 Вы будете получать одно summary-сообщение с группировкой по адресам' if mode == DELIVERY_MODE_BRIEF else '📨 Вы будете получать подробные уведомления по каждому объявлению'}",
@@ -779,9 +996,19 @@ async def process_city_input_no_fsm(message: Message, state: FSMContext):
         return
     
     # Несколько результатов - показываем выбор
+    # Дедупликация городов по slug для предотвращения дубликатов кнопок
+    from collections import OrderedDict
+    unique_results = []
+    seen_slugs = set()
+    for city_result in results[:6]:  # Максимум 6 вариантов
+        slug = city_result['slug']
+        if slug not in seen_slugs:
+            seen_slugs.add(slug)
+            unique_results.append(city_result)
+    
     builder = InlineKeyboardBuilder()
     from bot.utils.callback_codec import encode_callback_payload
-    for city_result in results[:6]:  # Максимум 6 вариантов
+    for city_result in unique_results:
         slug = city_result['slug']
         label_ru = city_result['label_ru']
         score = city_result.get('score', 0)
@@ -804,11 +1031,13 @@ async def process_city_input_no_fsm(message: Message, state: FSMContext):
     builder.button(text="❌ Отмена", callback_data="setup_filters")
     builder.adjust(1)
     
-    log_info("city_lookup", f"[CITY_LOOKUP] user={user_id} query={city_raw!r} found={len(results)} results")
+    keyboard = builder.as_markup()
+    logger.debug(f"[CITY_KEYBOARD] Created city selection keyboard user={user_id} buttons={len(unique_results)} rows={len(keyboard.inline_keyboard)}")
+    log_info("city_lookup", f"[CITY_LOOKUP] user={user_id} query={city_raw!r} found={len(results)} results unique={len(unique_results)}")
     
     await message.answer(
-        f"🔍 Найдено {len(results)} вариантов. Выберите нужный город:",
-        reply_markup=builder.as_markup()
+        f"🔍 Найдено {len(unique_results)} вариантов. Выберите нужный город:",
+        reply_markup=keyboard
     )
 
 
@@ -892,9 +1121,19 @@ async def process_city_input(message: Message, state: FSMContext):
         return
     
     # Несколько результатов - показываем выбор
+    # Дедупликация городов по slug для предотвращения дубликатов кнопок
+    from collections import OrderedDict
+    unique_results = []
+    seen_slugs = set()
+    for city_result in results[:6]:  # Максимум 6 вариантов
+        slug = city_result['slug']
+        if slug not in seen_slugs:
+            seen_slugs.add(slug)
+            unique_results.append(city_result)
+    
     builder = InlineKeyboardBuilder()
     from bot.utils.callback_codec import encode_callback_payload
-    for city_result in results[:6]:  # Максимум 6 вариантов
+    for city_result in unique_results:
         slug = city_result['slug']
         label_ru = city_result['label_ru']
         score = city_result.get('score', 0)
@@ -917,9 +1156,12 @@ async def process_city_input(message: Message, state: FSMContext):
     builder.button(text="❌ Отмена", callback_data="setup_filters")
     builder.adjust(1)
     
+    keyboard = builder.as_markup()
+    logger.debug(f"[CITY_KEYBOARD] Created city selection keyboard user={user_id} buttons={len(unique_results)} rows={len(keyboard.inline_keyboard)}")
+    
     await message.answer(
-        f"🔍 Найдено {len(results)} вариантов. Выберите нужный город:",
-        reply_markup=builder.as_markup(),
+        f"🔍 Найдено {len(unique_results)} вариантов. Выберите нужный город:",
+        reply_markup=keyboard,
         parse_mode=ParseMode.HTML
     )
 
@@ -927,6 +1169,9 @@ async def process_city_input(message: Message, state: FSMContext):
 @router.callback_query(F.data.startswith("select_city|"))
 async def cb_select_city(callback: CallbackQuery, state: FSMContext):
     """Обработчик выбора города из списка"""
+    # Отвечаем сразу, чтобы предотвратить повторные запросы
+    await callback.answer()
+    
     import logging
     from database_turso import get_user_filters_turso, set_user_filters_turso
     from bot.handlers.filters_quick import show_filters_master
@@ -949,6 +1194,7 @@ async def cb_select_city(callback: CallbackQuery, state: FSMContext):
         # Получаем информацию о городе
         city_info = await get_city_by_slug(slug)
         if not city_info:
+            # Отправляем alert только если город не найден (это не повторный запрос)
             await callback.answer("Город не найден", show_alert=True)
             return
         
@@ -980,7 +1226,7 @@ async def cb_select_city(callback: CallbackQuery, state: FSMContext):
         log_info("city_selected", f"[CITY_SELECTED] user={user_id} city={label_ru} slug={slug} selected_from_list=True")
         logger.info(f"[CITY_SELECT] user={user_id} city={label_ru} slug={slug}")
         
-        await callback.answer(f"✅ Выбран город: {label_ru}")
+        # Уже ответили в начале функции
         await state.clear()
         
         # Показываем quick master
@@ -992,6 +1238,7 @@ async def cb_select_city(callback: CallbackQuery, state: FSMContext):
     
     except Exception as e:
         logger.error(f"Ошибка обработки выбора города: {e}", exc_info=True)
+        # Отправляем alert только при ошибке (это не повторный запрос)
         await callback.answer("Произошла ошибка", show_alert=True)
 
 
