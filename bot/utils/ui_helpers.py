@@ -3,7 +3,7 @@
 """
 from typing import Optional
 from aiogram.utils.keyboard import InlineKeyboardBuilder
-from aiogram.types import InlineKeyboardMarkup
+from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 
 
 def get_contextual_hint(screen_name: str) -> str:
@@ -69,7 +69,7 @@ def build_paginated_keyboard(
     # Добавляем навигацию в одну строку, если есть обе кнопки
     if len(nav_buttons) == 2:
         builder.row(
-            *[builder.button(text=t, callback_data=c) for t, c in nav_buttons]
+            *[InlineKeyboardButton(text=t, callback_data=c) for t, c in nav_buttons]
         )
     elif len(nav_buttons) == 1:
         builder.button(text=nav_buttons[0][0], callback_data=nav_buttons[0][1])

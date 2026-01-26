@@ -4,7 +4,7 @@
 
 from typing import Optional
 from aiogram import Router, F
-from aiogram.types import Message, CallbackQuery
+from aiogram.types import Message, CallbackQuery, InlineKeyboardButton
 from aiogram.filters import CommandStart, Command
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
@@ -300,7 +300,7 @@ async def show_city_selection_menu(message: Message, state: FSMContext, page: in
             nav_row.append(("▶️ Далее", f"city_page:{page+1}"))
         
         if nav_row:
-            builder.row(*[builder.button(text=t, callback_data=c) for t, c in nav_row])
+            builder.row(*[InlineKeyboardButton(text=t, callback_data=c) for t, c in nav_row])
         
         builder.button(text="✏️ Ввести вручную", callback_data="setup_city_manual")
         builder.adjust(1)
