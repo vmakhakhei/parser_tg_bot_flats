@@ -19,6 +19,7 @@ from database import is_ad_sent_to_user, mark_ad_sent_to_user
 from scrapers.utils.id_utils import normalize_ad_id, normalize_telegram_id
 from error_logger import log_info, log_warning, log_error
 from config import DEFAULT_SOURCES, USE_TURSO_CACHE
+from bot.services.telegram_api import safe_send_message
 
 logger = logging.getLogger(__name__)
 
@@ -786,25 +787,28 @@ async def check_new_listings(
         # ЧАСТЬ D — БЛОКИРОВКА ПОИСКА БЕЗ ФИЛЬТРОВ (ФИНАЛЬНО)
         if not user_filters:
             logger.critical(f"[FILTER_BLOCK] search skipped: user={user_id} no filters")
-            await bot.send_message(
-                user_id,
-                "ℹ️ Чтобы начать поиск, нужно один раз настроить фильтры.\nЭто займет меньше минуты 👇"
+            await safe_send_message(
+                bot=bot,
+                chat_id=user_id,
+                text="ℹ️ Чтобы начать поиск, нужно один раз настроить фильтры.\nЭто займет меньше минуты 👇"
             )
             continue
         
         if not user_filters.get("city"):
             logger.critical(f"[FILTER_BLOCK] search skipped: user={user_id} no city")
-            await bot.send_message(
-                user_id,
-                "ℹ️ Чтобы начать поиск, нужно один раз настроить фильтры.\nЭто займет меньше минуты 👇"
+            await safe_send_message(
+                bot=bot,
+                chat_id=user_id,
+                text="ℹ️ Чтобы начать поиск, нужно один раз настроить фильтры.\nЭто займет меньше минуты 👇"
             )
             continue
         
         if user_filters.get("min_rooms") is None or user_filters.get("max_rooms") is None:
             logger.critical(f"[FILTER_BLOCK] search skipped: user={user_id} no min/max rooms")
-            await bot.send_message(
-                user_id,
-                "ℹ️ Чтобы начать поиск, нужно один раз настроить фильтры.\nЭто займет меньше минуты 👇"
+            await safe_send_message(
+                bot=bot,
+                chat_id=user_id,
+                text="ℹ️ Чтобы начать поиск, нужно один раз настроить фильтры.\nЭто займет меньше минуты 👇"
             )
             continue
         
@@ -841,9 +845,10 @@ async def check_new_listings(
                     f"[FILTER_STATE] user={user_id} filters invalid → redirect to setup"
                 )
                 # БЛОКИРОВКА ПОИСКА: если фильтры не сохранились
-                await bot.send_message(
-                    user_id,
-                    "⚠️ Фильтры не сохранены. Пожалуйста, настройте фильтры заново."
+                await safe_send_message(
+                    bot=bot,
+                    chat_id=user_id,
+                    text="⚠️ Фильтры не сохранены. Пожалуйста, настройте фильтры заново."
                 )
                 await _send_setup_filters_message(bot, user_id)
                 continue
@@ -921,9 +926,10 @@ async def _send_setup_filters_message(bot: Any, telegram_id: int) -> None:
             )
         ]])
         
-        await bot.send_message(
-            telegram_id,
-            "ℹ️ Чтобы начать поиск, нужно один раз настроить фильтры.\nЭто займет меньше минуты 👇",
+        await safe_send_message(
+            bot=bot,
+            chat_id=telegram_id,
+            text="ℹ️ Чтобы начать поиск, нужно один раз настроить фильтры.\nЭто займет меньше минуты 👇",
             reply_markup=keyboard
         )
         

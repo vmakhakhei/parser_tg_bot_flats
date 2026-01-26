@@ -334,23 +334,9 @@ async def send_listing_to_user(
                 else:
                     media_group.append(InputMediaPhoto(media=photo_url))
 
-            # Отправляем медиагруппу напрямую для перехвата TelegramRetryAfter
-            # Обрабатываем TelegramRetryAfter для установки паузы
-            try:
-                sent_messages = await bot.send_media_group(chat_id=user_id, media=media_group)
-            except TelegramRetryAfter as e:
-                retry_after = int(e.retry_after)
-                USER_SEND_LOCKS[user_id] = time() + retry_after
-                log_warning(
-                    "notification",
-                    f"Flood control для пользователя {user_id}, пауза {retry_after} сек. Объявление {listing.id} НЕ будет помечено как отправленное."
-                )
-                # ВАЖНО: НЕ mark_ad_sent_to_user - объявление не было отправлено
-                return False
-            except Exception as e:
-                # Для других ошибок используем безопасную обертку
-                log_warning("notification", f"Ошибка при прямой отправке медиагруппы, используем safe_send_media_group: {e}")
-                sent_messages = await safe_send_media_group(bot=bot, chat_id=user_id, media=media_group)
+            # Отправляем медиагруппу через безопасную обертку
+            # safe_send_media_group обрабатывает TelegramRetryAfter автоматически
+            sent_messages = await safe_send_media_group(bot=bot, chat_id=user_id, media=media_group)
             
             # Проверяем успешность отправки
             if sent_messages is None or len(sent_messages) == 0:
@@ -398,35 +384,16 @@ async def send_listing_to_user(
             return True
         else:
             # Без фотографий - просто текст с кнопкой
-            # Отправляем напрямую для перехвата TelegramRetryAfter
-            try:
-                sent_message = await bot.send_message(
-                    chat_id=user_id,
-                    text=message_text,
-                    parse_mode=ParseMode.HTML,
-                    disable_web_page_preview=False,
-                    reply_markup=reply_markup,
-                )
-            except TelegramRetryAfter as e:
-                retry_after = int(e.retry_after)
-                USER_SEND_LOCKS[user_id] = time() + retry_after
-                log_warning(
-                    "notification",
-                    f"Flood control для пользователя {user_id}, пауза {retry_after} сек. Объявление {listing.id} НЕ будет помечено как отправленное."
-                )
-                # ВАЖНО: НЕ mark_ad_sent_to_user - объявление не было отправлено
-                return False
-            except Exception as e:
-                # Для других ошибок используем безопасную обертку
-                log_warning("notification", f"Ошибка при прямой отправке сообщения, используем safe_send_message: {e}")
-                sent_message = await safe_send_message(
-                    bot=bot,
-                    chat_id=user_id,
-                    text=message_text,
-                    parse_mode=ParseMode.HTML,
-                    disable_web_page_preview=False,
-                    reply_markup=reply_markup,
-                )
+            # Отправляем через безопасную обертку
+            # safe_send_message обрабатывает TelegramRetryAfter автоматически
+            sent_message = await safe_send_message(
+                bot=bot,
+                chat_id=user_id,
+                text=message_text,
+                parse_mode=ParseMode.HTML,
+                disable_web_page_preview=False,
+                reply_markup=reply_markup,
+            )
             
             # Проверяем успешность отправки
             if sent_message is None:
@@ -625,31 +592,15 @@ async def send_grouped_listings_to_user(bot: Bot, user_id: int, listings: List[L
         
         text = "\n".join(text_lines)
         
-        # Отправляем сообщение
-        try:
-            sent_message = await bot.send_message(
-                chat_id=user_id,
-                text=text,
-                parse_mode=ParseMode.HTML,
-                disable_web_page_preview=False,
-            )
-        except TelegramRetryAfter as e:
-            retry_after = int(e.retry_after)
-            USER_SEND_LOCKS[user_id] = time() + retry_after
-            log_warning(
-                "notification",
-                f"Flood control для пользователя {user_id}, пауза {retry_after} сек. Группированные объявления НЕ будут помечены как отправленные."
-            )
-            return False
-        except Exception as e:
-            log_warning("notification", f"Ошибка при прямой отправке группированного сообщения, используем safe_send_message: {e}")
-            sent_message = await safe_send_message(
-                bot=bot,
-                chat_id=user_id,
-                text=text,
-                parse_mode=ParseMode.HTML,
-                disable_web_page_preview=False,
-            )
+        # Отправляем сообщение через безопасную обертку
+        # safe_send_message обрабатывает TelegramRetryAfter автоматически
+        sent_message = await safe_send_message(
+            bot=bot,
+            chat_id=user_id,
+            text=text,
+            parse_mode=ParseMode.HTML,
+            disable_web_page_preview=False,
+        )
         
         # Проверяем успешность отправки
         if sent_message is None:

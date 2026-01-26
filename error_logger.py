@@ -169,6 +169,15 @@ class ErrorLogger:
             exception: Объект исключения (опционально)
             exc_info: Логировать ли traceback (по умолчанию True)
         """
+        # Фильтруем ожидаемые ошибки - логируем как info без traceback
+        if exception:
+            exception_type_name = type(exception).__name__
+            # TelegramForbiddenError - ожидаемая ошибка (пользователь заблокировал бота)
+            if exception_type_name == "TelegramForbiddenError":
+                sanitized_message = sanitize_sensitive_data(message)
+                self._logger.info(f"[{source}] {sanitized_message} (пользователь заблокировал бота)")
+                return  # Не логируем как ошибку и не сохраняем в errors
+        
         timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         
         # Очищаем чувствительные данные из сообщения

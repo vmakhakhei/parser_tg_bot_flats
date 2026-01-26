@@ -144,8 +144,12 @@ async def evaluate_and_compare_new_listings(
                 results_text, parse_mode=ParseMode.HTML, disable_web_page_preview=False
             )
         else:
-            await bot.send_message(
-                user_id, results_text, parse_mode=ParseMode.HTML, disable_web_page_preview=False
+            await safe_send_message(
+                bot=bot,
+                chat_id=user_id,
+                text=results_text,
+                parse_mode=ParseMode.HTML,
+                disable_web_page_preview=False
             )
     except Exception as e:
         log_error("ai_mode", f"Ошибка отправки оценки пользователю {user_id}", e, exc_info=True)

@@ -73,8 +73,8 @@ async def safe_send_message(
             # Повторяем попытку
             continue
         except TelegramForbiddenError:
-            # Пользователь заблокировал бота или удалил чат
-            log_warning(
+            # Пользователь заблокировал бота или удалил чат - это ожидаемая ситуация
+            log_info(
                 "telegram_api", f"Пользователь {chat_id} заблокировал бота или чат недоступен"
             )
             return None  # Не повторяем попытку
@@ -272,7 +272,8 @@ async def safe_edit_message_text(
             )
             return None
         except TelegramForbiddenError:
-            log_warning(
+            # Пользователь заблокировал бота - это ожидаемая ситуация
+            log_info(
                 "telegram_api", f"Пользователь {chat_id} заблокировал бота (редактирование)"
             )
             return None

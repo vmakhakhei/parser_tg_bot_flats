@@ -49,6 +49,19 @@ class ErrorMiddleware(BaseMiddleware):
         try:
             return await handler(event, data)
         except Exception as e:
+            # Фильтруем ожидаемые ошибки - не логируем как ошибки
+            exception_type_name = type(e).__name__
+            
+            # TelegramForbiddenError - ожидаемая ошибка (пользователь заблокировал бота)
+            if exception_type_name == "TelegramForbiddenError":
+                event_info = sanitize_event_info(event)
+                error_logger.log_info(
+                    "middleware",
+                    f"Пользователь заблокировал бота ({event_info})"
+                )
+                # Пробрасываем ошибку дальше, но не логируем как ошибку
+                raise
+            
             # Логируем только безопасную информацию о событии
             event_info = sanitize_event_info(event)
             error_logger.log_error(
