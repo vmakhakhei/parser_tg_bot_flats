@@ -165,6 +165,7 @@ async def cmd_start(message: Message, state: FSMContext):
     logger = logging.getLogger(__name__)
     
     user_id = message.from_user.id
+    logger.info(f"[START] Received /start command from user_id={user_id}")
 
     # КРИТИЧНО: Активируем пользователя ДО любого await send_message(...)
     # Это гарантирует, что пользователь будет виден в get_active_users()
@@ -212,6 +213,7 @@ async def cmd_start(message: Message, state: FSMContext):
     
     if not user_filters or not has_city:
         # Первый запуск или город не установлен - запрашиваем город
+        logger.info(f"[START] User {user_id} has no filters or city, showing setup message")
         await message.answer(
             "ℹ️ Чтобы начать поиск, нужно один раз настроить фильтры.\nЭто займет меньше минуты 👇",
             parse_mode=ParseMode.HTML,
@@ -222,8 +224,10 @@ async def cmd_start(message: Message, state: FSMContext):
         )
         # Устанавливаем состояние для ввода города
         await state.set_state(CityStates.waiting_for_city)
+        logger.info(f"[START] Set state to CityStates.waiting_for_city for user {user_id}")
     else:
         # Фильтры уже установлены - показываем упрощенное приветствие
+        logger.info(f"[START] User {user_id} has filters, showing main menu")
         status = "✅ Активен" if user_filters.get("is_active") else "❌ Отключен"
 
         builder = InlineKeyboardBuilder()
