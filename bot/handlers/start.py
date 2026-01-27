@@ -1006,12 +1006,14 @@ async def process_city_input_no_fsm(message: Message, state: FSMContext):
             seen_slugs.add(slug)
             unique_results.append(city_result)
     
-    builder = InlineKeyboardBuilder()
+    # Используем стандартизированную функцию build_keyboard
+    from bot.utils.ui_helpers import build_keyboard
     from bot.utils.callback_codec import encode_callback_payload
+    
+    city_items = []
     for city_result in unique_results:
         slug = city_result['slug']
         label_ru = city_result['label_ru']
-        score = city_result.get('score', 0)
         province = city_result.get('province', '')
         
         # Формируем текст кнопки
@@ -1023,15 +1025,14 @@ async def process_city_input_no_fsm(message: Message, state: FSMContext):
         
         # Кодируем длинный slug через short_links
         short_code = await encode_callback_payload(slug)
-        builder.button(
-            text=button_text,
-            callback_data=f"select_city|{short_code}"
-        )
+        city_items.append((button_text, f"select_city|{short_code}"))
     
-    builder.button(text="❌ Отмена", callback_data="setup_filters")
-    builder.adjust(1)
+    keyboard = build_keyboard(
+        city_items,
+        columns=1,
+        back_button=("❌ Отмена", "setup_filters")
+    )
     
-    keyboard = builder.as_markup()
     logger.debug(f"[CITY_KEYBOARD] Created city selection keyboard user={user_id} buttons={len(unique_results)} rows={len(keyboard.inline_keyboard)}")
     log_info("city_lookup", f"[CITY_LOOKUP] user={user_id} query={city_raw!r} found={len(results)} results unique={len(unique_results)}")
     
@@ -1131,12 +1132,14 @@ async def process_city_input(message: Message, state: FSMContext):
             seen_slugs.add(slug)
             unique_results.append(city_result)
     
-    builder = InlineKeyboardBuilder()
+    # Используем стандартизированную функцию build_keyboard
+    from bot.utils.ui_helpers import build_keyboard
     from bot.utils.callback_codec import encode_callback_payload
+    
+    city_items = []
     for city_result in unique_results:
         slug = city_result['slug']
         label_ru = city_result['label_ru']
-        score = city_result.get('score', 0)
         province = city_result.get('province', '')
         
         # Формируем текст кнопки
@@ -1148,15 +1151,14 @@ async def process_city_input(message: Message, state: FSMContext):
         
         # Кодируем длинный slug через short_links
         short_code = await encode_callback_payload(slug)
-        builder.button(
-            text=button_text,
-            callback_data=f"select_city|{short_code}"
-        )
+        city_items.append((button_text, f"select_city|{short_code}"))
     
-    builder.button(text="❌ Отмена", callback_data="setup_filters")
-    builder.adjust(1)
+    keyboard = build_keyboard(
+        city_items,
+        columns=1,
+        back_button=("❌ Отмена", "setup_filters")
+    )
     
-    keyboard = builder.as_markup()
     logger.debug(f"[CITY_KEYBOARD] Created city selection keyboard user={user_id} buttons={len(unique_results)} rows={len(keyboard.inline_keyboard)}")
     
     await message.answer(

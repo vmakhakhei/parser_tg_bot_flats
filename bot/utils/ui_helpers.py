@@ -1,9 +1,64 @@
 """
 Вспомогательные функции для UI
 """
-from typing import Optional
+from typing import List, Tuple, Optional
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+
+
+def _dedupe_items(items: List[Tuple[str, str]]) -> List[Tuple[str, str]]:
+    """
+    Удаляет дубликаты кнопок по callback_data.
+    
+    Args:
+        items: Список кортежей (text, callback_data)
+    
+    Returns:
+        Список без дубликатов (сохраняется порядок первого вхождения)
+    """
+    seen = set()
+    out = []
+    for text, cb in items:
+        if cb in seen:
+            continue
+        seen.add(cb)
+        out.append((text, cb))
+    return out
+
+
+def build_keyboard(
+    items: List[Tuple[str, str]],
+    columns: int = 1,
+    back_button: Optional[Tuple[str, str]] = None
+) -> InlineKeyboardMarkup:
+    """
+    Безопасное построение клавиатуры с дедупликацией и группировкой кнопок.
+    
+    Args:
+        items: Список кортежей (text, callback_data)
+        columns: Количество кнопок в строке (по умолчанию 1)
+        back_button: Опциональная кнопка "Назад" в формате (text, callback_data)
+    
+    Returns:
+        InlineKeyboardMarkup с кнопками, сгруппированными по columns
+    """
+    # Удаляем дубликаты
+    items = _dedupe_items(items)
+    
+    # Строим клавиатуру используя InlineKeyboardBuilder для правильной группировки
+    builder = InlineKeyboardBuilder()
+    for text, cb in items:
+        builder.button(text=text, callback_data=cb)
+    
+    # Группируем кнопки по columns в строку
+    builder.adjust(columns)
+    
+    # Добавляем кнопку "Назад" если указана (в отдельной строке)
+    if back_button:
+        builder.button(text=back_button[0], callback_data=back_button[1])
+        builder.adjust(1)  # Кнопка "Назад" всегда в отдельной строке
+    
+    return builder.as_markup()
 
 
 def get_contextual_hint(screen_name: str) -> str:
