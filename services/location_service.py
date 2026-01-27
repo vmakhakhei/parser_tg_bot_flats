@@ -26,6 +26,7 @@ logger = logging.getLogger(__name__)
 
 # Импортируем error_logger
 try:
+    from error_logger import log_error, log_warning, log_info
 except ImportError:
     def log_error(source, message, exception=None):
         logger.error(f"[{source}] {message}: {exception}")
