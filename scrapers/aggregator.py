@@ -1,4 +1,22 @@
 """
+from error_logger import log_error, log_warning, log_info
+from scrapers.aggregator_utils import dedupe_by_signature
+from database_turso import sync_apartments_batch
+from bot.services.notification_service import notify_users_about_new_apartments_summary
+from database_turso import _extract_city_from_address
+from utils.address_utils import split_address
+from config import GROUP_BY_VENDOR_FOR_ADDRESS
+from utils.geo import haversine_m
+from database import get_active_users, get_user_filters
+from scrapers.utils.id_utils import normalize_ad_id, normalize_telegram_id
+from bot.services.search_service import _process_user_listings_normal_mode, validate_user_filters, matches_user_filters
+from bot.services.ai_service import check_new_listings_ai_mode
+from database import is_ad_sent_to_user
+from aiogram import Bot
+from config import BOT_TOKEN as TELEGRAM_BOT_TOKEN
+from bot.services.notification_service import send_listing_to_user, send_grouped_listings_to_user
+from collections import Counter
+
 Агрегатор всех парсеров - собирает объявления со всех источников
 
 Особенности:
@@ -29,7 +47,6 @@ from scrapers.etagi import EtagiScraper
 
 # Импортируем error_logger если доступен
 try:
-    from error_logger import log_error, log_warning, log_info
 except ImportError:
     # Fallback если модуль недоступен
     def log_error(source, message, exception=None):
@@ -162,7 +179,6 @@ class ListingsAggregator:
         # Дедупликация по signature (адрес + vendor + цена + фото)
         if unique_listings:
             try:
-                from scrapers.aggregator_utils import dedupe_by_signature
                 before_signature = len(unique_listings)
                 unique_listings = dedupe_by_signature(unique_listings)
                 signature_removed = before_signature - len(unique_listings)
@@ -177,7 +193,6 @@ class ListingsAggregator:
         # Это гарантирует, что данные реально попадают в БД, а не только существуют в памяти
         if unique_listings:
             try:
-                from database_turso import sync_apartments_batch
                 
                 # Сохраняем все объявления одной транзакцией
                 inserted_ids = await sync_apartments_batch(unique_listings)
@@ -190,7 +205,6 @@ class ListingsAggregator:
                     ]
                     
                     # Запускаем уведомления в фоне, не блокируя парсинг остальных источников
-                    from bot.services.notification_service import notify_users_about_new_apartments_summary
                     asyncio.create_task(
                         notify_users_about_new_apartments_summary(new_listings)
                     )
@@ -494,7 +508,6 @@ def _extract_city_from_listing(listing: Listing) -> str:
         return str(city).strip().lower()
     
     # Извлекаем из адреса
-    from database_turso import _extract_city_from_address
     return _extract_city_from_address(listing.address or "").lower()
 
 
@@ -554,8 +567,6 @@ def make_group_key(listing: Listing) -> tuple:
     Returns:
         Кортеж-ключ для группировки
     """
-    from utils.address_utils import split_address
-    from config import GROUP_BY_VENDOR_FOR_ADDRESS
     
     addr = split_address(listing.address or "")
     city = _extract_city_from_listing(listing)
@@ -597,7 +608,6 @@ def group_similar_listings(listings: List[Listing]) -> List[List[Listing]]:
     Returns:
         Список групп объявлений (каждая группа - список объявлений)
     """
-    from utils.geo import haversine_m
     
     # 1) Первичная группировка по ключу
     buckets = defaultdict(list)
@@ -660,13 +670,6 @@ async def notify_users_about_new_apartments(new_listings: List[Listing]) -> None
     
     try:
         # Импортируем необходимые функции
-        from database import get_active_users, get_user_filters
-        from scrapers.utils.id_utils import normalize_ad_id, normalize_telegram_id
-        from bot.services.search_service import _process_user_listings_normal_mode, validate_user_filters, matches_user_filters
-        from bot.services.ai_service import check_new_listings_ai_mode
-        from database import is_ad_sent_to_user
-        from aiogram import Bot
-        from config import BOT_TOKEN as TELEGRAM_BOT_TOKEN
         
         if not TELEGRAM_BOT_TOKEN:
             log_warning("aggregator", "[NOTIFY] TELEGRAM_BOT_TOKEN не настроен, уведомления отключены")
@@ -724,7 +727,6 @@ async def notify_users_about_new_apartments(new_listings: List[Listing]) -> None
                         await check_new_listings_ai_mode(bot, user_id, user_filters, filtered_listings)
                     else:
                         # В обычном режиме применяем группировку
-                        from bot.services.notification_service import send_listing_to_user, send_grouped_listings_to_user
                         
                         user_sent = 0
                         for group in groups:
@@ -791,7 +793,6 @@ async def test_aggregator():
     
     # Статистика по источникам
     print("📈 Статистика по источникам:")
-    from collections import Counter
     sources = Counter(l.source for l in listings)
     for source, count in sources.most_common():
         print(f"  • {source}: {count}")
@@ -850,7 +851,6 @@ if __name__ == "__main__":
         
         # Статистика по источникам
         print("📈 Статистика по источникам:")
-        from collections import Counter
         sources = Counter(l.source for l in listings)
         for source, count in sources.most_common():
             print(f"  • {source}: {count}")

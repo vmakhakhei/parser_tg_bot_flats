@@ -1,4 +1,8 @@
 """
+from database_turso import get_user_filters_turso
+from aiogram.utils.keyboard import InlineKeyboardBuilder
+from bot.handlers.start import normalize_city_for_ui
+
 Обработчики команд поиска и проверки объявлений
 """
 
@@ -36,7 +40,6 @@ async def cmd_start_monitoring(message: Message):
         )
         return
 
-    from database_turso import get_user_filters_turso
     current_filters = await get_user_filters_turso(user_id) or {}
     await set_user_filters_turso(
         user_id,
@@ -65,7 +68,6 @@ async def cmd_stop_monitoring(message: Message):
         )
         return
 
-    from database_turso import get_user_filters_turso
     current_filters = await get_user_filters_turso(user_id) or {}
     await set_user_filters_turso(
         user_id,
@@ -85,7 +87,6 @@ async def cmd_stop_monitoring(message: Message):
 @router.message(Command("filters"))
 async def cmd_filters(message: Message):
     """Показывает текущие фильтры пользователя с кнопками настройки"""
-    from aiogram.utils.keyboard import InlineKeyboardBuilder
 
     user_id = message.from_user.id
     user_filters = await get_user_filters(user_id)
@@ -106,7 +107,6 @@ async def cmd_filters(message: Message):
     builder.adjust(1)
 
     # Используем helper для нормализации города
-    from bot.handlers.start import normalize_city_for_ui
     city_name = normalize_city_for_ui(user_filters)
     
     await message.answer(

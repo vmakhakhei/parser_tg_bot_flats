@@ -1,4 +1,13 @@
 """
+from ai_valuator import valuate_listing, select_best_listings
+from database import set_user_filters_turso
+from database import get_user_filters_turso
+from datetime import datetime
+from config import USE_TURSO_CACHE
+from database import create_or_update_user_turso
+from bot.services.search_service import check_new_listings
+from database_turso import get_user_filters_turso
+
 Telegram бот для мониторинга объявлений о квартирах
 """
 import asyncio
@@ -43,7 +52,6 @@ from error_logger import error_logger, log_error, log_warning, log_info
 
 # ИИ-оценщик (опционально)
 try:
-    from ai_valuator import valuate_listing, select_best_listings
     AI_VALUATOR_AVAILABLE = True
 except ImportError:
     AI_VALUATOR_AVAILABLE = False
@@ -88,7 +96,6 @@ async def sync_user_filters_to_turso(
     Конвертирует формат из старой БД (min_rooms/max_rooms) в новый формат (rooms как список)
     """
     try:
-        from database import set_user_filters_turso
         
         # Конвертируем min_rooms/max_rooms в список комнат
         rooms = list(range(min_rooms, max_rooms + 1)) if min_rooms > 0 and max_rooms > 0 else None
@@ -117,7 +124,6 @@ async def get_user_filters_unified(user_id: int) -> Optional[Dict[str, Any]]:
     """
     # Сначала пробуем Turso
     try:
-        from database import get_user_filters_turso
         turso_filters = await get_user_filters_turso(user_id)
         if turso_filters:
             # Конвертируем формат для совместимости
@@ -334,7 +340,6 @@ def format_listing_message(listing: Listing, ai_valuation: Optional[Dict[str, An
     if listing.created_at:
         # Форматируем дату для вывода
         try:
-            from datetime import datetime
             date_obj = datetime.strptime(listing.created_at, "%Y-%m-%d")
             today = datetime.now()
             days_diff = (today - date_obj).days
@@ -528,7 +533,6 @@ async def check_new_listings(bot: Bot):
             cache_listings_batch_turso,
             cached_listing_to_listing_turso
         )
-        from config import USE_TURSO_CACHE
         
         cached_listings = []
         if USE_TURSO_CACHE:
@@ -1179,7 +1183,6 @@ async def cmd_start(message: Message, state: FSMContext):
     
     # Создаем/обновляем пользователя в Turso
     try:
-        from database import create_or_update_user_turso
         await create_or_update_user_turso(
             user_id=user_id,
             username=message.from_user.username,
@@ -1195,7 +1198,6 @@ async def cmd_start(message: Message, state: FSMContext):
     # Если фильтров нет в старой БД, проверяем Turso
     if not user_filters:
         try:
-            from database import get_user_filters_turso
             user_filters = await get_user_filters_turso(user_id)
             # Конвертируем формат фильтров из Turso в формат старой БД для совместимости
             if user_filters:
@@ -1528,7 +1530,6 @@ async def cb_filters_done(callback: CallbackQuery):
         
         # ПОИСК ПОСЛЕ МАСТЕРА ФИЛЬТРОВ: запускаем поиск сразу после настройки
         try:
-            from bot.services.search_service import check_new_listings
             await check_new_listings(
                 bot=callback.bot,
                 force_send=True  # Принудительный запуск после настройки фильтров
@@ -1548,7 +1549,6 @@ async def cb_filters_done(callback: CallbackQuery):
         
         # ПОИСК ПОСЛЕ МАСТЕРА ФИЛЬТРОВ: запускаем поиск даже если ничего не найдено
         try:
-            from bot.services.search_service import check_new_listings
             await check_new_listings(
                 bot=callback.bot,
                 force_send=True  # Принудительный запуск после настройки фильтров
@@ -2085,7 +2085,6 @@ async def cb_setup_mode(callback: CallbackQuery, state: FSMContext):
 
     # Сохраняем фильтры с выбранным режимом
     # ЕДИНАЯ ТОЧКА СОХРАНЕНИЯ: только database_turso.py
-    from database_turso import set_user_filters_turso
     
     await set_user_filters_turso(
         user_id,
@@ -2600,7 +2599,6 @@ async def cb_user_set_rooms(callback: CallbackQuery):
     min_rooms = int(parts[2])
     max_rooms = int(parts[3])
     
-    from database_turso import get_user_filters_turso
     current_filters = await get_user_filters_turso(user_id) or {}
     await set_user_filters_turso(
         user_id,
@@ -2725,7 +2723,6 @@ async def cb_set_seller_type(callback: CallbackQuery):
         seller_type = "owner"
     # seller_data == "all" -> seller_type = None
     
-    from database_turso import get_user_filters_turso
     current_filters = await get_user_filters_turso(user_id) or {}
     await set_user_filters_turso(
         user_id,
@@ -2744,60 +2741,9 @@ async def cb_set_seller_type(callback: CallbackQuery):
     await callback.answer(f"✅ Установлено: {seller_text}")
     await cb_setup_filters(callback)
 
-
-@router.callback_query(F.data == "user_filter_city")
-async def cb_user_filter_city(callback: CallbackQuery):
-    """Показывает меню выбора города"""
-    builder = InlineKeyboardBuilder()
-    
-    # Все кнопки на отдельных строках для лучшей читаемости
-    builder.button(text="Минск", callback_data="city_минск")
-    builder.button(text="Брест", callback_data="city_брест")
-    builder.button(text="Гродно", callback_data="city_гродно")
-    builder.button(text="Витебск", callback_data="city_витебск")
-    builder.button(text="Гомель", callback_data="city_гомель")
-    builder.button(text="Могилёв", callback_data="city_могилёв")
-    builder.button(text="✏️ Ввести вручную", callback_data="city_manual")
-    builder.button(text="🔙 Назад", callback_data="setup_filters")
-    
-    # Принудительно размещаем по 1 кнопке в ряду
-    builder.adjust(1)
-    
-    await callback.message.edit_text(
-        "📍 <b>Выберите город для поиска</b>\n\n"
-        "Выберите город из списка или введите название вручную.\n\n"
-        "<i>Если вашего города нет в списке, используйте кнопку \"Ввести вручную\"</i>",
-        parse_mode=ParseMode.HTML,
-        reply_markup=builder.as_markup()
-    )
-    await callback.answer()
-
-
-@router.callback_query(F.data.startswith("setup_city_"))
-async def cb_setup_city_step(callback: CallbackQuery, state: FSMContext):
-    """Обработчик выбора города в пошаговой настройке"""
-    city_data = callback.data.replace("setup_city_", "")
-    
-    if city_data == "manual":
-        # Запрашиваем ввод города вручную
-        await callback.message.edit_text(
-            "✏️ <b>Введите название города</b>\n\n"
-            "Просто напишите название города, например:\n"
-            "• <code>минск</code>\n"
-            "• <code>гомель</code>\n"
-            "• <code>барановичи</code>",
-            parse_mode=ParseMode.HTML
-        )
-        await state.set_state(SetupStates.waiting_for_city)
-        await callback.answer("Введите название города")
-        return
-    
-    # Сохраняем город в FSM
-    await state.update_data(city=city_data)
-    
-    # Переходим к следующему шагу - выбор комнат
-    await show_rooms_selection_menu(callback.message, state, city_data.title())
-    await callback.answer()
+# УДАЛЕНО: Конфликтующие хэндлеры перенесены в bot/handlers/start.py
+# cb_user_filter_city - удален (дублировал функциональность)
+# cb_setup_city_step - удален (конфликтовал с cb_setup_city из start.py)
 
 
 @router.message(SetupStates.waiting_for_city)
@@ -3230,54 +3176,8 @@ async def search_listings_after_setup(
             # После настройки фильтров всегда показываем меню ИИ-режима
             await show_actions_menu(bot, user_id, 0, "ИИ-режим")
 
-
-@router.callback_query(F.data.startswith("city_"))
-async def cb_user_set_city(callback: CallbackQuery, state: FSMContext):
-    """Устанавливает город для пользователя"""
-    user_id = callback.from_user.id
-    city_data = callback.data.replace("city_", "")
-    
-    if city_data == "manual":
-        # Запрашиваем ввод города вручную
-        await callback.message.edit_text(
-            "✏️ <b>Введите название города</b>\n\n"
-            "Просто напишите название города, например:\n"
-            "• <code>минск</code>\n"
-            "• <code>гомель</code>\n"
-            "• <code>барановичи</code>\n\n"
-            "<i>Если город введен неправильно, я попрошу ввести еще раз.</i>",
-            parse_mode=ParseMode.HTML
-        )
-        await state.set_state(CityStates.waiting_for_city)
-        await callback.answer("Введите название города")
-        return
-    
-    # Устанавливаем город из списка
-    user_filters = await get_user_filters(user_id)
-    from database_turso import get_user_filters_turso
-    current_filters = await get_user_filters_turso(user_id) or {}
-    
-    if not current_filters:
-        # Если фильтров нет, создаём новые только с городом
-        await set_user_filters_turso(
-            user_id,
-            {
-                "city": city_data,
-                "min_rooms": 1,
-                "max_rooms": 4,
-                "min_price": 0,
-                "max_price": 100000,
-                "seller_type": "all",
-                "delivery_mode": "brief",
-            }
-        )
-    else:
-        # Обновляем только город, остальные параметры оставляем как есть
-        current_filters["city"] = city_data
-        await set_user_filters_turso(user_id, current_filters)
-    
-    await callback.answer(f"✅ Город установлен: {city_data.title()}")
-    await cb_setup_filters(callback)
+# УДАЛЕНО: Конфликтующий хэндлер cb_user_set_city удален
+# Обработка city_* callback перенесена в bot/handlers/start.py
 
 
 @router.message(CityStates.waiting_for_city)
@@ -3319,7 +3219,6 @@ async def process_city_input(message: Message, state: FSMContext):
     
     # Сохраняем город
     user_filters = await get_user_filters(user_id)
-    from database_turso import get_user_filters_turso
     current_filters = await get_user_filters_turso(user_id) or {}
     
     if not current_filters:
@@ -3364,7 +3263,6 @@ async def cb_user_price_reset(callback: CallbackQuery):
     user_id = callback.from_user.id
     user_filters = await get_user_filters(user_id)
     
-    from database_turso import get_user_filters_turso
     current_filters = await get_user_filters_turso(user_id) or {}
     await set_user_filters_turso(
         user_id,
@@ -3402,7 +3300,6 @@ async def process_min_price_input(message: Message, state: FSMContext):
         user_filters = await get_user_filters(user_id)
         
         # Обновляем минимальную цену
-        from database_turso import get_user_filters_turso
         current_filters = await get_user_filters_turso(user_id) or {}
         current_filters["min_price"] = min_price
         await set_user_filters_turso(user_id, current_filters)
@@ -3477,7 +3374,6 @@ async def process_max_price_input(message: Message, state: FSMContext):
             return
         
         # Обновляем максимальную цену
-        from database_turso import get_user_filters_turso
         current_filters = await get_user_filters_turso(user_id) or {}
         current_filters["min_price"] = current_min
         current_filters["max_price"] = max_price
@@ -3541,7 +3437,6 @@ async def cmd_start_monitoring(message: Message):
         )
         return
     
-    from database_turso import get_user_filters_turso
     current_filters = await get_user_filters_turso(user_id) or {}
     await set_user_filters_turso(
         user_id,
@@ -3571,7 +3466,6 @@ async def cmd_stop_monitoring(message: Message):
         )
         return
     
-    from database_turso import get_user_filters_turso
     current_filters = await get_user_filters_turso(user_id) or {}
     await set_user_filters_turso(
         user_id,

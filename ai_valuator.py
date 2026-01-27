@@ -1,4 +1,6 @@
 """
+from error_logger import log_error, log_warning, log_info
+
 ИИ-оценщик квартир - бесплатные варианты интеграции
 """
 import os
@@ -14,7 +16,6 @@ from scrapers.base import Listing
 # Добавляем путь для импорта error_logger
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 try:
-    from error_logger import log_error, log_warning, log_info
 except ImportError:
     # Fallback если error_logger недоступен
     def log_error(source, msg, exc=None):

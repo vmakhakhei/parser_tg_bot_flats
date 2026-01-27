@@ -1,4 +1,12 @@
 """
+from database import cache_listings_batch_turso
+from constants.constants import LOG_USER_SEARCH
+from bot.services.notification_service import send_listing_to_user
+from bot.handlers.debug import get_debug_ignore_sent_ads
+from bot.services.ai_service import check_new_listings_ai_mode
+from bot.handlers.debug import get_debug_force_run, get_debug_skip_filter_validation
+from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+
 Сервис для поиска и фильтрации объявлений
 """
 
@@ -349,7 +357,6 @@ async def _parse_and_cache_listings(
     # Сохраняем все найденные объявления в кэш
     if USE_TURSO_CACHE and parsed_listings:
         try:
-            from database import cache_listings_batch_turso
 
             saved_count = await cache_listings_batch_turso(parsed_listings)
             log_info("search", f"💾 Сохранено {saved_count} объявлений в кэш")
@@ -376,7 +383,6 @@ async def fetch_listings_for_user(user_id: int, user_filters: Dict[str, Any]) ->
         Список объявлений
     """
     import logging
-    from constants.constants import LOG_USER_SEARCH
     
     logger = logging.getLogger(__name__)
     
@@ -449,7 +455,6 @@ async def _process_listing_for_user(
     Returns:
         True если объявление было отправлено
     """
-    from bot.services.notification_service import send_listing_to_user
 
     # Проверяем соответствие фильтрам пользователя
     if not matches_user_filters(listing, user_filters, user_id=user_id, log_details=True):
@@ -457,7 +462,6 @@ async def _process_listing_for_user(
 
     # Проверяем, не отправляли ли уже этому пользователю
     # В DEBUG режиме игнорируем проверку sent_ads
-    from bot.handlers.debug import get_debug_ignore_sent_ads
     debug_ignore_sent_ads = get_debug_ignore_sent_ads()
     
     # Логирование проверки sent_ads
@@ -576,7 +580,6 @@ async def _process_user_listings_normal_mode(
         # #endregion
         
         # В DEBUG режиме игнорируем проверку sent_ads
-        from bot.handlers.debug import get_debug_ignore_sent_ads
         debug_ignore_sent_ads = get_debug_ignore_sent_ads()
         
         # Логирование проверки sent_ads
@@ -631,7 +634,6 @@ async def _process_user_listings_normal_mode(
         # Отправляем объявление
         # ВАЖНО: фильтры, проверка "уже отправлено" и дубликаты уже проверены выше
         try:
-            from bot.services.notification_service import send_listing_to_user
             
             # Отправляем объявление пользователю БЕЗ ИИ-оценки (обычный режим)
             # #region agent log
@@ -723,8 +725,6 @@ async def check_new_listings(
         ignore_sent_ads: Игнорировать проверку sent_ads
         bypass_summary: Обойти summary и отправлять полные уведомления
     """
-    from bot.services.ai_service import check_new_listings_ai_mode
-    from bot.handlers.debug import get_debug_ignore_sent_ads
     
     # Логирование debug run параметров
     debug_ignore_sent_ads = get_debug_ignore_sent_ads()
@@ -832,7 +832,6 @@ async def check_new_listings(
         
         # ЕДИНАЯ ПРОВЕРКА ФИЛЬТРОВ: используем has_valid_user_filters
         # DEBUG RUN должен игнорировать проверку фильтров
-        from bot.handlers.debug import get_debug_force_run, get_debug_skip_filter_validation
         debug_force_run = get_debug_force_run()
         skip_filter_validation = get_debug_skip_filter_validation()
         
@@ -917,7 +916,6 @@ async def _send_setup_filters_message(bot: Any, telegram_id: int) -> None:
         telegram_id: ID пользователя в Telegram
     """
     try:
-        from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
         
         keyboard = InlineKeyboardMarkup(inline_keyboard=[[
             InlineKeyboardButton(

@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
 """
+from database_turso import get_turso_connection
+
 Database health check script
 Проверяет состояние базы данных и выводит статистику
 """
@@ -16,7 +18,6 @@ def check_database_health():
     print("[DB] Starting database health check...")
     
     try:
-        from database_turso import get_turso_connection
         
         conn = get_turso_connection()
         if not conn:

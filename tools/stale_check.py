@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
 """
+from database_turso import get_turso_connection
+
 Stale records check (READ-ONLY)
 Проверяет наличие stale записей в sent_ads без соответствующих apartments
 НЕ УДАЛЯЕТ данные - только читает и выводит статистику
@@ -16,7 +18,6 @@ def check_stale_records():
     print("[STALE] Checking for stale sent_ads records...")
     
     try:
-        from database_turso import get_turso_connection
         
         conn = get_turso_connection()
         if not conn:

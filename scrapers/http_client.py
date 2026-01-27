@@ -1,4 +1,7 @@
 """
+from config import USER_AGENT
+from error_logger import log_error, log_warning, log_info
+
 Унифицированный HTTP-клиент для всех парсеров
 
 Особенности:
@@ -14,13 +17,11 @@ from functools import wraps
 
 # Импортируем конфигурацию
 try:
-    from config import USER_AGENT
 except ImportError:
     USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
 
 # Импортируем error_logger для логирования
 try:
-    from error_logger import log_error, log_warning, log_info
 except ImportError:
     def log_error(source, message, exception=None):
         print(f"[ERROR] [{source}] {message}: {exception}")

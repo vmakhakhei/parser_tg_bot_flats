@@ -1,4 +1,6 @@
 """
+from database_turso import _extract_city_from_address
+
 Тестовый скрипт для проверки группировки объявлений
 """
 import asyncio
@@ -99,7 +101,6 @@ async def test_grouping_with_sql():
                 listing.raw_json = raw_json
             
             # Извлекаем город из адреса
-            from database_turso import _extract_city_from_address
             listing.city = _extract_city_from_address(listing.address)
             
             listings.append(listing)

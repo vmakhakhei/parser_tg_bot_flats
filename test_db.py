@@ -1,4 +1,6 @@
 """
+from config import USE_TURSO_CACHE, TURSO_DB_URL, TURSO_AUTH_TOKEN
+
 Тестовый скрипт для проверки динамических фильтров и работы с Turso
 """
 import asyncio
@@ -19,7 +21,6 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 # Импортируем config напрямую
 try:
-    from config import USE_TURSO_CACHE, TURSO_DB_URL, TURSO_AUTH_TOKEN
 except ImportError:
     print("⚠️ Не удалось импортировать config, используем значения по умолчанию")
     USE_TURSO_CACHE = True

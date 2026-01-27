@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
 """
+from playwright.async_api import async_playwright
+
 Investigative script для анализа Kufar city lookup.
 Собирает артефакты, анализирует HAR/логи/HTML, тестирует endpoints и генерирует отчеты.
 """
@@ -632,7 +634,6 @@ class InvestigationRunner:
         logger.info("Step 6: Запуск headless probe...")
         
         try:
-            from playwright.async_api import async_playwright
             
             async with async_playwright() as p:
                 browser = await p.chromium.launch(headless=True)
