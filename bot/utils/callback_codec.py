@@ -1,13 +1,12 @@
 """
-from database_turso import save_short_link
-from database_turso import get_payload_from_code
-
 Утилита для кодирования и декодирования длинных callback_data.
 Позволяет обходить ограничение Telegram в 64 байта.
 """
 import hashlib
 import logging
 from typing import Optional
+
+from database_turso import save_short_link, get_payload_from_code
 
 logger = logging.getLogger(__name__)
 
