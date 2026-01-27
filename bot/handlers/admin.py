@@ -1,4 +1,11 @@
 """
+from database_turso import get_turso_connection
+from constants.constants import LOG_KUFAR_LOOKUP
+from scrapers.kufar import lookup_kufar_location
+from database_turso import set_kufar_city_cache
+from scrapers.kufar import lookup_kufar_location_async
+from pathlib import Path
+
 Админ-команды для управления ботом
 """
 
@@ -45,7 +52,6 @@ async def cmd_admin_clear_sent(message: Message):
         return
     
     # Получаем количество записей до удаления
-    from database_turso import get_turso_connection
     import asyncio
     
     conn = get_turso_connection()
@@ -212,9 +218,6 @@ async def cmd_admin_list_stale_sent(message: Message):
 @router.message(Command("admin_kufar_city_lookup"))
 async def cmd_admin_kufar_city_lookup(message: Message):
     """Админ-команда для lookup города в Kufar API"""
-    from constants.constants import LOG_KUFAR_LOOKUP
-    from scrapers.kufar import lookup_kufar_location
-    from database_turso import set_kufar_city_cache
     import asyncio
     
     # Проверка прав администратора
@@ -236,7 +239,6 @@ async def cmd_admin_kufar_city_lookup(message: Message):
         logger.info(f"{LOG_KUFAR_LOOKUP} admin command city={city_name}")
         
         # Вызываем async lookup
-        from scrapers.kufar import lookup_kufar_location_async
         result = await lookup_kufar_location_async(city_name)
         
         if result:
@@ -296,7 +298,6 @@ async def cmd_admin_refresh_city_map(message: Message):
     
     try:
         import os
-        from pathlib import Path
         
         # Путь к JSON файлу
         repo_root = Path(__file__).parent.parent.parent

@@ -1,4 +1,8 @@
 """
+from ai_valuator import valuate_listing, select_best_listings
+from bot.services.search_service import matches_user_filters
+from bot.services.notification_service import show_actions_menu, show_no_listings_message
+
 Сервис для работы с ИИ-оценкой объявлений
 """
 
@@ -22,7 +26,6 @@ logger = logging.getLogger(__name__)
 
 # ИИ-оценщик (опционально)
 try:
-    from ai_valuator import valuate_listing, select_best_listings
 
     AI_VALUATOR_AVAILABLE = True
 except ImportError:
@@ -163,8 +166,6 @@ async def check_new_listings_ai_mode(
     status_msg: Optional[Message] = None,
 ):
     """ИИ-режим: собирает все подходящие объявления, отправляет ИИ для выбора лучших"""
-    from bot.services.search_service import matches_user_filters
-    from bot.services.notification_service import show_actions_menu, show_no_listings_message
 
     logger.info(f"🤖 ИИ-режим для пользователя {user_id}")
 

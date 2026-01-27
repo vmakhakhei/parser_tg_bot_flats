@@ -1,4 +1,7 @@
 """
+from bot.utils.admin import is_admin
+from bot.services.search_service import check_new_listings
+
 Обработчики debug-команд для тестирования системы
 """
 
@@ -24,7 +27,6 @@ _debug_skip_filter_validation = False
 @router.message(Command("debug"))
 async def cmd_debug(message: Message):
     """Обработчик команды /debug run"""
-    from bot.utils.admin import is_admin
     
     # Проверка прав администратора
     if not is_admin(message.from_user.id):
@@ -52,7 +54,6 @@ async def cmd_debug(message: Message):
     
     try:
         # Используем check_new_listings с флагами для DEBUG режима
-        from bot.services.search_service import check_new_listings
         
         await check_new_listings(
             bot=message.bot,

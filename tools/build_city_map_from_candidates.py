@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
 """
+from collections import Counter
+
 Скрипт для построения канонической карты городов из city_map_candidates.json
 Создает data/kufar_city_map.json с нормализованными записями
 """
@@ -64,7 +66,6 @@ def build_city_map(candidates_path: str, output_path: str):
         
         # Если несколько вариантов, берем самый частый
         if len(label_ru_candidates) > 1:
-            from collections import Counter
             counter = Counter(label_ru_candidates)
             label_ru = counter.most_common(1)[0][0]
         

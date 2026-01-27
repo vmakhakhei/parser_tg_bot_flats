@@ -1,4 +1,7 @@
 """
+from services.location_service import search_locations
+from database_turso import get_turso_connection, set_user_filters_turso, get_user_filters_turso
+
 Скрипт миграции существующих пользователей с city_string на city_json
 """
 import json
@@ -17,8 +20,6 @@ logger = logging.getLogger(__name__)
 
 # Импорты
 try:
-    from services.location_service import search_locations
-    from database_turso import get_turso_connection, set_user_filters_turso, get_user_filters_turso
 except ImportError as e:
     logger.error(f"Ошибка импорта: {e}")
     raise

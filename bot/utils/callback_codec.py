@@ -1,4 +1,7 @@
 """
+from database_turso import save_short_link
+from database_turso import get_payload_from_code
+
 Утилита для кодирования и декодирования длинных callback_data.
 Позволяет обходить ограничение Telegram в 64 байта.
 """
@@ -19,7 +22,6 @@ async def encode_callback_payload(payload: str) -> str:
     """
     Сохраняет полный payload в базе данных и возвращает короткий код.
     """
-    from database_turso import save_short_link
 
     if not payload:
         return ""
@@ -34,7 +36,6 @@ async def decode_callback_payload(code: str) -> Optional[str]:
     """
     Получает полный payload по короткому коду из базы данных.
     """
-    from database_turso import get_payload_from_code
 
     if not code:
         return None

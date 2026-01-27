@@ -1,4 +1,6 @@
 """
+from utils.address_utils import split_address
+
 Утилиты для агрегации и дедупликации объявлений
 """
 import hashlib
@@ -187,7 +189,6 @@ def dedupe_by_signature(listings: List[Listing]) -> List[Listing]:
         # Извлекаем номер дома из адреса
         house = None
         try:
-            from utils.address_utils import split_address
             addr = split_address(l.address or "")
             house = addr.get("house")
         except:
@@ -222,7 +223,6 @@ def dedupe_by_signature(listings: List[Listing]) -> List[Listing]:
                 if existing_vendor and existing_vendor.lower() == vendor.lower():
                     existing_house = None
                     try:
-                        from utils.address_utils import split_address
                         existing_addr = split_address(existing_l.address or "")
                         existing_house = existing_addr.get("house")
                     except:

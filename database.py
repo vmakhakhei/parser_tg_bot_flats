@@ -1,4 +1,18 @@
 """
+from config import USE_TURSO_CACHE
+from database_turso import activate_user as activate_user_turso
+from database_turso import set_user_filters_turso
+from database_turso import get_active_users_turso
+from database_turso import is_ad_sent_to_user_turso
+from database_turso import mark_ad_sent_to_user_turso
+from database_turso import ensure_tables_exist
+from database_turso import create_or_update_user
+from database_turso import get_user_filters_turso
+from database_turso import get_cached_listings_by_filters
+from database_turso import cached_listing_to_listing
+from database_turso import cache_listings_batch
+from database_turso import update_cached_listings_daily
+
 Модуль для работы с базой данных SQLite
 Хранит информацию об уже отправленных объявлениях и настройках фильтров
 
@@ -254,12 +268,10 @@ async def activate_user(telegram_id: int, is_active: bool = True) -> bool:
     Returns:
         True если успешно, False при ошибке
     """
-    from config import USE_TURSO_CACHE
     if not USE_TURSO_CACHE:
         return False
     
     try:
-        from database_turso import activate_user as activate_user_turso
         return await activate_user_turso(telegram_id, is_active)
     except Exception as e:
         import logging
@@ -310,11 +322,9 @@ async def ensure_user_filters(telegram_id: int) -> bool:
         
         # Фильтров нет - создаем дефолтные
         # Проверяем, используется ли Turso
-        from config import USE_TURSO_CACHE
         
         if USE_TURSO_CACHE:
             try:
-                from database_turso import set_user_filters_turso
                 success = await set_user_filters_turso(
                     telegram_id=telegram_id,
                     city="барановичи",
@@ -456,7 +466,6 @@ async def get_active_users() -> List[int]:
     # #endregion
     
     # Проверяем, используется ли Turso
-    from config import USE_TURSO_CACHE
     # #region agent log
     try:
         with open('/Users/vmakhakei/TG BOT/.cursor/debug.log', 'a') as f:
@@ -466,7 +475,6 @@ async def get_active_users() -> List[int]:
     
     if USE_TURSO_CACHE:
         try:
-            from database_turso import get_active_users_turso
             result = await get_active_users_turso()
             # #region agent log
             try:
@@ -572,11 +580,9 @@ async def is_ad_sent_to_user(telegram_id: int, ad_external_id: str) -> bool:
     tg = normalize_telegram_id(telegram_id)
     ad = normalize_ad_id(ad_external_id)
     
-    from config import USE_TURSO_CACHE
     
     if USE_TURSO_CACHE:
         try:
-            from database_turso import is_ad_sent_to_user_turso
             return await is_ad_sent_to_user_turso(tg, ad)
         except ImportError:
             pass  # Fallback to local DB
@@ -614,11 +620,9 @@ async def mark_ad_sent_to_user(telegram_id: int, ad_external_id: str):
     tg = normalize_telegram_id(telegram_id)
     ad = normalize_ad_id(ad_external_id)
     
-    from config import USE_TURSO_CACHE
     
     if USE_TURSO_CACHE:
         try:
-            from database_turso import mark_ad_sent_to_user_turso
             await mark_ad_sent_to_user_turso(tg, ad)
             return
         except ImportError:
@@ -658,12 +662,10 @@ async def ensure_turso_tables_exist() -> bool:
     Returns:
         True если успешно, False при ошибке
     """
-    from config import USE_TURSO_CACHE
     if not USE_TURSO_CACHE:
         return False
     
     try:
-        from database_turso import ensure_tables_exist
         return await ensure_tables_exist()
     except Exception as e:
         import logging
@@ -684,12 +686,10 @@ async def create_or_update_user_turso(
     Returns:
         True если успешно, False при ошибке
     """
-    from config import USE_TURSO_CACHE
     if not USE_TURSO_CACHE:
         return False
     
     try:
-        from database_turso import create_or_update_user
         return await create_or_update_user(user_id, username, first_name, last_name)
     except Exception as e:
         import logging
@@ -705,12 +705,10 @@ async def get_user_filters_turso(user_id: int) -> Optional[Dict[str, Any]]:
     Returns:
         Словарь с фильтрами или None
     """
-    from config import USE_TURSO_CACHE
     if not USE_TURSO_CACHE:
         return None
     
     try:
-        from database_turso import get_user_filters_turso
         return await get_user_filters_turso(user_id)
     except Exception as e:
         import logging
@@ -750,12 +748,10 @@ async def set_user_filters_turso(
     Returns:
         True если успешно, False при ошибке
     """
-    from config import USE_TURSO_CACHE
     if not USE_TURSO_CACHE:
         return False
     
     try:
-        from database_turso import set_user_filters_turso
         
         # Конвертируем rooms в min_rooms/max_rooms для новой сигнатуры
         min_rooms = 1
@@ -798,12 +794,10 @@ async def get_cached_listings_by_filters_turso(
     Returns:
         Список объявлений из кэша или пустой список при ошибке
     """
-    from config import USE_TURSO_CACHE
     if not USE_TURSO_CACHE:
         return []
     
     try:
-        from database_turso import get_cached_listings_by_filters
         return await get_cached_listings_by_filters(
             city, min_rooms, max_rooms, min_price, max_price, limit, status
         )
@@ -822,7 +816,6 @@ def cached_listing_to_listing_turso(cached_dict: Dict[str, Any]):
         Объект Listing или None при ошибке
     """
     try:
-        from database_turso import cached_listing_to_listing
         return cached_listing_to_listing(cached_dict)
     except Exception as e:
         import logging
@@ -841,12 +834,10 @@ async def cache_listings_batch_turso(listings: List) -> int:
     Returns:
         Количество успешно сохраненных объявлений
     """
-    from config import USE_TURSO_CACHE
     if not USE_TURSO_CACHE:
         return 0
     
     try:
-        from database_turso import cache_listings_batch
         return await cache_listings_batch(listings)
     except Exception as e:
         import logging
@@ -859,12 +850,10 @@ async def update_cached_listings_daily_turso():
     """
     Ежедневное обновление кэша Turso: проверка статуса объявлений
     """
-    from config import USE_TURSO_CACHE
     if not USE_TURSO_CACHE:
         return
     
     try:
-        from database_turso import update_cached_listings_daily
         await update_cached_listings_daily()
     except Exception as e:
         import logging
@@ -883,12 +872,10 @@ async def ensure_turso_tables_exist() -> bool:
     Returns:
         True если успешно, False при ошибке
     """
-    from config import USE_TURSO_CACHE
     if not USE_TURSO_CACHE:
         return False
     
     try:
-        from database_turso import ensure_tables_exist
         return await ensure_tables_exist()
     except Exception as e:
         import logging
@@ -909,12 +896,10 @@ async def create_or_update_user_turso(
     Returns:
         True если успешно, False при ошибке
     """
-    from config import USE_TURSO_CACHE
     if not USE_TURSO_CACHE:
         return False
     
     try:
-        from database_turso import create_or_update_user
         return await create_or_update_user(user_id, username, first_name, last_name)
     except Exception as e:
         import logging
@@ -930,12 +915,10 @@ async def get_user_filters_turso(user_id: int) -> Optional[Dict[str, Any]]:
     Returns:
         Словарь с фильтрами или None
     """
-    from config import USE_TURSO_CACHE
     if not USE_TURSO_CACHE:
         return None
     
     try:
-        from database_turso import get_user_filters_turso
         return await get_user_filters_turso(user_id)
     except Exception as e:
         import logging
@@ -975,12 +958,10 @@ async def set_user_filters_turso(
     Returns:
         True если успешно, False при ошибке
     """
-    from config import USE_TURSO_CACHE
     if not USE_TURSO_CACHE:
         return False
     
     try:
-        from database_turso import set_user_filters_turso
         
         # Конвертируем rooms в min_rooms/max_rooms для новой сигнатуры
         min_rooms = 1
@@ -1023,12 +1004,10 @@ async def get_cached_listings_by_filters_turso(
     Returns:
         Список объявлений из кэша или пустой список при ошибке
     """
-    from config import USE_TURSO_CACHE
     if not USE_TURSO_CACHE:
         return []
     
     try:
-        from database_turso import get_cached_listings_by_filters
         return await get_cached_listings_by_filters(
             city, min_rooms, max_rooms, min_price, max_price, limit, status
         )
@@ -1047,7 +1026,6 @@ def cached_listing_to_listing_turso(cached_dict: Dict[str, Any]):
         Объект Listing
     """
     try:
-        from database_turso import cached_listing_to_listing
         return cached_listing_to_listing(cached_dict)
     except Exception as e:
         import logging
@@ -1066,12 +1044,10 @@ async def cache_listings_batch_turso(listings: List) -> int:
     Returns:
         Количество успешно сохраненных объявлений
     """
-    from config import USE_TURSO_CACHE
     if not USE_TURSO_CACHE:
         return 0
     
     try:
-        from database_turso import cache_listings_batch
         return await cache_listings_batch(listings)
     except Exception as e:
         import logging
@@ -1084,12 +1060,10 @@ async def update_cached_listings_daily_turso():
     """
     Ежедневное обновление кэша Turso: проверка статуса объявлений
     """
-    from config import USE_TURSO_CACHE
     if not USE_TURSO_CACHE:
         return
     
     try:
-        from database_turso import update_cached_listings_daily
         await update_cached_listings_daily()
     except Exception as e:
         import logging

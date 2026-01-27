@@ -1,4 +1,13 @@
 """
+from error_logger import log_error, log_warning, log_info
+from constants.constants import LOG_KUFAR_LOOKUP, LOG_KUFAR_RESP
+from database_turso import get_kufar_city_cache, set_kufar_city_cache
+from config import KUFAR_USE_SLUG_FOR_SEARCH
+from bot.utils.city_lookup import find_city_slug_by_text
+from constants.constants import LOG_KUFAR_REQ, LOG_KUFAR_RESP
+from database_turso import ad_exists
+from datetime import datetime
+
 Парсер для re.kufar.by через официальный API
 """
 import re
@@ -48,8 +57,6 @@ async def lookup_kufar_location_async(city_name: str) -> Optional[Dict[str, Any]
     Returns:
         Словарь с данными локации или None
     """
-    from constants.constants import LOG_KUFAR_LOOKUP, LOG_KUFAR_RESP
-    from database_turso import get_kufar_city_cache, set_kufar_city_cache
     
     city_norm = city_name.strip().lower()
     
@@ -139,7 +146,6 @@ class KufarScraper(BaseScraper):
         Returns:
             gtsy параметр для API
         """
-        from config import KUFAR_USE_SLUG_FOR_SEARCH
         
         # Если передан dict с city_slug (новый формат из user_filters)
         if isinstance(city, dict):
@@ -161,7 +167,6 @@ class KufarScraper(BaseScraper):
                 # Пробуем найти slug через локальную карту городов
                 try:
                     import asyncio
-                    from bot.utils.city_lookup import find_city_slug_by_text
                     
                     # Синхронный вызов async функции
                     try:
@@ -187,7 +192,6 @@ class KufarScraper(BaseScraper):
             # Пробуем найти slug через локальную карту городов
             try:
                 import asyncio
-                from bot.utils.city_lookup import find_city_slug_by_text
                 
                 try:
                     loop = asyncio.get_event_loop()
@@ -239,7 +243,6 @@ class KufarScraper(BaseScraper):
         user_id: int | None = None,  # Для логирования
     ) -> List[Listing]:
         """Получает список объявлений через API с пагинацией"""
-        from constants.constants import LOG_KUFAR_REQ, LOG_KUFAR_RESP
         
         # Определяем city для логирования
         city_name = city if isinstance(city, str) else city.get("name", "unknown") if isinstance(city, dict) else str(city)
@@ -736,7 +739,6 @@ class KufarScraper(BaseScraper):
             list_time = ad.get("list_time", "")  # Unix timestamp
             if list_time:
                 try:
-                    from datetime import datetime
                     # Если это timestamp в миллисекундах
                     if len(str(list_time)) > 10:
                         timestamp = int(list_time) / 1000

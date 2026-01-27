@@ -1,4 +1,8 @@
 """
+from rapidfuzz import process, fuzz
+from error_logger import log_info, log_warning
+from database_turso import turso_transaction
+
 Модуль для поиска городов по тексту с использованием локальной карты городов
 Поддерживает exact match, prefix match и fuzzy search
 """
@@ -10,13 +14,11 @@ from difflib import get_close_matches
 
 # Пробуем импортировать rapidfuzz для лучшего fuzzy search
 try:
-    from rapidfuzz import process, fuzz
     RAPIDFUZZ_AVAILABLE = True
 except ImportError:
     RAPIDFUZZ_AVAILABLE = False
 
 try:
-    from error_logger import log_info, log_warning
 except ImportError:
     def log_info(source, message):
         print(f"[{source}] {message}")
@@ -73,7 +75,6 @@ async def find_city_slug_by_text(query: str, limit: int = 10, threshold: int = 8
     def _search_in_db():
         """Синхронная функция для поиска в БД"""
         try:
-            from database_turso import turso_transaction
             
             with turso_transaction() as conn:
                 # Загружаем все города из БД
@@ -252,7 +253,6 @@ async def get_city_by_slug(slug: str) -> Optional[Dict[str, Any]]:
     """
     def _get_from_db():
         try:
-            from database_turso import turso_transaction
             
             with turso_transaction() as conn:
                 cursor = conn.execute("""

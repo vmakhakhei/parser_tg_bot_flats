@@ -1,4 +1,9 @@
 """
+from error_logger import log_error, log_warning, log_info
+from pathlib import Path
+from constants.constants import LOG_FILTER_LOAD
+from constants.constants import LOG_FILTER_SAVE
+
 Модуль для работы с Turso Database (кэширование объявлений)
 Используется для экономии трафика и API вызовов
 
@@ -19,7 +24,6 @@ logger = logging.getLogger(__name__)
 
 # Импортируем error_logger для логирования ошибок
 try:
-    from error_logger import log_error, log_warning, log_info
 except ImportError:
     def log_error(source, message, exception=None):
         logger.error(f"[{source}] {message}: {exception}")
@@ -1322,7 +1326,6 @@ async def load_city_map_from_json(json_path: str) -> int:
     """
     try:
         import os
-        from pathlib import Path
         
         # Проверяем существование файла
         if not os.path.exists(json_path):
@@ -1556,7 +1559,6 @@ async def get_user_filters_turso(telegram_id: int) -> Optional[Dict[str, Any]]:
                 cursor = conn.execute(query, (telegram_id,))
                 row = cursor.fetchone()
                 
-                from constants.constants import LOG_FILTER_LOAD
                 
                 if not row:
                     logger.info(f"{LOG_FILTER_LOAD} user={telegram_id} NOT_FOUND")
@@ -1816,7 +1818,6 @@ async def set_user_filters_turso(telegram_id: int, filters: Dict[str, Any]) -> N
         city_id = filters["city"].get("id")
         city_name = filters["city"].get("name", city_value)
     
-    from constants.constants import LOG_FILTER_SAVE
     
     logger.info(
         f"{LOG_FILTER_SAVE} user={telegram_id} city={city_name!r} city_id={city_id} rooms={filters.get('min_rooms')}-{filters.get('max_rooms')} price={filters.get('min_price')}-{filters.get('max_price')} seller={filters.get('seller_type')} mode={filters.get('delivery_mode', 'brief')}"

@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
 """
+from database_turso import get_turso_connection
+
 Pre-deploy проверки для безопасного деплоя
 Проверяет наличие критических данных и конфигурации перед деплоем
 """
@@ -76,7 +78,6 @@ async def check_database():
     print("[PREDEPLOY] Checking database...")
     
     try:
-        from database_turso import get_turso_connection
         
         conn = get_turso_connection()
         if not conn:

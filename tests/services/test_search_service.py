@@ -1,4 +1,6 @@
 """
+from bot.services.search_service import _filter_log_counters
+
 Unit-тесты для search_service.py
 Тестирование фильтрации, сортировки и обработки пустых результатов
 """
@@ -383,7 +385,6 @@ class TestEmptyResults:
     
     def test_no_matching_listings(self):
         """Тест: нет объявлений, соответствующих фильтрам"""
-        from scrapers.base import Listing
         
         listings = [
             Listing(
@@ -423,7 +424,6 @@ class TestEmptyResults:
     
     def test_empty_filters(self):
         """Тест обработки пустых фильтров"""
-        from scrapers.base import Listing
         
         listing = Listing(
             id="test_1",
@@ -448,7 +448,6 @@ class TestEmptyResults:
     
     def test_none_filters(self):
         """Тест обработки None фильтров"""
-        from scrapers.base import Listing
         
         listing = Listing(
             id="test_1",
@@ -483,7 +482,6 @@ class TestEmptyResults:
     
     def test_all_listings_filtered_out(self):
         """Тест: все объявления отфильтрованы"""
-        from scrapers.base import Listing
         
         listings = [
             Listing(
@@ -549,7 +547,6 @@ class TestFilterCounters:
     
     def test_reset_filter_counters(self):
         """Тест сброса счетчиков фильтрации"""
-        from bot.services.search_service import _filter_log_counters
         
         # Устанавливаем счетчики
         _filter_log_counters[123] = {"filtered": 10, "passed": 5}
@@ -561,7 +558,6 @@ class TestFilterCounters:
     
     def test_filter_counters_initialization(self):
         """Тест инициализации счетчиков при фильтрации"""
-        from scrapers.base import Listing
         
         listing = Listing(
             id="test_1",
@@ -587,7 +583,6 @@ class TestFilterCounters:
         # Первый вызов должен инициализировать счетчик
         matches_user_filters(listing, filters, user_id=user_id, log_details=True)
         
-        from bot.services.search_service import _filter_log_counters
         assert user_id in _filter_log_counters
         assert "filtered" in _filter_log_counters[user_id]
         assert "passed" in _filter_log_counters[user_id]

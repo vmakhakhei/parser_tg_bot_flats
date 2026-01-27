@@ -1,5 +1,9 @@
 #!/usr/bin/env python3
 """
+from bot.utils.city_lookup import find_city_slug_by_text
+from database_turso import get_user_filters_turso, get_turso_connection
+from bot.services.search_service import validate_user_filters
+
 Post-deploy smoke tests
 Проверяет критическую функциональность после деплоя
 НЕ отправляет сообщения в Telegram - только проверяет логику
@@ -17,7 +21,6 @@ async def test_city_lookup():
     print("[SMOKE] Testing city lookup...")
     
     try:
-        from bot.utils.city_lookup import find_city_slug_by_text
         
         test_cities = ["Минск", "Барановичи", "Полоцк"]
         all_passed = True
@@ -53,7 +56,6 @@ async def test_user_filters_read():
     print("[SMOKE] Testing user filters read...")
     
     try:
-        from database_turso import get_user_filters_turso, get_turso_connection
         
         # Проверяем, что можем подключиться к БД
         conn = get_turso_connection()
@@ -103,7 +105,6 @@ async def test_filter_validation():
     print("[SMOKE] Testing filter validation...")
     
     try:
-        from bot.services.search_service import validate_user_filters
         
         # Тест 1: Валидные фильтры
         valid_filters = {

@@ -1,4 +1,14 @@
 """
+from error_logger import log_info, log_error
+from error_logger import log_info, log_warning, log_error
+from database import ensure_turso_tables_exist
+from error_logger import log_info, log_warning
+from ai_valuator import get_valuator
+from error_logger import log_error
+from database import update_cached_listings_daily_turso
+from database import get_active_users
+from database_turso import get_user_filters_turso, has_valid_user_filters
+
 Главный файл запуска бота мониторинга квартир
 
 Entrypoint для приложения:
@@ -46,7 +56,6 @@ def setup_logging():
 
 def load_config():
     """Загружает и проверяет конфигурацию"""
-    from error_logger import log_info, log_error
     
     # Конфигурация загружается автоматически при импорте config
     # Проверяем наличие обязательных параметров
@@ -62,7 +71,6 @@ def load_config():
 
 async def initialize_database():
     """Инициализирует базу данных"""
-    from error_logger import log_info, log_warning, log_error
     
     # Инициализация основной базы данных
     try:
@@ -75,7 +83,6 @@ async def initialize_database():
     # Инициализация Turso (если включено)
     if USE_TURSO_CACHE:
         try:
-            from database import ensure_turso_tables_exist
             await ensure_turso_tables_exist()
             log_info("main", "✅ Turso кэш инициализирован")
         except Exception as e:
@@ -87,10 +94,8 @@ async def initialize_database():
 
 def check_ai_valuator():
     """Проверяет доступность ИИ-оценщика"""
-    from error_logger import log_info, log_warning
     
     try:
-        from ai_valuator import get_valuator
         valuator = get_valuator()
         if valuator:
             provider_name = valuator.provider.upper()
@@ -110,7 +115,6 @@ logger = setup_logging()
 
 async def run_search_once(bot):
     """Одноразовая проверка объявлений (запускается при старте)"""
-    from error_logger import log_info, log_error
     
     log_info("main", "🔍 Запуск первоначальной проверки объявлений...")
     try:
@@ -121,7 +125,6 @@ async def run_search_once(bot):
 
 async def scheduled_check(bot):
     """Запланированная проверка объявлений (для периодических запусков)"""
-    from error_logger import log_info, log_error
     
     log_info("scheduler", f"Запуск плановой проверки: {datetime.now()}")
     try:
@@ -132,7 +135,6 @@ async def scheduled_check(bot):
 
 async def cleanup_old_records():
     """Очистка старых записей"""
-    from error_logger import log_info, log_error
     
     log_info("scheduler", "Очистка старых записей...")
     try:
@@ -197,10 +199,8 @@ async def main():
     if USE_TURSO_CACHE:
         async def update_turso_cache():
             """Обновление кэша Turso"""
-            from error_logger import log_error
             
             try:
-                from database import update_cached_listings_daily_turso
                 await update_cached_listings_daily_turso()
             except Exception as e:
                 log_error("scheduler", "Ошибка обновления кэша Turso", e)
@@ -221,8 +221,6 @@ async def main():
     # Первая проверка при запуске ТОЛЬКО если есть активные пользователи с валидными фильтрами
     # Это предотвращает запуск поиска до того, как пользователь нажмет /start
     async def check_and_run_search():
-        from database import get_active_users
-        from database_turso import get_user_filters_turso, has_valid_user_filters
         
         active_users = await get_active_users()
         if not active_users:

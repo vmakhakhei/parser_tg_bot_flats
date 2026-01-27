@@ -1,4 +1,21 @@
 """
+from ai_valuator import valuate_listing
+from datetime import datetime
+from constants.constants import DEBUG_FORCE_RUN
+from bot.handlers.debug import get_debug_force_run, get_debug_ignore_sent_ads
+from bot.utils.ui_helpers import build_keyboard
+from bot.utils.callback_codec import encode_callback_payload
+from collections import defaultdict
+from bot.utils.ui_helpers import get_contextual_hint
+from bot.handlers.debug import get_debug_force_run, get_debug_bypass_summary, get_debug_ignore_sent_ads
+from database import get_user_filters
+from bot.services.search_service import matches_user_filters, validate_user_filters
+from bot.services.ai_service import check_new_listings_ai_mode
+from config import BOT_TOKEN
+from statistics import median
+from database_turso import build_dynamic_query
+from bot.services.search_service import apartment_dict_to_listing
+
 Сервис для отправки уведомлений пользователям
 """
 
@@ -50,7 +67,6 @@ USER_DELIVERY_MODES: Dict[int, str] = {}
 
 # ИИ-оценщик (опционально)
 try:
-    from ai_valuator import valuate_listing
 
     AI_VALUATOR_AVAILABLE = True
 except ImportError:
@@ -180,7 +196,6 @@ def format_listing_message(listing: Listing, ai_valuation: Optional[Dict[str, An
     if listing.created_at:
         # Форматируем дату для вывода
         try:
-            from datetime import datetime
 
             date_obj = datetime.strptime(listing.created_at, "%Y-%m-%d")
             today = datetime.now()
@@ -250,8 +265,6 @@ async def send_listing_to_user(
         
         # Идемпотентная проверка: если объявление уже было отправлено этому пользователю - не отправляем
         # В DEBUG режиме игнорируем проверку sent_ads
-        from constants.constants import DEBUG_FORCE_RUN
-        from bot.handlers.debug import get_debug_force_run, get_debug_ignore_sent_ads
         
         debug_force = get_debug_force_run() or DEBUG_FORCE_RUN
         debug_ignore_sent_ads = get_debug_ignore_sent_ads()
@@ -310,11 +323,20 @@ async def send_listing_to_user(
         photos = listing.photos
 
         # Создаем стандартизированные кнопки действий для объявления
-        from bot.utils.ui_helpers import build_keyboard
         
         # Формируем список кнопок действий
+        # Для open_ad используем URL напрямую (Telegram ограничивает callback_data до 64 байт)
+        # Если URL слишком длинный, кодируем через callback_codec
+        
+        # Проверяем длину URL и кодируем если нужно
+        url_for_callback = listing.url
+        if len(f"open_ad:{listing.url}") > 64:
+            # URL слишком длинный - кодируем через short_links
+            url_code = await encode_callback_payload(listing.url)
+            url_for_callback = url_code
+        
         action_items = [
-            ("🔗 Открыть объявление", f"open_ad:{listing.id}"),
+            ("🔗 Открыть объявление", f"open_ad:{url_for_callback}"),
             ("💾 Сохранить", f"save_ad:{listing.id}"),
             ("🔇 Не показывать", f"mute_ad:{listing.id}"),
         ]
@@ -477,7 +499,6 @@ async def send_grouped_listings_to_user(bot: Bot, user_id: int, listings: List[L
     
     try:
         # ШАГ 2: ОБЩИЙ ЛОГ АНАЛИЗА ГРУППЫ
-        from collections import defaultdict
         
         vendors = set()
         for l in listings:
@@ -704,8 +725,6 @@ async def show_actions_menu(
     bot: Bot, user_id: int, listings_count: int, mode: str = "Обычный режим"
 ):
     """Показывает меню действий после отправки объявлений"""
-    from aiogram.utils.keyboard import InlineKeyboardBuilder
-    from bot.utils.ui_helpers import get_contextual_hint
 
     builder = InlineKeyboardBuilder()
 
@@ -765,7 +784,6 @@ async def show_actions_menu(
 
 async def show_no_listings_message(bot: Bot, user_id: int, status_msg: Optional[Message] = None):
     """Показывает сообщение об отсутствии объявлений с предложением обновить фильтры"""
-    from aiogram.utils.keyboard import InlineKeyboardBuilder
 
     message_text = (
         "📭 <b>Объявлений не найдено</b>\n\n"
@@ -884,8 +902,6 @@ async def notify_users_about_new_apartments_summary(
         force: Принудительный режим (игнорирует проверки sent_ads)
         bypass_summary: Обойти summary и отправлять полные уведомления (для DEBUG режима)
     """
-    from constants.constants import DEBUG_FORCE_RUN
-    from bot.handlers.debug import get_debug_force_run, get_debug_bypass_summary, get_debug_ignore_sent_ads
     
     # Проверяем DEBUG режим
     debug_force = force or get_debug_force_run() or DEBUG_FORCE_RUN
@@ -904,11 +920,6 @@ async def notify_users_about_new_apartments_summary(
         return
     
     try:
-        from database import get_user_filters
-        from bot.services.search_service import matches_user_filters, validate_user_filters
-        from bot.services.ai_service import check_new_listings_ai_mode
-        from aiogram import Bot
-        from config import BOT_TOKEN
         
         if not BOT_TOKEN:
             log_warning("notification", "[SUMMARY] BOT_TOKEN не настроен, уведомления отключены")
@@ -1085,7 +1096,6 @@ async def send_summary_message(bot: Bot, user_id: int, apartments: List[Listing]
             dispersion_indicator = ""
             
             if prices_per_m2:
-                from statistics import median
                 house_median_ppm = median(prices_per_m2)
                 
                 # Индикатор цены (если цена за м² ниже рынка > 10%)
@@ -1168,7 +1178,6 @@ async def get_listings_for_house_hash(house_hash: str) -> List[Listing]:
         Список Listing объектов с соответствующим адресом
     """
     try:
-        from database_turso import build_dynamic_query
         
         # Получаем все недавние объявления из БД
         all_apartments = await build_dynamic_query(
@@ -1178,7 +1187,6 @@ async def get_listings_for_house_hash(house_hash: str) -> List[Listing]:
         
         # Фильтруем по hash адреса
         import hashlib
-        from bot.services.search_service import apartment_dict_to_listing
         listings = []
         for a in all_apartments:
             listing = apartment_dict_to_listing(a)

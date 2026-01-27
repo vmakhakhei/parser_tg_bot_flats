@@ -1,4 +1,32 @@
 """
+from database_turso import activate_user
+from database_turso import upsert_user
+from database_turso import ensure_user_filters, get_user_filters_turso
+from bot.utils.ui_helpers import get_contextual_hint
+from bot.utils.ui_helpers import build_paginated_keyboard, get_contextual_hint
+from database_turso import get_user_filters_turso, set_user_filters_turso
+from bot.handlers.filters_quick import show_filters_master
+from bot.utils.city_lookup import find_city_slug_by_text
+from bot.services.search_service import fetch_listings_for_user
+from database_turso import get_user_filters_turso
+from bot.utils.ui_helpers import build_more_menu_keyboard, get_contextual_hint
+from config import DEFAULT_SOURCES
+from bot.utils.ui_helpers import build_confirmation_keyboard
+from database_turso import set_user_filters_turso
+from bot.services.notification_service import get_listings_for_house_hash
+from utils.scoring import calc_price_per_m2, calc_market_median_ppm
+from statistics import median
+from services.location_service import get_location_by_id
+from services.location_service import search_locations
+from bot.services.notification_service import get_listings_for_house_hash, send_grouped_listings_with_pagination
+from database_turso import ensure_user_filters, get_user_filters_turso, set_user_filters_turso
+from constants.constants import LOG_FILTER_SAVE, LOG_FILTER_VERIFY
+from collections import OrderedDict
+from bot.utils.ui_helpers import build_keyboard
+from bot.utils.callback_codec import encode_callback_payload
+from bot.utils.city_lookup import get_city_by_slug
+from bot.utils.callback_codec import decode_callback_payload
+
 Обработчики команды /start и настройки фильтров
 """
 
@@ -156,7 +184,6 @@ async def cmd_start(message: Message, state: FSMContext):
     # КРИТИЧНО: Активируем пользователя ДО любого await send_message(...)
     # Это гарантирует, что пользователь будет виден в get_active_users()
     try:
-        from database_turso import activate_user
         
         success = await activate_user(
             telegram_id=user_id,
@@ -176,7 +203,6 @@ async def cmd_start(message: Message, state: FSMContext):
     
     # Также обновляем username пользователя (для совместимости)
     try:
-        from database_turso import upsert_user
         await upsert_user(
             telegram_id=user_id,
             username=message.from_user.username,
@@ -187,7 +213,6 @@ async def cmd_start(message: Message, state: FSMContext):
 
     # ЧАСТЬ C — START → QUICK MASTER
     # Гарантируем наличие фильтров
-    from database_turso import ensure_user_filters, get_user_filters_turso
     await ensure_user_filters(telegram_id=user_id)
     
     # Получаем фильтры из Turso
@@ -241,7 +266,6 @@ async def cmd_start(message: Message, state: FSMContext):
         rooms_text = f"{min_rooms}–{max_rooms}" if min_rooms != max_rooms else str(min_rooms)
         
         # Контекстная подсказка
-        from bot.utils.ui_helpers import get_contextual_hint
         hint = get_contextual_hint("main_menu")
         
         await message.answer(
@@ -261,7 +285,6 @@ async def show_city_selection_menu(message: Message, state: FSMContext, page: in
     import logging
     logger = logging.getLogger(__name__)
     
-    from bot.utils.ui_helpers import build_paginated_keyboard, get_contextual_hint
     
     # Подготавливаем список городов для пагинации
     cities_items = [(display_name, normalized_name) for display_name, normalized_name in BELARUS_CITIES]
@@ -348,9 +371,6 @@ async def cb_setup_city(callback: CallbackQuery, state: FSMContext):
     # Отвечаем сразу, чтобы предотвратить повторные запросы
     await callback.answer()
     
-    from database_turso import get_user_filters_turso, set_user_filters_turso
-    from bot.handlers.filters_quick import show_filters_master
-    from bot.utils.city_lookup import find_city_slug_by_text
     
     city_name = callback.data.replace("setup_city_", "")
     
@@ -397,7 +417,6 @@ async def cb_check_now(callback: CallbackQuery):
 @router.callback_query(F.data == "check_now_ai")
 async def cb_check_now_ai(callback: CallbackQuery):
     """Обработчик кнопки 'ИИ-анализ'"""
-    from bot.services.search_service import fetch_listings_for_user
 
     user_id = callback.from_user.id
     await callback.answer("Запускаю ИИ-анализ...")
@@ -417,13 +436,11 @@ async def cb_check_now_ai(callback: CallbackQuery):
 @router.callback_query(F.data == "setup_filters")
 async def cb_setup_filters(callback: CallbackQuery, state: FSMContext):
     """Настройка фильтров для пользователя"""
-    from bot.handlers.filters_quick import show_filters_master
     
     await callback.answer("Настройка фильтров...")
     user_id = callback.from_user.id
     
     # Проверяем, есть ли город
-    from database_turso import get_user_filters_turso
     filters = await get_user_filters_turso(user_id)
     
     city_data = filters.get("city") if filters else None
@@ -461,7 +478,6 @@ async def cb_show_stats(callback: CallbackQuery):
     """Показывает статистику пользователя"""
     await callback.answer("Статистика пока не реализована")
     # Возвращаемся в меню "Ещё"
-    from bot.utils.ui_helpers import build_more_menu_keyboard, get_contextual_hint
     await callback.message.edit_text(
         "📊 <b>Статистика</b>\n\n"
         "Функция статистики находится в разработке.\n\n"
@@ -475,7 +491,6 @@ async def cb_show_stats(callback: CallbackQuery):
 async def cb_show_more_menu(callback: CallbackQuery):
     """Показывает меню 'Ещё' с дополнительными функциями"""
     await callback.answer()
-    from bot.utils.ui_helpers import build_more_menu_keyboard, get_contextual_hint
     
     await callback.message.edit_text(
         "📋 <b>Дополнительные функции</b>\n\n"
@@ -490,8 +505,6 @@ async def cb_back_to_main(callback: CallbackQuery):
     """Возвращает пользователя в главное меню"""
     await callback.answer()
     
-    from database_turso import get_user_filters_turso
-    from bot.utils.ui_helpers import get_contextual_hint
     
     user_id = callback.from_user.id
     user_filters = await get_user_filters_turso(user_id) or {}
@@ -537,8 +550,6 @@ async def cb_show_sources(callback: CallbackQuery):
     """Показывает список источников объявлений"""
     await callback.answer()
     
-    from config import DEFAULT_SOURCES
-    from bot.utils.ui_helpers import build_more_menu_keyboard, get_contextual_hint
     
     sources = [
         ("Kufar.by", "kufar", "крупнейшая доска объявлений Беларуси"),
@@ -575,7 +586,6 @@ async def cb_reset_filters_confirm(callback: CallbackQuery):
     """Показывает подтверждение сброса фильтров"""
     await callback.answer()
     
-    from bot.utils.ui_helpers import build_confirmation_keyboard
     
     await callback.message.edit_text(
         "⚠️ <b>Сброс фильтров</b>\n\n"
@@ -598,7 +608,6 @@ async def cb_reset_filters(callback: CallbackQuery, state: FSMContext):
     user_id = callback.from_user.id
     
     # Сбрасываем фильтры в Turso
-    from database_turso import set_user_filters_turso
     await set_user_filters_turso(user_id, {
         "city": None,
         "min_rooms": 1,
@@ -646,9 +655,6 @@ async def cb_explain_house(callback: CallbackQuery):
     # Отвечаем сразу, чтобы предотвратить повторные запросы
     await callback.answer()
     
-    from bot.services.notification_service import get_listings_for_house_hash
-    from utils.scoring import calc_price_per_m2, calc_market_median_ppm
-    from statistics import median
     
     try:
         house_hash = callback.data.split("|")[1]
@@ -730,9 +736,6 @@ async def cb_loc_select(callback: CallbackQuery):
     # Отвечаем сразу, чтобы предотвратить повторные запросы
     await callback.answer()
     
-    from database_turso import get_user_filters_turso, set_user_filters_turso
-    from services.location_service import get_location_by_id
-    from bot.handlers.filters_quick import show_filters_master
     
     try:
         parts = callback.data.split(":")
@@ -750,7 +753,6 @@ async def cb_loc_select(callback: CallbackQuery):
         
         if not location:
             # Если не найдено в кэше, пробуем найти через search
-            from services.location_service import search_locations
             results = await search_locations(location_id)
             if results:
                 location = results[0]
@@ -815,7 +817,6 @@ async def cb_show_house(callback: CallbackQuery):
     # Отвечаем сразу, чтобы предотвратить повторные запросы
     await callback.answer()
     
-    from bot.services.notification_service import get_listings_for_house_hash, send_grouped_listings_with_pagination
     
     user_id = callback.from_user.id
     
@@ -856,7 +857,6 @@ async def cb_show_house(callback: CallbackQuery):
 @router.message(Command("mode"))
 async def cmd_mode(message: Message):
     """Обработчик команды /mode для переключения режимов доставки"""
-    from database_turso import get_user_filters_turso, set_user_filters_turso
     
     user_id = message.from_user.id
     filters = await get_user_filters_turso(user_id)
@@ -893,7 +893,6 @@ async def cmd_mode(message: Message):
 @router.callback_query(F.data.startswith("mode_set:"))
 async def cb_mode_set(callback: CallbackQuery):
     """Обработчик установки режима доставки"""
-    from database_turso import get_user_filters_turso, set_user_filters_turso
     
     mode = callback.data.split(":")[1]
     user_id = callback.from_user.id
@@ -921,12 +920,6 @@ async def process_city_input_no_fsm(message: Message, state: FSMContext):
     Обработка ввода города БЕЗ FSM (использует флаг awaiting_city)
     """
     import logging
-    from database_turso import ensure_user_filters, get_user_filters_turso, set_user_filters_turso
-    from bot.handlers.filters_quick import show_filters_master
-    from bot.utils.city_lookup import find_city_slug_by_text
-    from aiogram.utils.keyboard import InlineKeyboardBuilder
-    from constants.constants import LOG_FILTER_SAVE, LOG_FILTER_VERIFY
-    from error_logger import log_info
     
     logger = logging.getLogger(__name__)
     user_id = message.from_user.id
@@ -997,7 +990,6 @@ async def process_city_input_no_fsm(message: Message, state: FSMContext):
     
     # Несколько результатов - показываем выбор
     # Дедупликация городов по slug для предотвращения дубликатов кнопок
-    from collections import OrderedDict
     unique_results = []
     seen_slugs = set()
     for city_result in results[:6]:  # Максимум 6 вариантов
@@ -1007,8 +999,6 @@ async def process_city_input_no_fsm(message: Message, state: FSMContext):
             unique_results.append(city_result)
     
     # Используем стандартизированную функцию build_keyboard
-    from bot.utils.ui_helpers import build_keyboard
-    from bot.utils.callback_codec import encode_callback_payload
     
     city_items = []
     for city_result in unique_results:
@@ -1046,11 +1036,6 @@ async def process_city_input_no_fsm(message: Message, state: FSMContext):
 async def process_city_input(message: Message, state: FSMContext):
     """Обработка ввода города с использованием локальной карты городов"""
     import logging
-    from database_turso import ensure_user_filters, get_user_filters_turso, set_user_filters_turso
-    from bot.handlers.filters_quick import show_filters_master
-    from bot.utils.city_lookup import find_city_slug_by_text
-    from aiogram.utils.keyboard import InlineKeyboardBuilder
-    from constants.constants import LOG_FILTER_SAVE, LOG_FILTER_VERIFY
     
     logger = logging.getLogger(__name__)
     user_id = message.from_user.id
@@ -1106,7 +1091,6 @@ async def process_city_input(message: Message, state: FSMContext):
         # Сохраняем фильтры
         await set_user_filters_turso(user_id, filters)
         
-        from error_logger import log_info
         log_info("city_selected", f"[CITY_SELECTED] user={user_id} city={label_ru} slug={slug} auto_selected=True")
         logger.info(f"{LOG_FILTER_SAVE} user={user_id} city={label_ru} slug={slug} auto_selected=True")
         
@@ -1123,7 +1107,6 @@ async def process_city_input(message: Message, state: FSMContext):
     
     # Несколько результатов - показываем выбор
     # Дедупликация городов по slug для предотвращения дубликатов кнопок
-    from collections import OrderedDict
     unique_results = []
     seen_slugs = set()
     for city_result in results[:6]:  # Максимум 6 вариантов
@@ -1133,8 +1116,6 @@ async def process_city_input(message: Message, state: FSMContext):
             unique_results.append(city_result)
     
     # Используем стандартизированную функцию build_keyboard
-    from bot.utils.ui_helpers import build_keyboard
-    from bot.utils.callback_codec import encode_callback_payload
     
     city_items = []
     for city_result in unique_results:
@@ -1175,10 +1156,6 @@ async def cb_select_city(callback: CallbackQuery, state: FSMContext):
     await callback.answer()
     
     import logging
-    from database_turso import get_user_filters_turso, set_user_filters_turso
-    from bot.handlers.filters_quick import show_filters_master
-    from bot.utils.city_lookup import get_city_by_slug
-    from bot.utils.callback_codec import decode_callback_payload
     
     logger = logging.getLogger(__name__)
     user_id = callback.from_user.id
@@ -1224,7 +1201,6 @@ async def cb_select_city(callback: CallbackQuery, state: FSMContext):
         # Сохраняем фильтры
         await set_user_filters_turso(user_id, filters)
         
-        from error_logger import log_info
         log_info("city_selected", f"[CITY_SELECTED] user={user_id} city={label_ru} slug={slug} selected_from_list=True")
         logger.info(f"[CITY_SELECT] user={user_id} city={label_ru} slug={slug}")
         
@@ -1247,7 +1223,6 @@ async def cb_select_city(callback: CallbackQuery, state: FSMContext):
 @router.message(SetupStates.waiting_for_city)
 async def process_setup_city_input(message: Message, state: FSMContext):
     """Обработка ввода города в пошаговой настройке (legacy, использует новый lookup)"""
-    from database_turso import get_user_filters_turso
     
     # Перенаправляем на основной обработчик
     await process_city_input(message, state)
@@ -1277,7 +1252,6 @@ async def handle_text_message(message: Message, state: FSMContext):
     Generic handler для текстовых сообщений.
     Проверяет флаг awaiting_city и обрабатывает ввод города без FSM.
     """
-    from database_turso import get_user_filters_turso
     
     # Проверяем, ожидает ли пользователь ввода города
     user_id = message.from_user.id

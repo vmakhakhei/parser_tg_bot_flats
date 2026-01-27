@@ -1,5 +1,8 @@
 #!/usr/bin/env python3
 """
+from database_turso import build_dynamic_query
+from scrapers.aggregator import apartment_dict_to_listing, group_similar_listings
+
 Score tuning tool.
 Usage:
   python tools/score_tuning.py --since 2026-01-20T00:00:00 --topk 5
@@ -20,12 +23,10 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 # Импорты проекта
 try:
-    from database_turso import build_dynamic_query
 except ImportError:
     build_dynamic_query = None
 
 try:
-    from scrapers.aggregator import apartment_dict_to_listing, group_similar_listings
 except ImportError:
     raise ImportError("Не удалось импортировать функции из scrapers.aggregator")
 

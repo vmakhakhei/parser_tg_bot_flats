@@ -1,4 +1,8 @@
 """
+from error_logger import log_error, log_warning, log_info
+from datetime import datetime
+from datetime import datetime, timedelta
+
 Парсер для baranovichi.etagi.com
 """
 import re
@@ -210,15 +214,12 @@ class EtagiScraper(BaseScraper):
                 date_match = re.search(pattern, text, re.IGNORECASE)
                 if date_match:
                     if pattern == r'сегодня':
-                        from datetime import datetime
                         created_at = datetime.now().strftime("%Y-%m-%d")
                         break
                     elif pattern == r'вчера':
-                        from datetime import datetime, timedelta
                         created_at = (datetime.now() - timedelta(days=1)).strftime("%Y-%m-%d")
                         break
                     elif pattern == r'(\d+)\s+дн[яей]\s+назад':
-                        from datetime import datetime, timedelta
                         days_ago = int(date_match.group(1))
                         created_at = (datetime.now() - timedelta(days=days_ago)).strftime("%Y-%m-%d")
                         break

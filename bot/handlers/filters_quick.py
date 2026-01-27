@@ -1,4 +1,8 @@
 """
+from bot.handlers.start import normalize_city_for_ui
+from bot.utils.ui_helpers import build_keyboard
+from bot.utils.ui_helpers import get_contextual_hint
+
 Упрощенный мастер настройки фильтров - один экран с кнопками
 БЕЗ FSM, мгновенное сохранение при каждом действии
 """
@@ -15,7 +19,6 @@ router = Router()
 def format_filters_summary(f: dict) -> str:
     """Форматирует сводку фильтров для отображения"""
     # Используем единый helper для нормализации города
-    from bot.handlers.start import normalize_city_for_ui
     city = normalize_city_for_ui(f)
     min_rooms = f.get('min_rooms', 1)
     max_rooms = f.get('max_rooms', 4)
@@ -119,7 +122,6 @@ def build_filters_keyboard(telegram_id: int) -> InlineKeyboardMarkup:
 
 def build_rooms_keyboard(telegram_id: int) -> InlineKeyboardMarkup:
     """Клавиатура для выбора комнат"""
-    from bot.utils.ui_helpers import build_keyboard
     
     items = [
         ("Студия", f"filters:{telegram_id}:rooms:0"),
@@ -138,7 +140,6 @@ def build_rooms_keyboard(telegram_id: int) -> InlineKeyboardMarkup:
 
 def build_price_keyboard(telegram_id: int) -> InlineKeyboardMarkup:
     """Клавиатура для выбора цены"""
-    from bot.utils.ui_helpers import build_keyboard
     
     items = [
         ("0–30k", f"filters:{telegram_id}:price:0-30000"),
@@ -203,7 +204,6 @@ async def show_filters_master(callback_or_message, telegram_id: int):
         filters
     )
     
-    from bot.utils.ui_helpers import get_contextual_hint
     hint = get_contextual_hint("filters_master")
     
     text = "⚙️ <b>Настройка поиска квартир</b>\n\n" + format_filters_summary(filters) + f"\n\n{hint}"
@@ -381,7 +381,6 @@ async def filters_callback_handler(callback: CallbackQuery):
         elif action == "city" and value == "select":
             # Запрашиваем город текстом
             # Уже ответили в начале функции
-            from bot.utils.ui_helpers import get_contextual_hint
             hint = get_contextual_hint("city_selection")
             await callback.message.edit_text(
                 f"📍 Введите название города (например: Барановичи):\n\n{hint}"

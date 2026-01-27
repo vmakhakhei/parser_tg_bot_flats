@@ -1,4 +1,8 @@
 """
+from bs4 import BeautifulSoup
+from datetime import datetime
+from datetime import datetime, timedelta
+
 Парсер для Realt.Onliner.by
 """
 import re
@@ -60,7 +64,6 @@ class OnlinerRealtScraper(BaseScraper):
         max_price: int,
     ) -> List[Listing]:
         """Запасной вариант через HTML"""
-        from bs4 import BeautifulSoup
         
         url = f"{self.BASE_URL}/sale/apartments/baranovichi"
         html = await self._fetch_html(url)
@@ -171,7 +174,6 @@ class OnlinerRealtScraper(BaseScraper):
             created_timestamp = apt.get("created_at", "") or apt.get("published_at", "") or apt.get("date", "")
             if created_timestamp:
                 try:
-                    from datetime import datetime
                     # Если это timestamp в миллисекундах
                     if len(str(created_timestamp)) > 10:
                         timestamp = int(created_timestamp) / 1000
@@ -182,7 +184,6 @@ class OnlinerRealtScraper(BaseScraper):
                 except:
                     # Если не timestamp, пробуем как строку даты
                     try:
-                        from datetime import datetime
                         # Пробуем разные форматы
                         for fmt in ["%Y-%m-%d", "%Y-%m-%dT%H:%M:%S", "%d.%m.%Y"]:
                             try:
@@ -293,15 +294,12 @@ class OnlinerRealtScraper(BaseScraper):
                 date_match = re.search(pattern, text, re.IGNORECASE)
                 if date_match:
                     if pattern == r'сегодня':
-                        from datetime import datetime
                         created_at = datetime.now().strftime("%Y-%m-%d")
                         break
                     elif pattern == r'вчера':
-                        from datetime import datetime, timedelta
                         created_at = (datetime.now() - timedelta(days=1)).strftime("%Y-%m-%d")
                         break
                     elif pattern == r'(\d+)\s+дн[яей]\s+назад':
-                        from datetime import datetime, timedelta
                         days_ago = int(date_match.group(1))
                         created_at = (datetime.now() - timedelta(days=days_ago)).strftime("%Y-%m-%d")
                         break
