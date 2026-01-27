@@ -40,7 +40,6 @@ except ImportError as e:
     LIBSQL_AVAILABLE = False
 
 from config import TURSO_DB_URL, TURSO_AUTH_TOKEN, USE_TURSO_CACHE
-from database import generate_content_hash
 from scrapers.base import Listing
 
 
@@ -326,6 +325,7 @@ async def cache_listings_batch(listings: List[Listing]) -> int:
         return 0
     
     try:
+        from database import generate_content_hash
         def _execute_batch():
             saved_count = 0
             with turso_transaction() as conn:
