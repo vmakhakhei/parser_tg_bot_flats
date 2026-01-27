@@ -252,6 +252,7 @@ async def cache_listing(listing: Listing) -> bool:
         True если успешно, False при ошибке
     """
     try:
+        from database import generate_content_hash
         content_hash = generate_content_hash(
             listing.rooms,
             listing.area,
@@ -417,6 +418,7 @@ async def mark_listing_deleted(listing_id: str) -> bool:
 async def update_cached_listing(listing: Listing) -> bool:
     """Обновляет объявление в кэше (атомарная операция)"""
     try:
+        from database import generate_content_hash
         content_hash = generate_content_hash(
             listing.rooms,
             listing.area,
