@@ -1,14 +1,4 @@
 """
-from error_logger import log_info, log_error
-from error_logger import log_info, log_warning, log_error
-from database import ensure_turso_tables_exist
-from error_logger import log_info, log_warning
-from ai_valuator import get_valuator
-from error_logger import log_error
-from database import update_cached_listings_daily_turso
-from database import get_active_users
-from database_turso import get_user_filters_turso, has_valid_user_filters
-
 Главный файл запуска бота мониторинга квартир
 
 Entrypoint для приложения:
@@ -19,6 +9,7 @@ Entrypoint для приложения:
 # ВАЖНО: Импортируем error_logger ПЕРВЫМ, чтобы настроить логирование
 # Это гарантирует, что логи идут в stdout/stderr для Railway
 import error_logger
+from error_logger import log_info, log_warning, log_error
 
 import asyncio
 import logging
@@ -31,7 +22,9 @@ from apscheduler.triggers.interval import IntervalTrigger
 from bot.app import create_bot
 from bot.services.search_service import check_new_listings
 from config import CHECK_INTERVAL, BOT_TOKEN, USE_TURSO_CACHE
-from database import init_database, clear_old_listings
+from database import init_database, clear_old_listings, ensure_turso_tables_exist, update_cached_listings_daily_turso, get_active_users
+from database_turso import get_user_filters_turso, has_valid_user_filters
+from ai_valuator import get_valuator
 
 
 def setup_logging():
