@@ -1,18 +1,4 @@
 """
-from config import USE_TURSO_CACHE
-from database_turso import activate_user as activate_user_turso
-from database_turso import set_user_filters_turso
-from database_turso import get_active_users_turso
-from database_turso import is_ad_sent_to_user_turso
-from database_turso import mark_ad_sent_to_user_turso
-from database_turso import ensure_tables_exist
-from database_turso import create_or_update_user
-from database_turso import get_user_filters_turso
-from database_turso import get_cached_listings_by_filters
-from database_turso import cached_listing_to_listing
-from database_turso import cache_listings_batch
-from database_turso import update_cached_listings_daily
-
 Модуль для работы с базой данных SQLite
 Хранит информацию об уже отправленных объявлениях и настройках фильтров
 
@@ -25,10 +11,22 @@ from database_turso import update_cached_listings_daily
 """
 import aiosqlite
 import hashlib
-from config import DATABASE_PATH
+from config import DATABASE_PATH, USE_TURSO_CACHE
 from typing import Optional, List, Dict, Any
 from datetime import datetime
 from scrapers.utils.id_utils import normalize_ad_id, normalize_telegram_id
+from database_turso import activate_user as activate_user_turso
+from database_turso import set_user_filters_turso
+from database_turso import get_active_users_turso
+from database_turso import is_ad_sent_to_user_turso
+from database_turso import mark_ad_sent_to_user_turso
+from database_turso import ensure_tables_exist
+from database_turso import create_or_update_user
+from database_turso import get_user_filters_turso
+from database_turso import get_cached_listings_by_filters
+from database_turso import cached_listing_to_listing
+from database_turso import cache_listings_batch
+from database_turso import update_cached_listings_daily
 
 
 def generate_content_hash(rooms: int, area: float, address: str, price: int) -> str:
