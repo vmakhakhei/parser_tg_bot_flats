@@ -8,8 +8,7 @@ from database_turso import get_user_filters_turso, set_user_filters_turso, ensur
 from pydantic import ValidationError
 import logging
 
-from bot.handlers.start import normalize_city_for_ui
-from bot.utils.ui_helpers import build_keyboard
+from bot.utils.ui_helpers import build_keyboard, normalize_city_for_ui
 
 logger = logging.getLogger(__name__)
 router = Router()

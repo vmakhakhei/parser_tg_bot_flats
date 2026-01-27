@@ -14,7 +14,7 @@ from error_logger import log_info
 
 from database import get_user_filters, set_user_filters
 from database_turso import activate_user, upsert_user, ensure_user_filters, get_user_filters_turso, set_user_filters_turso
-from bot.utils.ui_helpers import get_contextual_hint, build_paginated_keyboard, build_more_menu_keyboard, build_confirmation_keyboard, build_keyboard
+from bot.utils.ui_helpers import get_contextual_hint, build_paginated_keyboard, build_more_menu_keyboard, build_confirmation_keyboard, build_keyboard, normalize_city_for_ui
 from bot.handlers.filters_quick import show_filters_master
 from bot.utils.city_lookup import find_city_slug_by_text, get_city_by_slug
 from bot.services.search_service import fetch_listings_for_user

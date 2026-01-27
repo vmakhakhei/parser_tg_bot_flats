@@ -61,6 +61,45 @@ def build_keyboard(
     return builder.as_markup()
 
 
+def normalize_city_for_ui(filters: dict) -> str:
+    """
+    Нормализует название города из фильтров для отображения в UI.
+    
+    Args:
+        filters: Словарь фильтров пользователя
+    
+    Returns:
+        Строка с названием города для отображения
+    """
+    import logging
+    logger = logging.getLogger(__name__)
+    
+    # Приоритет 1: city_display (явное поле для отображения)
+    city_display = filters.get("city_display")
+    if city_display:
+        logger.debug(f"[CITY_UI_RENDER] city_display={city_display}")
+        return str(city_display)
+    
+    # Приоритет 2: city как dict (location object)
+    city_data = filters.get("city")
+    if isinstance(city_data, dict):
+        display = city_data.get("display") or city_data.get("name") or city_data.get("label_ru")
+        if display:
+            logger.debug(f"[CITY_UI_RENDER] city_display={display} (from dict)")
+            return str(display)
+        logger.debug(f"[CITY_UI_RENDER] city_display=Не выбран (dict without display)")
+        return "Не выбран"
+    
+    # Приоритет 3: city как строка
+    if city_data and isinstance(city_data, str):
+        logger.debug(f"[CITY_UI_RENDER] city_display={city_data}")
+        return city_data
+    
+    # Нет города
+    logger.debug(f"[CITY_UI_RENDER] city_display=Не выбран (no city)")
+    return "Не выбран"
+
+
 def get_contextual_hint(screen_name: str) -> str:
     """
     Возвращает контекстную подсказку для экрана.
