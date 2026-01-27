@@ -1,7 +1,7 @@
 """
 from database_turso import get_user_filters_turso
 from aiogram.utils.keyboard import InlineKeyboardBuilder
-from bot.handlers.start import normalize_city_for_ui
+from bot.utils.ui_helpers import normalize_city_for_ui
 
 Обработчики команд поиска и проверки объявлений
 """

@@ -113,51 +113,6 @@ def validate_city(city: str) -> tuple[bool, Optional[str]]:
     return False, None
 
 
-def normalize_city_for_ui(filters: dict) -> str:
-    """
-    Единый helper для нормализации города для UI.
-    
-    Обрабатывает разные форматы:
-    - city_display (строка) → возвращает строку
-    - city как dict → извлекает display/name
-    - city как строка → возвращает строку
-    - нет города → "Не выбран"
-    
-    Args:
-        filters: Словарь фильтров пользователя
-        
-    Returns:
-        Строка с названием города для отображения
-    """
-    import logging
-    logger = logging.getLogger(__name__)
-    
-    # Приоритет 1: city_display (явное поле для отображения)
-    city_display = filters.get("city_display")
-    if city_display:
-        logger.debug(f"[CITY_UI_RENDER] city_display={city_display}")
-        return str(city_display)
-    
-    # Приоритет 2: city как dict (location object)
-    city_data = filters.get("city")
-    if isinstance(city_data, dict):
-        display = city_data.get("display") or city_data.get("name") or city_data.get("label_ru")
-        if display:
-            logger.debug(f"[CITY_UI_RENDER] city_display={display} (from dict)")
-            return str(display)
-        logger.debug(f"[CITY_UI_RENDER] city_display=Не выбран (dict without display)")
-        return "Не выбран"
-    
-    # Приоритет 3: city как строка
-    if city_data and isinstance(city_data, str):
-        logger.debug(f"[CITY_UI_RENDER] city_display={city_data}")
-        return city_data
-    
-    # Нет города
-    logger.debug(f"[CITY_UI_RENDER] city_display=Не выбран (no city)")
-    return "Не выбран"
-
-
 @router.message(CommandStart())
 async def cmd_start(message: Message, state: FSMContext):
     """Обработчик команды /start - пошаговая настройка фильтров"""
