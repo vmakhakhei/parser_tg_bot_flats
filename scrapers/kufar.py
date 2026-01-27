@@ -26,6 +26,7 @@ from scrapers.base import BaseScraper, Listing
 
 # Импортируем error_logger если доступен
 try:
+    from error_logger import log_error, log_warning, log_info
 except ImportError:
     def log_error(source, message, exception=None):
         print(f"[ERROR] [{source}] {message}: {exception}")
@@ -553,6 +554,7 @@ class KufarScraper(BaseScraper):
         
         # Импортируем функцию проверки существования объявления
         try:
+            from database_turso import ad_exists
         except ImportError:
             log_warning("kufar", "Не удалось импортировать ad_exists, проверка старых объявлений отключена")
             ad_exists = None
