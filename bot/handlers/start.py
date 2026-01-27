@@ -1,32 +1,4 @@
 """
-from database_turso import activate_user
-from database_turso import upsert_user
-from database_turso import ensure_user_filters, get_user_filters_turso
-from bot.utils.ui_helpers import get_contextual_hint
-from bot.utils.ui_helpers import build_paginated_keyboard, get_contextual_hint
-from database_turso import get_user_filters_turso, set_user_filters_turso
-from bot.handlers.filters_quick import show_filters_master
-from bot.utils.city_lookup import find_city_slug_by_text
-from bot.services.search_service import fetch_listings_for_user
-from database_turso import get_user_filters_turso
-from bot.utils.ui_helpers import build_more_menu_keyboard, get_contextual_hint
-from config import DEFAULT_SOURCES
-from bot.utils.ui_helpers import build_confirmation_keyboard
-from database_turso import set_user_filters_turso
-from bot.services.notification_service import get_listings_for_house_hash
-from utils.scoring import calc_price_per_m2, calc_market_median_ppm
-from statistics import median
-from services.location_service import get_location_by_id
-from services.location_service import search_locations
-from bot.services.notification_service import get_listings_for_house_hash, send_grouped_listings_with_pagination
-from database_turso import ensure_user_filters, get_user_filters_turso, set_user_filters_turso
-from constants.constants import LOG_FILTER_SAVE, LOG_FILTER_VERIFY
-from collections import OrderedDict
-from bot.utils.ui_helpers import build_keyboard
-from bot.utils.callback_codec import encode_callback_payload
-from bot.utils.city_lookup import get_city_by_slug
-from bot.utils.callback_codec import decode_callback_payload
-
 Обработчики команды /start и настройки фильтров
 """
 
@@ -41,6 +13,19 @@ from aiogram.utils.keyboard import InlineKeyboardBuilder
 from error_logger import log_info
 
 from database import get_user_filters, set_user_filters
+from database_turso import activate_user, upsert_user, ensure_user_filters, get_user_filters_turso, set_user_filters_turso
+from bot.utils.ui_helpers import get_contextual_hint, build_paginated_keyboard, build_more_menu_keyboard, build_confirmation_keyboard, build_keyboard
+from bot.handlers.filters_quick import show_filters_master
+from bot.utils.city_lookup import find_city_slug_by_text, get_city_by_slug
+from bot.services.search_service import fetch_listings_for_user
+from config import DEFAULT_SOURCES
+from bot.services.notification_service import get_listings_for_house_hash, send_grouped_listings_with_pagination
+from utils.scoring import calc_price_per_m2, calc_market_median_ppm
+from statistics import median
+from services.location_service import get_location_by_id, search_locations
+from constants.constants import LOG_FILTER_SAVE, LOG_FILTER_VERIFY
+from collections import OrderedDict
+from bot.utils.callback_codec import encode_callback_payload, decode_callback_payload
 from bot.services.search_service import check_new_listings
 from bot.services.ai_service import check_new_listings_ai_mode
 from datetime import datetime
