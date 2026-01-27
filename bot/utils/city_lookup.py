@@ -19,6 +19,7 @@ except ImportError:
     RAPIDFUZZ_AVAILABLE = False
 
 try:
+    from error_logger import log_info, log_warning
 except ImportError:
     def log_info(source, message):
         print(f"[{source}] {message}")
