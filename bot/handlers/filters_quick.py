@@ -1,8 +1,4 @@
 """
-from bot.handlers.start import normalize_city_for_ui
-from bot.utils.ui_helpers import build_keyboard
-from bot.utils.ui_helpers import get_contextual_hint
-
 Упрощенный мастер настройки фильтров - один экран с кнопками
 БЕЗ FSM, мгновенное сохранение при каждом действии
 """
@@ -11,6 +7,9 @@ from aiogram.types import CallbackQuery, InlineKeyboardMarkup, InlineKeyboardBut
 from database_turso import get_user_filters_turso, set_user_filters_turso, ensure_user_filters
 from pydantic import ValidationError
 import logging
+
+from bot.handlers.start import normalize_city_for_ui
+from bot.utils.ui_helpers import build_keyboard
 
 logger = logging.getLogger(__name__)
 router = Router()
@@ -204,7 +203,13 @@ async def show_filters_master(callback_or_message, telegram_id: int):
         filters
     )
     
-    hint = get_contextual_hint("filters_master")
+    # Safe fallback для get_contextual_hint (может быть не импортирован)
+    try:
+        from bot.utils.ui_helpers import get_contextual_hint
+        hint = get_contextual_hint("filters_master")
+    except (NameError, ImportError) as e:
+        hint = ""
+        logger.warning(f"[FILTER_UI] get_contextual_hint is not available, using empty hint: {e}")
     
     text = "⚙️ <b>Настройка поиска квартир</b>\n\n" + format_filters_summary(filters) + f"\n\n{hint}"
     keyboard = build_filters_keyboard(telegram_id)
@@ -381,7 +386,13 @@ async def filters_callback_handler(callback: CallbackQuery):
         elif action == "city" and value == "select":
             # Запрашиваем город текстом
             # Уже ответили в начале функции
-            hint = get_contextual_hint("city_selection")
+            # Safe fallback для get_contextual_hint
+            try:
+                from bot.utils.ui_helpers import get_contextual_hint
+                hint = get_contextual_hint("city_selection")
+            except (NameError, ImportError) as e:
+                hint = ""
+                logger.warning(f"[FILTER_UI] get_contextual_hint is not available, using empty hint: {e}")
             await callback.message.edit_text(
                 f"📍 Введите название города (например: Барановичи):\n\n{hint}"
             )
