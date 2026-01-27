@@ -1,8 +1,4 @@
 """
-from database_turso import get_user_filters_turso
-from aiogram.utils.keyboard import InlineKeyboardBuilder
-from bot.utils.ui_helpers import normalize_city_for_ui
-
 Обработчики команд поиска и проверки объявлений
 """
 
@@ -10,9 +6,12 @@ from aiogram import Router
 from aiogram.types import Message
 from aiogram.filters import Command
 from aiogram.enums import ParseMode
+from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 from bot.services.search_service import check_new_listings
 from database import get_user_filters
+from database_turso import get_user_filters_turso
+from bot.utils.ui_helpers import normalize_city_for_ui
 from database_turso import set_user_filters_turso
 
 router = Router()
