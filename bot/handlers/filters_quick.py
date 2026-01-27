@@ -119,42 +119,40 @@ def build_filters_keyboard(telegram_id: int) -> InlineKeyboardMarkup:
 
 def build_rooms_keyboard(telegram_id: int) -> InlineKeyboardMarkup:
     """Клавиатура для выбора комнат"""
+    from bot.utils.ui_helpers import build_keyboard
+    
     items = [
-        ("1", f"filters:{telegram_id}:rooms:1"),
-        ("2", f"filters:{telegram_id}:rooms:2"),
-        ("3", f"filters:{telegram_id}:rooms:3"),
-        ("4+", f"filters:{telegram_id}:rooms:4+"),
-        ("Любые", f"filters:{telegram_id}:rooms:any"),
-        ("◀️ Назад", f"filters:{telegram_id}:back"),
+        ("Студия", f"filters:{telegram_id}:rooms:0"),
+        ("1 комн", f"filters:{telegram_id}:rooms:1"),
+        ("2 комн", f"filters:{telegram_id}:rooms:2"),
+        ("3 комн", f"filters:{telegram_id}:rooms:3"),
+        ("3+ комн", f"filters:{telegram_id}:rooms:4+"),
     ]
     
-    # Первые 3 кнопки в одну строку, остальные по одной
-    rows: list[list[InlineKeyboardButton]] = [
-        [
-            InlineKeyboardButton(text=str(items[0][0]), callback_data=str(items[0][1])),
-            InlineKeyboardButton(text=str(items[1][0]), callback_data=str(items[1][1])),
-            InlineKeyboardButton(text=str(items[2][0]), callback_data=str(items[2][1])),
-        ],
-        [InlineKeyboardButton(text=str(items[3][0]), callback_data=str(items[3][1]))],
-        [InlineKeyboardButton(text=str(items[4][0]), callback_data=str(items[4][1]))],
-        [InlineKeyboardButton(text=str(items[5][0]), callback_data=str(items[5][1]))],
-    ]
-    
-    return _build_safe_keyboard(telegram_id, items, custom_rows=rows)
+    return build_keyboard(
+        items,
+        columns=2,
+        back_button=("◀️ Назад", f"filters:{telegram_id}:back")
+    )
 
 
 def build_price_keyboard(telegram_id: int) -> InlineKeyboardMarkup:
     """Клавиатура для выбора цены"""
+    from bot.utils.ui_helpers import build_keyboard
+    
     items = [
         ("0–30k", f"filters:{telegram_id}:price:0-30000"),
         ("30–50k", f"filters:{telegram_id}:price:30000-50000"),
         ("50–80k", f"filters:{telegram_id}:price:50000-80000"),
         ("80k+", f"filters:{telegram_id}:price:80000-99999999"),
         ("Любая", f"filters:{telegram_id}:price:any"),
-        ("◀️ Назад", f"filters:{telegram_id}:back"),
     ]
     
-    return _build_safe_keyboard(telegram_id, items)
+    return build_keyboard(
+        items,
+        columns=2,
+        back_button=("◀️ Назад", f"filters:{telegram_id}:back")
+    )
 
 
 def build_seller_keyboard(telegram_id: int) -> InlineKeyboardMarkup:
@@ -277,6 +275,8 @@ async def filters_callback_handler(callback: CallbackQuery):
         if action == "rooms":
             if value == "any":
                 filters["min_rooms"], filters["max_rooms"] = 0, 99
+            elif value == "0":
+                filters["min_rooms"], filters["max_rooms"] = 0, 0
             elif value == "4+":
                 filters["min_rooms"], filters["max_rooms"] = 4, 99
             else:

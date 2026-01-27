@@ -17,6 +17,7 @@ from bot.handlers import help, search, start, debug, admin, filters_quick
 from bot.middlewares.error_middleware import ErrorMiddleware
 from bot.middlewares.rate_limit_middleware import RateLimitMiddleware
 from bot.middlewares.spam_protection_middleware import SpamProtectionMiddleware
+from bot.middlewares.callback_logging_middleware import CallbackLoggingMiddleware
 
 logger = logging.getLogger(__name__)
 
@@ -37,7 +38,8 @@ async def create_bot() -> tuple[Bot, Dispatcher]:
     # Регистрируем middleware в правильном порядке:
     # 1. Rate limiting (первым, чтобы блокировать слишком частые запросы)
     # 2. Spam protection (вторым, для защиты от спама)
-    # 3. Error handling (последним, для логирования ошибок)
+    # 3. Callback logging (для логирования всех callback-нажатий)
+    # 4. Error handling (последним, для логирования ошибок)
 
     # Rate limiting
     dp.message.middleware(RateLimitMiddleware())
@@ -46,6 +48,9 @@ async def create_bot() -> tuple[Bot, Dispatcher]:
     # Spam protection
     dp.message.middleware(SpamProtectionMiddleware())
     dp.callback_query.middleware(SpamProtectionMiddleware())
+
+    # Callback logging
+    dp.callback_query.middleware(CallbackLoggingMiddleware())
 
     # Error handling
     dp.message.middleware(ErrorMiddleware())
@@ -59,34 +64,8 @@ async def create_bot() -> tuple[Bot, Dispatcher]:
     dp.include_router(admin.router)
     dp.include_router(filters_quick.router)
 
-    # Временно импортируем старый router для сохранения функциональности
-    # Постепенно перенесем все обработчики в новые модули
-    # Импортируем router из старого bot.py (он находится в корне проекта)
-    try:
-        # Импортируем router из старого bot.py напрямую
-        # Используем абсолютный импорт из корня проекта
-        import importlib.util
-        import sys
-        import os
-
-        # Получаем путь к старому bot.py
-        root_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-        bot_path = os.path.join(root_dir, "bot.py")
-
-        if os.path.exists(bot_path):
-            # Загружаем модуль динамически
-            spec = importlib.util.spec_from_file_location("bot_legacy", bot_path)
-            bot_legacy = importlib.util.module_from_spec(spec)
-            sys.modules["bot_legacy"] = bot_legacy
-            spec.loader.exec_module(bot_legacy)
-
-            # Регистрируем старый router
-            if hasattr(bot_legacy, "router"):
-                dp.include_router(bot_legacy.router)
-                logger.info("Старый router зарегистрирован для обратной совместимости")
-    except Exception as e:
-        logger.warning(f"Не удалось импортировать старый router: {e}")
-        # Продолжаем работу без старого router - используем только новую структуру
+    # Старый router из bot.py удален для устранения дублирования хэндлеров
+    # Все обработчики должны быть перенесены в соответствующие модули в bot/handlers/
 
     # Инициализация базы данных
     await init_database()

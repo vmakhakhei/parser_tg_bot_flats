@@ -309,16 +309,32 @@ async def send_listing_to_user(
         message_text = format_listing_message(listing, ai_valuation)
         photos = listing.photos
 
-        # Создаем кнопку "ИИ Оценка квартиры" если ИИ доступен, оценка не была выполнена и объявление еще не оценено
-        reply_markup = None
+        # Создаем стандартизированные кнопки действий для объявления
+        from bot.utils.ui_helpers import build_keyboard
+        
+        # Формируем список кнопок действий
+        action_items = [
+            ("🔗 Открыть объявление", f"open_ad:{listing.id}"),
+            ("💾 Сохранить", f"save_ad:{listing.id}"),
+            ("🔇 Не показывать", f"mute_ad:{listing.id}"),
+        ]
+        
+        # Добавляем кнопку ИИ-оценки если доступна
+        ai_valuation_markup = None
         if not use_ai_valuation and AI_VALUATOR_AVAILABLE and valuate_listing:
             # Проверяем, было ли объявление уже оценено через ИИ
             if not await is_listing_ai_valuated(user_id, listing.id):
-                # Используем только listing_id в callback_data (Telegram ограничивает до 64 байт)
-                builder = InlineKeyboardBuilder()
-                builder.button(text="🤖 ИИ Оценка квартиры", callback_data=f"ai_val_{listing.id}")
-                builder.adjust(1)
-                reply_markup = builder.as_markup()
+                ai_valuation_markup = build_keyboard(
+                    [("🤖 ИИ Оценка квартиры", f"ai_val_{listing.id}")],
+                    columns=1
+                )
+        
+        # Основные кнопки действий
+        reply_markup = build_keyboard(
+            action_items,
+            columns=1,
+            back_button=("◀️ Назад", "main_menu")
+        )
 
         if photos:
             # Отправляем медиагруппу с фотографиями
@@ -349,17 +365,36 @@ async def send_listing_to_user(
             # Минимальная задержка между сообщениями для снижения flood-risk
             await asyncio.sleep(1.2)
 
-            # Если есть кнопка ИИ-оценки, отправляем её отдельным сообщением после медиагруппы
+            # Отправляем кнопки действий отдельным сообщением после медиагруппы
             # (Telegram не поддерживает кнопки в медиагруппе напрямую)
-            # Кнопка ИИ-оценки не критична, продолжаем даже если не отправилась
-            if reply_markup:
+            try:
+                actions_msg = await safe_send_message(
+                    bot=bot,
+                    chat_id=user_id,
+                    text="<b>Действия с объявлением:</b>",
+                    parse_mode=ParseMode.HTML,
+                    reply_markup=reply_markup,
+                )
+                if actions_msg is None:
+                    log_warning("notification", f"Не удалось отправить кнопки действий для {listing.id}")
+            except TelegramRetryAfter as e:
+                retry_after = int(e.retry_after)
+                USER_SEND_LOCKS[user_id] = time() + retry_after
+                log_warning(
+                    "notification",
+                    f"Flood control для пользователя {user_id} при отправке кнопок действий, пауза {retry_after} сек"
+                )
+            
+            # Если есть кнопка ИИ-оценки, отправляем её отдельным сообщением
+            if ai_valuation_markup:
+                await asyncio.sleep(0.5)  # Небольшая задержка между сообщениями
                 try:
                     ai_button_msg = await safe_send_message(
                         bot=bot,
                         chat_id=user_id,
                         text="🤖 <b>Хотите получить ИИ-оценку этой квартиры?</b>",
                         parse_mode=ParseMode.HTML,
-                        reply_markup=reply_markup,
+                        reply_markup=ai_valuation_markup,
                     )
                     if ai_button_msg is None:
                         log_warning("notification", f"Не удалось отправить кнопку ИИ-оценки для {listing.id}")
