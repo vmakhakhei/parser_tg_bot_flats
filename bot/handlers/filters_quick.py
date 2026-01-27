@@ -14,6 +14,12 @@ logger = logging.getLogger(__name__)
 router = Router()
 
 
+# Fallback для get_contextual_hint (если функция ещё не реализована)
+def get_contextual_hint(key: str) -> str:
+    """Заглушка для контекстных подсказок"""
+    return ""
+
+
 def format_filters_summary(f: dict) -> str:
     """Форматирует сводку фильтров для отображения"""
     # Используем единый helper для нормализации города
@@ -202,13 +208,8 @@ async def show_filters_master(callback_or_message, telegram_id: int):
         filters
     )
     
-    # Safe fallback для get_contextual_hint (может быть не импортирован)
-    try:
-        from bot.utils.ui_helpers import get_contextual_hint
-        hint = get_contextual_hint("filters_master")
-    except (NameError, ImportError) as e:
-        hint = ""
-        logger.warning(f"[FILTER_UI] get_contextual_hint is not available, using empty hint: {e}")
+    # Используем fallback функцию get_contextual_hint (определена в начале файла)
+    hint = get_contextual_hint("filters_master")
     
     text = "⚙️ <b>Настройка поиска квартир</b>\n\n" + format_filters_summary(filters) + f"\n\n{hint}"
     keyboard = build_filters_keyboard(telegram_id)
@@ -244,6 +245,57 @@ async def show_filters_master(callback_or_message, telegram_id: int):
             )
 
 
+async def show_rooms_selection(callback_or_message, user_id: int):
+    """Показывает меню выбора комнат"""
+    try:
+        text = "🚪 Выберите количество комнат:"
+        keyboard = build_rooms_keyboard(user_id)
+        if isinstance(callback_or_message, CallbackQuery):
+            await callback_or_message.message.edit_text(text, reply_markup=keyboard, parse_mode="HTML")
+        else:
+            await callback_or_message.answer(text, reply_markup=keyboard, parse_mode="HTML")
+    except Exception as e:
+        logger.error(f"[FILTER_UI] Failed to show rooms selection user={user_id} error={e}", exc_info=True)
+        if isinstance(callback_or_message, CallbackQuery):
+            await callback_or_message.answer("Ошибка отображения меню", show_alert=True)
+        else:
+            await callback_or_message.answer("Ошибка отображения меню")
+
+
+async def show_price_selection(callback_or_message, user_id: int):
+    """Показывает меню выбора цены"""
+    try:
+        text = "💰 Выберите диапазон цены:"
+        keyboard = build_price_keyboard(user_id)
+        if isinstance(callback_or_message, CallbackQuery):
+            await callback_or_message.message.edit_text(text, reply_markup=keyboard, parse_mode="HTML")
+        else:
+            await callback_or_message.answer(text, reply_markup=keyboard, parse_mode="HTML")
+    except Exception as e:
+        logger.error(f"[FILTER_UI] Failed to show price selection user={user_id} error={e}", exc_info=True)
+        if isinstance(callback_or_message, CallbackQuery):
+            await callback_or_message.answer("Ошибка отображения меню", show_alert=True)
+        else:
+            await callback_or_message.answer("Ошибка отображения меню")
+
+
+async def show_seller_selection(callback_or_message, user_id: int):
+    """Показывает меню выбора продавца"""
+    try:
+        text = "👤 Выберите тип продавца:"
+        keyboard = build_seller_keyboard(user_id)
+        if isinstance(callback_or_message, CallbackQuery):
+            await callback_or_message.message.edit_text(text, reply_markup=keyboard, parse_mode="HTML")
+        else:
+            await callback_or_message.answer(text, reply_markup=keyboard, parse_mode="HTML")
+    except Exception as e:
+        logger.error(f"[FILTER_UI] Failed to show seller selection user={user_id} error={e}", exc_info=True)
+        if isinstance(callback_or_message, CallbackQuery):
+            await callback_or_message.answer("Ошибка отображения меню", show_alert=True)
+        else:
+            await callback_or_message.answer("Ошибка отображения меню")
+
+
 @router.callback_query(F.data.startswith("filters:"))
 async def filters_callback_handler(callback: CallbackQuery):
     """Обработчик callback для быстрой настройки фильтров"""
@@ -251,173 +303,159 @@ async def filters_callback_handler(callback: CallbackQuery):
     await callback.answer()
     
     try:
-        # Формат: filters:telegram_id:action:value
-        parts = callback.data.split(":", 3)
-        if len(parts) < 3:
-            # Уже ответили в начале функции
+        # --- START: robust filters callback handling ---
+        # Формат: filters:telegram_id:field:value
+        parts = callback.data.split(':')
+        
+        # Safety: если parts короче ожидаемого — отработать аккуратно
+        if len(parts) < 4:
+            await callback.answer("Неизвестное действие (некорректные данные).")
+            logger.warning(f"[FILTER_QUICK] malformed callback data: {callback.data}")
             return
         
-        _, telegram_id_str, action = parts[:3]
-        value = parts[3] if len(parts) > 3 else None
+        # Распознаём
+        _, user_id_str, field, value = parts[:4]
         
-        telegram_id = int(telegram_id_str)
+        try:
+            user_id = int(user_id_str)
+        except (ValueError, TypeError):
+            # На всякий случай — лог и прекращаем обработку
+            logger.warning(f"[FILTER_QUICK] invalid user id in callback: {user_id_str} data={callback.data}")
+            await callback.answer("Ошибка: некорректный идентификатор пользователя.")
+            return
         
         # Проверяем, что callback от правильного пользователя
-        if callback.from_user.id != telegram_id:
-            # Уже ответили в начале функции
+        if callback.from_user.id != user_id:
+            logger.warning(f"[FILTER_QUICK] user mismatch: callback_user={callback.from_user.id} expected={user_id}")
+            await callback.answer("Это действие доступно только вам.")
             return
         
         # Гарантируем наличие фильтров
-        await ensure_user_filters(telegram_id)
-        filters = await get_user_filters_turso(telegram_id)
+        await ensure_user_filters(user_id)
+        filters = await get_user_filters_turso(user_id)
         
         if not filters:
-            # Уже ответили в начале функции
+            logger.warning(f"[FILTER_QUICK] filters not found for user={user_id}")
+            await callback.answer("Фильтры не найдены. Используйте /start для настройки.")
             return
         
-        # Обрабатываем действие
-        if action == "rooms":
-            if value == "any":
-                filters["min_rooms"], filters["max_rooms"] = 0, 99
-            elif value == "0":
-                filters["min_rooms"], filters["max_rooms"] = 0, 0
-            elif value == "4+":
-                filters["min_rooms"], filters["max_rooms"] = 4, 99
-            else:
-                r = int(value)
-                filters["min_rooms"], filters["max_rooms"] = r, r
-        
-        elif action == "price":
-            if value == "any":
-                filters["min_price"], filters["max_price"] = 0, 99999999
-            else:
-                a, b = value.split("-")
-                filters["min_price"], filters["max_price"] = int(a), int(b)
-        
-        elif action == "seller":
-            filters["seller_type"] = value if value else "all"
-        
-        elif action == "mode":
-            filters["delivery_mode"] = value if value else "brief"
-        
-        elif action == "back":
-            # Возврат к главному меню
-            # Уже ответили в начале функции
-            await show_filters_master(callback, telegram_id)
-            return
-        
-        elif action == "rooms" and value == "select":
-            # Показываем меню выбора комнат
-            try:
-                await callback.message.edit_text(
-                    "🚪 Выберите количество комнат:",
-                    reply_markup=build_rooms_keyboard(telegram_id)
-                )
-            except Exception as e:
-                logger.error(
-                    "[FILTER_UI][SEND] Failed to send rooms keyboard user=%s error=%s",
-                    telegram_id,
-                    e,
-                    exc_info=True
-                )
-                # Отправляем alert только при ошибке (это не повторный запрос)
-                await callback.answer("Ошибка отображения меню", show_alert=True)
-            # Уже ответили в начале функции
-            return
-        
-        elif action == "price" and value == "select":
-            # Показываем меню выбора цены
-            try:
-                await callback.message.edit_text(
-                    "💰 Выберите диапазон цены:",
-                    reply_markup=build_price_keyboard(telegram_id)
-                )
-            except Exception as e:
-                logger.error(
-                    "[FILTER_UI][SEND] Failed to send price keyboard user=%s error=%s",
-                    telegram_id,
-                    e,
-                    exc_info=True
-                )
-                # Отправляем alert только при ошибке (это не повторный запрос)
-                await callback.answer("Ошибка отображения меню", show_alert=True)
-            # Уже ответили в начале функции
-            return
-        
-        elif action == "seller" and value == "select":
-            # Показываем меню выбора продавца
-            try:
-                await callback.message.edit_text(
-                    "👤 Выберите тип продавца:",
-                    reply_markup=build_seller_keyboard(telegram_id)
-                )
-            except Exception as e:
-                logger.error(
-                    "[FILTER_UI][SEND] Failed to send seller keyboard user=%s error=%s",
-                    telegram_id,
-                    e,
-                    exc_info=True
-                )
-                # Отправляем alert только при ошибке (это не повторный запрос)
-                await callback.answer("Ошибка отображения меню", show_alert=True)
-            # Уже ответили в начале функции
-            return
-        
-        elif action == "mode" and value == "select":
-            # Показываем меню выбора режима
-            try:
-                await callback.message.edit_text(
-                    "📦 Выберите режим доставки:",
-                    reply_markup=build_mode_keyboard(telegram_id)
-                )
-            except Exception as e:
-                logger.error(
-                    "[FILTER_UI][SEND] Failed to send mode keyboard user=%s error=%s",
-                    telegram_id,
-                    e,
-                    exc_info=True
-                )
-                # Отправляем alert только при ошибке (это не повторный запрос)
-                await callback.answer("Ошибка отображения меню", show_alert=True)
-            # Уже ответили в начале функции
-            return
-        
-        elif action == "city" and value == "select":
-            # Запрашиваем город текстом
-            # Уже ответили в начале функции
-            # Safe fallback для get_contextual_hint
-            try:
-                from bot.utils.ui_helpers import get_contextual_hint
+        # 1) Handle 'select' control action — открыть меню выбора, не пытаться парсить value
+        if value == "select":
+            # Вызвать соответствующий экран выбора для поля field
+            if field == "rooms":
+                await show_rooms_selection(callback, user_id)
+                return
+            elif field == "price":
+                await show_price_selection(callback, user_id)
+                return
+            elif field == "seller":
+                await show_seller_selection(callback, user_id)
+                return
+            elif field == "mode":
+                # Показываем меню выбора режима
+                try:
+                    await callback.message.edit_text(
+                        "📦 Выберите режим доставки:",
+                        reply_markup=build_mode_keyboard(user_id),
+                        parse_mode="HTML"
+                    )
+                except Exception as e:
+                    logger.error(f"[FILTER_UI] Failed to show mode selection user={user_id} error={e}", exc_info=True)
+                    await callback.answer("Ошибка отображения меню", show_alert=True)
+                return
+            elif field == "city":
+                # Запрашиваем город текстом
                 hint = get_contextual_hint("city_selection")
-            except (NameError, ImportError) as e:
-                hint = ""
-                logger.warning(f"[FILTER_UI] get_contextual_hint is not available, using empty hint: {e}")
-            await callback.message.edit_text(
-                f"📍 Введите название города (например: Барановичи):\n\n{hint}"
-            )
-            # Устанавливаем флаг awaiting_city для обработки текстового ввода
-            filters["awaiting_city"] = 1
-            await set_user_filters_turso(telegram_id, filters)
-            logger.info(f"[CITY_INPUT] user={telegram_id} awaiting_city=True")
-            return
+                await callback.message.edit_text(
+                    f"📍 Введите название города (например: Барановичи):\n\n{hint}",
+                    parse_mode="HTML"
+                )
+                # Устанавливаем флаг awaiting_city для обработки текстового ввода
+                filters["awaiting_city"] = 1
+                await set_user_filters_turso(user_id, filters)
+                logger.info(f"[CITY_INPUT] user={user_id} awaiting_city=True")
+                return
+            else:
+                # Fallback: если нет специальной реализации — просто показать мастер фильтров
+                await show_filters_master(callback, user_id)
+                return
         
-        elif action == "done":
-            # Финальное сохранение
-            await set_user_filters_turso(telegram_id, filters)
-            await callback.message.edit_text(
-                "✅ Фильтры сохранены. Я начну искать подходящие квартиры."
-            )
-            # Уже ответили в начале функции
+        # 2) Safe parsing for numeric fields / ranges
+        try:
+            if field == "rooms":
+                # value может быть "0".."5" или "studio" (если есть) — пробуем привести к int, иначе логируем
+                if value == "any":
+                    filters["min_rooms"], filters["max_rooms"] = 0, 99
+                elif value == "0":
+                    filters["min_rooms"], filters["max_rooms"] = 0, 0
+                elif value == "4+":
+                    filters["min_rooms"], filters["max_rooms"] = 4, 99
+                else:
+                    try:
+                        rooms = int(value)
+                        filters["min_rooms"], filters["max_rooms"] = rooms, rooms
+                    except ValueError:
+                        # Если значение специфическое, можно обработать отдельно
+                        logger.warning(f"[FILTER_QUICK] unexpected rooms value: {value}")
+                        await callback.answer("Неверное значение комнат. Попробуйте снова.")
+                        return
+            
+            elif field == "price":
+                # value ожидается в виде "min-max". Проверяем заранее.
+                if value == "any":
+                    filters["min_price"], filters["max_price"] = 0, 99999999
+                else:
+                    if "-" not in value:
+                        logger.warning(f"[FILTER_QUICK] price value missing dash: {value}")
+                        await callback.answer("Неверный формат цены. Попробуйте снова.")
+                        return
+                    a, b = value.split("-", 1)
+                    try:
+                        min_price = int(a)
+                        max_price = int(b)
+                        filters["min_price"], filters["max_price"] = min_price, max_price
+                    except ValueError:
+                        logger.warning(f"[FILTER_QUICK] price parse failed: {value}")
+                        await callback.answer("Неверный формат ценового диапазона. Попробуйте снова.")
+                        return
+            
+            elif field == "seller":
+                filters["seller_type"] = value if value else "all"
+            
+            elif field == "mode":
+                filters["delivery_mode"] = value if value else "brief"
+            
+            elif field == "back":
+                # Возврат к главному меню
+                await show_filters_master(callback, user_id)
+                return
+            
+            elif field == "done":
+                # Финальное сохранение
+                await set_user_filters_turso(user_id, filters)
+                await callback.message.edit_text(
+                    "✅ Фильтры сохранены. Я начну искать подходящие квартиры.",
+                    parse_mode="HTML"
+                )
+                return
+            
+            else:
+                logger.warning(f"[FILTER_QUICK] unknown field: {field} value={value}")
+                await callback.answer("Неизвестное поле фильтра.")
+                return
+        
+        except Exception as e:
+            logger.exception("[FILTER_QUICK] unexpected error while handling filter callback")
+            await callback.answer("Ошибка при обработке действия. Попробуйте ещё раз.")
             return
         
         # Мгновенное сохранение при каждом действии
-        await set_user_filters_turso(telegram_id, filters)
+        await set_user_filters_turso(user_id, filters)
         
         # Перерисовываем экран
-        # Уже ответили в начале функции
-        await show_filters_master(callback, telegram_id)
+        await show_filters_master(callback, user_id)
+        # --- END: robust filters callback handling ---
         
     except Exception as e:
         logger.exception(f"[FILTER_QUICK] Error handling callback {callback.data}: {e}")
-        # Отправляем alert только при ошибке (это не повторный запрос)
-        await callback.answer("Произошла ошибка", show_alert=True)
+        await callback.answer("Произошла ошибка. Попробуйте ещё раз.", show_alert=True)
