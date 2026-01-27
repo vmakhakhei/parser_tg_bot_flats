@@ -47,6 +47,7 @@ from scrapers.etagi import EtagiScraper
 
 # Импортируем error_logger если доступен
 try:
+    from error_logger import log_error, log_warning, log_info
 except ImportError:
     # Fallback если модуль недоступен
     def log_error(source, message, exception=None):

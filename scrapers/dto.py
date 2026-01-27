@@ -12,6 +12,7 @@ import re
 
 # Импортируем error_logger для логирования ошибок валидации
 try:
+    from error_logger import log_warning, log_error
 except ImportError:
     def log_warning(source, message):
         print(f"[WARN] [{source}] {message}")

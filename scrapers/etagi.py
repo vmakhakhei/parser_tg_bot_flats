@@ -18,6 +18,7 @@ from scrapers.base import BaseScraper, Listing
 
 # Импортируем error_logger если доступен
 try:
+    from error_logger import log_error, log_warning, log_info
 except ImportError:
     def log_error(source, message, exception=None):
         print(f"[ERROR] [{source}] {message}: {exception}")
