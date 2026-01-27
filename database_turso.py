@@ -1,9 +1,4 @@
 """
-from error_logger import log_error, log_warning, log_info
-from pathlib import Path
-from constants.constants import LOG_FILTER_LOAD
-from constants.constants import LOG_FILTER_SAVE
-
 Модуль для работы с Turso Database (кэширование объявлений)
 Используется для экономии трафика и API вызовов
 
@@ -19,6 +14,7 @@ from typing import Optional, List, Dict, Any
 from datetime import datetime
 from contextlib import contextmanager
 from scrapers.utils.id_utils import normalize_ad_id, normalize_telegram_id
+from constants.constants import LOG_FILTER_LOAD, LOG_FILTER_SAVE, LOG_FILTER_VERIFY
 
 logger = logging.getLogger(__name__)
 
